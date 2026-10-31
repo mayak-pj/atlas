@@ -24,9 +24,9 @@ QLabel#KindBadge { background: $accent_soft; color: $link; border: 1px solid $ac
 QLabel#ContextCurrent { color: $text; font-weight: 600; }
 QLabel#ContextPath { font-family: $font_mono; color: $muted; }
 
-QTabBar { background: transparent; qproperty-drawBase: 0; }
+QTabBar { background: transparent; qproperty-drawBase: 0; font-weight: 600; }
 QTabBar::tab { background: transparent; color: $text_dim; padding: 6px 14px; margin: 0 2px; border: none;
-               border-bottom: 2px solid transparent; font-weight: 600; min-height: ${control_h}px; }
+               border-bottom: 2px solid transparent; min-height: ${control_h}px; }
 QTabBar::tab:hover { color: $text; }
 QTabBar::tab:selected { color: $accent; border-bottom: 2px solid $accent; }
 QLabel#TabBadge { background: $type2; color: $on_accent; border-radius: 8px; padding: 0 6px; font-size: ${font_sm}px; font-weight: 700; }

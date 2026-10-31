@@ -111,3 +111,21 @@ def test_builtin_user_slot(shell):
     assert len(shell.slots.panels("shell.user")) == 1
     shell.remove_panel("shell.user", "login")
     assert shell.slots.panels("shell.user") == []
+
+
+def test_tab_is_wide_enough_for_its_bold_title(qtbot, qapp):
+    """Найдено на Windows: «Привет» обрезалось, ширина считалась по обычному начертанию, а не по жирному."""
+    from PyQt5.QtGui import QFont, QFontMetrics
+    from PyQt5.QtWidgets import QTabBar
+
+    from atlas.core.theme import apply_theme
+
+    apply_theme(qapp)
+    bar = QTabBar()
+    qtbot.addWidget(bar)
+    bar.addTab("Привет")
+    bar.show()
+    bold = QFont(qapp.font())
+    bold.setWeight(QFont.DemiBold)
+    needed = QFontMetrics(bold).horizontalAdvance("Привет") + 2 * 14  # 14 — padding вкладки в atlas.qss
+    assert bar.tabRect(0).width() >= needed

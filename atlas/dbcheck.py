@@ -124,7 +124,7 @@ def _verify(db, run_id, clock, sleep, timeout):
             sleep(2)
 
 
-def run_check(folder, report_dir, seconds=60, label=None, pause=0.1, clock=time.monotonic, sleep=time.sleep,
+def run_check(folder, report_dir, seconds=60, label=None, pause=0.1, clock=time.perf_counter, sleep=time.sleep,
               verify_timeout=VERIFY_TIMEOUT_S):
     """Возвращает код выхода: 0 — данные целы, 1 — проблема, 3 — некуда писать отчёт."""
     label = label or platform.node() or "pc"

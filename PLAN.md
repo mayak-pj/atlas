@@ -43,7 +43,7 @@
   - **Готово:** добавление/удаление `hello` в `features.json` включает/убирает вкладку без правок кода.
   - Чат: можно очистить → **0.4**, Sonnet
 
-- [ ] **0.4 Оболочка, тема, вход** — *Sonnet*
+- [x] **0.4 Оболочка, тема, вход** — *Sonnet*
   - `core/theme/tokens.json` + `atlas.qss` по `docs/UI_SPEC.md`. Главное окно: верхняя полоса, вкладки из реестра,
     строка контекста, слоты панелей (`ctx.shell.add_panel`).
   - Функция `login`: диалог как в `design/mockup/Main.dc.html`, `NameTag` в `shared/widgets`.

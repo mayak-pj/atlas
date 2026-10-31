@@ -115,12 +115,27 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `dashboard` | статистика | Дашборд | — |
 | `history_import` | выгрузка старых писем (в конце, необязательно) | — | страница настроек |
 
+## Слоты оболочки (поддерживать актуальным)
+
+API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (тот же `key` заменяет панель), `remove_panel`, `register_slot(имя, layout)`,
+`set_context(kind, project, device, part, path)`, `show_message(текст)`, `refresh_badges()`. Панель можно добавить раньше слота — дождётся его.
+Нет слота (владелец отключён) — панель молча не показывается.
+
+| Слот | Владелец | Что кладут |
+|---|---|---|
+| `shell.user` | оболочка | тег пользователя (`login`) |
+| `shell.online` | оболочка | «кто онлайн» (`presence`, шаг 1.2) |
+| `login.summary` | login | «С вашего последнего входа» (правила, комментарии, папки) — только на время диалога |
+| `login.aside` | login | «Сейчас в работе», последние папки — только на время диалога |
+
+Слоты `compare.*`, `draft.actions` появятся вместе с их владельцами.
+
 ## События (поддерживать актуальным)
 
 | Событие | Кто публикует | Данные |
 |---|---|---|
 | `feature.failed` | ядро (registry) | `{id, stage, error}` |
-| `user.logged_in` | login | `{user}` |
+| `user.logged_in` | login | `{user}` — `atlas.core.app_context.User(id, name, color)` |
 | `folder.copied` | import_mail | `{folder_id, part_id}` |
 | `folder.opened` | compare | `{folder_id, part_id}` |
 | `folder.done` | report | `{folder_id}` |
@@ -136,6 +151,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | Имя | Владелец | Методы |
 |---|---|---|
 | `hello` | hello (тестовая) | `greet(name)` |
+| `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `image_cache` | shared/viewer (ядро) | `get(path, level)`, `prefetch(paths)` |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |

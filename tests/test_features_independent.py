@@ -65,7 +65,7 @@ def test_starts_with_no_features(qtbot, tmp_path):
     _, registry = _start(_make_root(tmp_path, []))
     window = build_window(registry)
     qtbot.addWidget(window)
-    assert window.centralWidget().count() == 0
+    assert window.tab_titles() == []
 
 
 def test_hello_tab_follows_features_json(qtbot, tmp_path):
@@ -73,10 +73,10 @@ def test_hello_tab_follows_features_json(qtbot, tmp_path):
     _, registry = _start(_make_root(tmp_path / "on", entries))
     window = build_window(registry)
     qtbot.addWidget(window)
-    assert window.centralWidget().tabText(0) == "Привет"
+    assert window.tab_titles() == ["Привет"]
     registry.stop_all()
 
     _, registry = _start(_make_root(tmp_path / "off", []))
     window = build_window(registry)
     qtbot.addWidget(window)
-    assert window.centralWidget().count() == 0
+    assert window.tab_titles() == []

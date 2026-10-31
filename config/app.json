@@ -3,5 +3,8 @@
   "database": {
     "path": "var/atlas.sqlite",
     "busy_timeout_ms": 5000
+  },
+  "ui": {
+    "show_project_kind": true
   }
 }

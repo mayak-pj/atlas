@@ -1,4 +1,4 @@
-"""Точка входа: конфиг → ядро → функции → окно. Окно временное, оболочка — шаг 0.4."""
+"""Точка входа: конфиг → тема → ядро → функции → вход → главное окно."""
 from __future__ import annotations
 
 import logging
@@ -28,7 +28,11 @@ def build_core(paths):
     if not Path(db_value).is_absolute():
         db_path.parent.mkdir(parents=True, exist_ok=True)
     db = Database(db_path, config.get("database.busy_timeout_ms", 5000))
-    return AppContext(config, paths, db, EventBus(), ServiceRegistry())
+    ctx = AppContext(config, paths, db, EventBus(), ServiceRegistry())
+    from atlas.core.shell import ShellWindow
+
+    ctx.shell = ShellWindow(ctx)  # до запуска функций: им нужны слоты оболочки
+    return ctx
 
 
 def start_features(ctx):
@@ -40,19 +44,21 @@ def start_features(ctx):
 
 
 def build_window(registry):
-    from PyQt5.QtWidgets import QMainWindow, QTabWidget
-
-    window = QMainWindow()
-    window.setWindowTitle("Atlas")
-    window.resize(1200, 800)
-    tabs = QTabWidget()
-    for item in registry.tabs():
-        tabs.addTab(item.tab, item.spec.title)
-    window.setCentralWidget(tabs)
+    """Вкладки из реестра в уже созданное окно оболочки (ctx.shell)."""
+    window = registry.ctx.shell
+    window.set_tabs(registry.tabs())
     if registry.failures:
         names = ", ".join(failure.id for failure in registry.failures)
-        window.statusBar().showMessage("Не запущены функции: {}. Подробности в журнале.".format(names))
+        window.show_message("Не запущены функции: {}. Подробности в журнале.".format(names))
     return window
+
+
+def run_login(ctx, window):
+    """True — можно работать. Нет функции login — работаем без пользователя."""
+    login = ctx.services.get_optional("login")
+    if login is None:
+        return True
+    return login.run() is not None
 
 
 def main(argv=None):
@@ -63,6 +69,9 @@ def main(argv=None):
     install_excepthook()
     prepare()
     app = QApplication(list(argv if argv is not None else sys.argv))
+    from atlas.core.theme import apply_theme
+
+    apply_theme(app)
     try:
         ctx = build_core(paths)
     except (ConfigError, OSError) as exc:
@@ -72,5 +81,13 @@ def main(argv=None):
     registry = start_features(ctx)
     app.aboutToQuit.connect(registry.stop_all)
     window = build_window(registry)
+    try:
+        proceed = run_login(ctx, window)
+    except Exception as exc:  # база недоступна и т. п.
+        log.exception("Не удалось выполнить вход")
+        QMessageBox.critical(None, "Atlas", "Не удалось выполнить вход: {}".format(exc))
+        return 2
+    if not proceed:
+        return 0
     window.show()
     return app.exec_()

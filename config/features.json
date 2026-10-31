@@ -1,5 +1,13 @@
 {
   "features": [
-    {"id": "hello", "enabled": true, "tab_order": 10}
+    {
+      "id": "login",
+      "enabled": true
+    },
+    {
+      "id": "hello",
+      "enabled": true,
+      "tab_order": 10
+    }
   ]
 }

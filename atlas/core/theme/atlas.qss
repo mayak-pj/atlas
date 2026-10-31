@@ -1,0 +1,56 @@
+/* Цвета и размеры подставляются из tokens.json (знак доллара + имя токена). Своих цветов здесь нет. */
+QWidget { background: $bg; color: $text; font-family: $font_ui; font-size: ${font_md}px; }
+QToolTip { background: $panel_2; color: $text; border: 1px solid $border_strong; padding: 4px 8px; }
+QLabel { background: transparent; }
+QLabel[role="muted"] { color: $muted; }
+QLabel[role="dim"] { color: $text_dim; }
+QLabel[role="caption"] { color: $muted; font-size: ${font_sm}px; font-weight: 600; }
+QLabel[role="title"] { font-size: ${font_xl}px; font-weight: 800; }
+QLabel[role="mono"] { font-family: $font_mono; color: $muted; }
+QLabel[role="warn"] { color: $type2; }
+
+QFrame[role="panel"] { background: $panel; border: 1px solid $border; border-radius: ${radius_md}px; }
+QFrame[role="panel"] QLabel { background: transparent; }
+QWidget[role="plain"] { background: transparent; }
+QFrame[role="panel-alt"] { background: $panel_alt; border: 1px solid $border; border-radius: ${radius_md}px; }
+QFrame[role="panel-alt"] QLabel { background: transparent; }
+
+QFrame#TopBar { background: $panel; border: none; border-bottom: 1px solid $border; }
+QFrame#TopBar QLabel { background: transparent; }
+QLabel#Brand { font-size: ${font_lg}px; font-weight: 800; letter-spacing: 2px; }
+QFrame#ContextBar { background: $bg; border: none; border-bottom: 1px solid $border; }
+QFrame#ContextBar QLabel { background: transparent; color: $text_dim; }
+QLabel#KindBadge { background: $accent_soft; color: $link; border: 1px solid $accent; border-radius: 6px; padding: 1px 8px; font-weight: 700; }
+QLabel#ContextCurrent { color: $text; font-weight: 600; }
+QLabel#ContextPath { font-family: $font_mono; color: $muted; }
+
+QTabBar { background: transparent; qproperty-drawBase: 0; }
+QTabBar::tab { background: transparent; color: $text_dim; padding: 6px 14px; margin: 0 2px; border: none;
+               border-bottom: 2px solid transparent; font-weight: 600; min-height: ${control_h}px; }
+QTabBar::tab:hover { color: $text; }
+QTabBar::tab:selected { color: $accent; border-bottom: 2px solid $accent; }
+QLabel#TabBadge { background: $type2; color: $on_accent; border-radius: 8px; padding: 0 6px; font-size: ${font_sm}px; font-weight: 700; }
+
+QPushButton { background: $panel_2; color: $text; border: 1px solid $border_strong; border-radius: ${radius_sm}px;
+              padding: 0 14px; min-height: ${control_h}px; }
+QPushButton:hover { border-color: $accent; }
+QPushButton:disabled { color: $disabled; border-color: $border; }
+QPushButton[role="primary"] { background: $accent; color: $on_accent; border: none; font-weight: 700; font-size: ${font_lg}px;
+                              min-height: 48px; padding: 0 28px; border-radius: 8px; }
+QPushButton[role="primary"]:hover { background: $accent_hover; }
+QPushButton[role="primary"]:disabled { background: $panel_2; color: $disabled; }
+QPushButton[role="dashed"] { background: transparent; color: $text_dim; border: 1px dashed $border_strong; border-radius: 22px; min-height: 44px; }
+QPushButton[role="dashed"]:hover { border-color: $accent; color: $text; }
+QPushButton[role="icon"] { padding: 0; min-width: ${control_h}px; max-width: ${control_h}px; background: transparent; border: 1px solid transparent; }
+QPushButton[role="icon"]:hover { border-color: $border_strong; background: $panel_2; }
+
+QLineEdit { background: $panel; border: 1px solid $border_strong; border-radius: ${radius_sm}px; padding: 0 10px; min-height: ${control_h}px;
+            selection-background-color: $accent_soft; }
+QLineEdit:focus { border-color: $accent; }
+QDialog { background: $bg; }
+QMessageBox, QInputDialog { background: $panel; }
+QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: $border_strong; border-radius: 5px; min-height: 24px; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
+QStatusBar { background: $panel; color: $muted; border-top: 1px solid $border; }
+QStatusBar QLabel { color: $muted; }

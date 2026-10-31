@@ -60,7 +60,13 @@
   Миграции по-прежнему в GUI-потоке до показа входа: на сетевом диске возможна задержка при старте — проверить на 0.5, при необходимости экран запуска.
   Нет подсветки пульсирующей точки «Правил» — только числовой счётчик (точка — на шаге правил).
 
-## 2026-10-31 · шаг 0.5 — сборка под Windows 7 (НЕ ЗАВЕРШЁН: нет запуска на Windows)
+## 2026-10-31 · шаг 0.5 — сборка под Windows 7 (НЕ ЗАВЕРШЁН: нет запуска на Win7)
+- Обновление записи: создан публичный репозиторий `mayak-pj/atlas`, CI зелёный, прогон 41241671938 (Windows Server 2022, не Win7). Zip — артефакт `atlas-win7-x64`, около 24 МБ.
+  `--selfcheck` прошёл из папки с кириллицей и по `\\localhost`; `check_pe_imports` без проблем (1 предупреждение: отложенный импорт `concrt140.dll` в `MSVCP140.dll`).
+  Два процесса на одной базе по SMB, 45 с: по 412 записей, потерь 0, «база занята» 0, запись — медиана 4 мс. Это петля `localhost`, про настоящий сетевой диск эти цифры ничего не говорят.
+  Первая сборка показала и исправлено: обрезанная вкладка (`font-weight` теперь на `QTabBar`, по снимку с Windows исправлено) и замеры с шагом 15,6 мс (`perf_counter`).
+  Тест `test_tab_is_wide_enough_for_its_bold_title` на Mac проходит и со старым QSS: дефект он там не воспроизводит, надёжная проверка — снимки CI.
+  Пункт «workflow не запускался, exe под Windows не собирался» ниже устарел; пункты про Win7, сетевой диск и обрыв сети остаются в силе.
 - Сделано: `packaging/atlas.spec` (способ `curator`: onedir, без UPX, UCRT исключён), `packaging/bundle_contents.py`, `scripts/check_pe_imports.py` (из `curator`),
   `scripts/assemble_dist.py`, `.github/workflows/build-windows.yml`, `atlas/selfcheck.py` (`--selfcheck`), `atlas/dbcheck.py` (`--dbcheck`), `core/report.py`,
   `packaging/bat/`, `docs/WIN7_CHECK.md`, `THIRD_PARTY_LICENSES.txt`.

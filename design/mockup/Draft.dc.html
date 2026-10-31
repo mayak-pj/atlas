@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — черновик и письмо</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:900px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.ping{width:8px;height:8px;border-radius:50%;background:#F2A93B}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.ctx{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#13161B;border-bottom:1px solid #2A2F38}
+.kk{font-weight:800;padding:3px 10px;border-radius:5px;background:#4C9AFF;color:#0B1B2E}
+.crumb{color:#8B95A3}.crumb b{color:#E6E8EB;font-weight:600}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.btn.pri{background:#4C9AFF;border-color:#4C9AFF;color:#0B1B2E;font-weight:700}
+.mono{font-family:"JetBrains Mono",Consolas,monospace}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.item{display:flex;gap:10px;padding:10px;border-radius:8px;background:#1B1F26;border:1px solid #2A2F38}
+.th{width:84px;height:56px;border-radius:6px;flex:none;overflow:hidden}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab" href="Compare.dc.html">Сравнение</a>
+<a class="tab" href="Import.dc.html">Импорт</a>
+<a class="tab" href="Database.dc.html">База типов</a>
+<a class="tab" href="Rules.dc.html">Правила<span class="ping"></span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab on" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+</header>
+<div class="ctx">
+<span class="kk">КК</span>
+<span class="crumb">Проект <b>Орион-24</b></span><span class="crumb">›</span>
+<span class="crumb">Устройство <b>Ноутбук N15</b></span><span class="crumb">›</span>
+<span class="crumb">Деталь <b>SSD XS-2280 512GB</b></span>
+<span class="crumb">· папка 2026-10-31 · 486 фото</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding: 12px">
+<section class="panel" style="flex: 1 1 300px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lbl">Заметки (как раньше, свободным текстом)</div>
+<textarea rows="16" style="flex: 1; background: #0F1115; border: 1px solid #333A45; border-radius: 8px; color: #E6E8EB; font: 500 13px 'JetBrains Mono', Consolas, monospace; padding: 10px; resize: vertical; line-height: 1.6">0412 — посмотреть ещё раз угол платы
+0431 — пятно? похоже на блик
+приёмка: 3 фото без SN, уточнить
+</textarea>
+</section>
+
+<section class="panel" style="flex: 999 1 420px; min-width: 0; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center"><span class="lbl">Найдено при проверке — собирается само</span><span style="color: #8B95A3">из отметок в «Сравнении»</span></div>
+<div class="item">
+<div class="th"><svg viewBox="0 0 84 56" width="84" height="56" aria-hidden="true"><rect width="84" height="56" fill="#1E5A3A"/><rect x="34" y="14" width="22" height="28" fill="#15171A"/><circle cx="45" cy="28" r="20" fill="none" stroke="#FF3B30" stroke-width="3"/></svg></div>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="display: flex; gap: 8px; align-items: center"><span class="pill" style="background: #3A2A10; color: #F2A93B">ТИП 2</span><span>88 фото</span></div><span style="color: #C9CFD8">3-й чип NAND на площадке. Совпадает с Типом 2 из базы (14.10).</span></div>
+</div>
+<div class="item" style="border-color: #7A2A2E">
+<div class="th"><svg viewBox="0 0 84 56" width="84" height="56" aria-hidden="true"><rect width="84" height="56" fill="#1E5A3A"/><path d="M50 30 l6 -5 l7 4 l-3 6 z" fill="#7A5A3A"/><circle cx="56" cy="30" r="14" fill="none" stroke="#FF3B30" stroke-width="3"/></svg></div>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="display: flex; gap: 8px; align-items: center"><span class="pill" style="background: #3A1416; color: #FF8A8A">ДЕФЕКТ</span><span class="mono">SN S4K2-0404</span></div><span style="color: #C9CFD8">Сбит конденсатор у контроллера, царапина.</span></div>
+</div>
+<div class="item">
+<div class="th"><svg viewBox="0 0 84 56" width="84" height="56" aria-hidden="true"><rect width="84" height="56" fill="#1E5A3A" style="filter: blur(1.5px)"/></svg></div>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="display: flex; gap: 8px; align-items: center"><span class="pill" style="background: #2A1E3D; color: #C59CFF">ЗАМЕЧАНИЕ</span><span class="mono">SN S4K2-0406</span></div><span style="color: #C9CFD8">Размытое фото, переснять.</span></div>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><button type="button" class="btn">+ Добавить вручную</button><button type="button" class="btn">Разложить по папкам типов</button><button type="button" class="btn">Записать в Excel</button></div>
+</section>
+
+<section class="panel" style="flex: 1 1 380px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div class="lbl">Ответное письмо</div>
+<div style="color: #9AA3AF">Кому: <span style="color: #E6E8EB">Отдел приёмки</span></div>
+<div style="color: #9AA3AF">Тема: <span style="color: #E6E8EB">RE: Фото на сверку: Орион-24, партия 31.10</span></div>
+<div style="background: #F7F7F5; color: #1A1A1A; border-radius: 8px; padding: 14px; font: 13px/1.55 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; gap: 8px">
+<span>Добрый день!</span>
+<span>[Шаблон письма — дадите позже]</span>
+<span><b>SSD XS-2280 512GB</b> (486 фото): 2 типа — Тип 1: 396, Тип 2: 88 (3-й чип NAND).</span>
+<span><b>Дефекты:</b> SN S4K2-0404 — сбит конденсатор.</span>
+<span><b>Замечания:</b> SN S4K2-0406 — размытое фото.</span>
+<span>Смирнова</span>
+</div>
+<span style="flex: 1"></span>
+<button type="button" class="btn pri">Открыть в Outlook как ответ</button>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

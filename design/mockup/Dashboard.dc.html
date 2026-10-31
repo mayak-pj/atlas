@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — дашборд</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:900px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.ping{width:8px;height:8px;border-radius:50%;background:#F2A93B}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.kpi{padding:16px;display:flex;flex-direction:column;gap:6px}
+.kpi b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.hb{display:grid;grid-template-columns:180px minmax(0,1fr) 40px;gap:10px;align-items:center}
+.track{height:14px;border-radius:0 4px 4px 0;background:transparent}
+.fill{height:14px;border-radius:0 4px 4px 0;background:#4C9AFF}
+.num{text-align:right;font-variant-numeric:tabular-nums;color:#C9CFD8}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab" href="Compare.dc.html">Сравнение</a>
+<a class="tab" href="Import.dc.html">Импорт</a>
+<a class="tab" href="Database.dc.html">База типов</a>
+<a class="tab" href="Rules.dc.html">Правила<span class="ping"></span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab on" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+</header>
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; max-width: 1320px; width: 100%; box-sizing: border-box; margin: 0 auto">
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<span style="font-size: 18px; font-weight: 700">Октябрь 2026</span>
+<span style="color: #8B95A3">· демо-данные, раздел будем наполнять</span>
+<span style="flex: 1"></span>
+<button type="button" class="btn">Неделя</button><button type="button" class="btn" style="border-color: #4C9AFF">Месяц</button><button type="button" class="btn">Год</button><button type="button" class="btn">КК + СТ</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div class="panel kpi"><span class="lbl">Проверено папок</span><b>[N]</b><span style="color: #8B95A3">за месяц</span></div>
+<div class="panel kpi"><span class="lbl">Фото просмотрено</span><b>[N]</b><span style="color: #8B95A3">за месяц</span></div>
+<div class="panel kpi"><span class="lbl">Дефекты</span><b style="color: #FF8A8A">[N]</b><span style="color: #8B95A3">на [N] деталях</span></div>
+<div class="panel kpi"><span class="lbl">Новые типы</span><b style="color: #F2A93B">[N]</b><span style="color: #8B95A3">добавлено в базу</span></div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<section class="panel" style="flex: 999 1 560px; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Детали с наибольшим числом замечаний</div>
+<div class="hb"><span>SSD XS-2280</span><div class="track"><div class="fill" style="width: 100%"></div></div><span class="num">9</span></div>
+<div class="hb"><span>Матплата MB-15</span><div class="track"><div class="fill" style="width: 67%"></div></div><span class="num">6</span></div>
+<div class="hb"><span>Дисплей LCD-156</span><div class="track"><div class="fill" style="width: 44%"></div></div><span class="num">4</span></div>
+<div class="hb"><span>Плата питания PWR-7</span><div class="track"><div class="fill" style="width: 33%"></div></div><span class="num">3</span></div>
+<div class="hb"><span>Шлейф FPC-40</span><div class="track"><div class="fill" style="width: 11%"></div></div><span class="num">1</span></div>
+</section>
+<section class="panel" style="flex: 1 1 340px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Вид замечаний</div>
+<div class="hb" style="grid-template-columns: 150px minmax(0,1fr) 32px"><span>Сбит элемент</span><div class="track"><div class="fill" style="width: 100%"></div></div><span class="num">8</span></div>
+<div class="hb" style="grid-template-columns: 150px minmax(0,1fr) 32px"><span>Размытое фото</span><div class="track"><div class="fill" style="width: 75%"></div></div><span class="num">6</span></div>
+<div class="hb" style="grid-template-columns: 150px minmax(0,1fr) 32px"><span>Не то фото</span><div class="track"><div class="fill" style="width: 38%"></div></div><span class="num">3</span></div>
+<div class="hb" style="grid-template-columns: 150px minmax(0,1fr) 32px"><span>Царапина</span><div class="track"><div class="fill" style="width: 25%"></div></div><span class="num">2</span></div>
+<div style="color: #8B95A3">Список видов — из вашего справочника дефектов (дадите позже).</div>
+</section>
+</div>
+
+<section class="panel" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<div class="lbl">Детали без проблем за 3 месяца</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<span style="padding: 6px 12px; border-radius: 999px; background: #12301F; color: #3DD68C">Wi-Fi AX-210</span>
+<span style="padding: 6px 12px; border-radius: 999px; background: #12301F; color: #3DD68C">Клавиатура KB-15</span>
+<span style="padding: 6px 12px; border-radius: 999px; background: #12301F; color: #3DD68C">Динамик SPK-2</span>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — импорт из письма</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:900px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.ping{width:8px;height:8px;border-radius:50%;background:#F2A93B}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.btn.pri{background:#4C9AFF;border-color:#4C9AFF;color:#0B1B2E;font-weight:700}
+.mono{font-family:"JetBrains Mono",Consolas,monospace}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.kk{font-weight:800;padding:2px 8px;border-radius:5px;background:#4C9AFF;color:#0B1B2E;font-size:11px}
+.st{font-weight:800;padding:2px 8px;border-radius:5px;background:#C59CFF;color:#1E1230;font-size:11px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8B95A3;font-weight:600;padding:8px 10px;border-bottom:1px solid #2A2F38}
+td{padding:10px;border-bottom:1px solid #22262E;vertical-align:top}
+.bar{height:6px;border-radius:3px;background:#2A2F38;overflow:hidden}
+.bar i{display:block;height:100%;background:#4C9AFF}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab" href="Compare.dc.html">Сравнение</a>
+<a class="tab on" href="Import.dc.html">Импорт</a>
+<a class="tab" href="Database.dc.html">База типов</a>
+<a class="tab" href="Rules.dc.html">Правила<span class="ping"></span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding: 16px; max-width: 1400px; width: 100%; box-sizing: border-box; margin: 0 auto">
+
+<section class="panel" style="flex: 1 1 340px; max-width: 400px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center"><span class="lbl">Письма Outlook — «Сверка»</span><button type="button" class="btn">Обновить</button></div>
+<div style="padding: 12px; border-radius: 8px; background: #16304F; border: 1px solid #2F5E94; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between"><b>Фото на сверку: Орион-24, партия 31.10</b><span style="color: #9AA3AF">09:04</span></div>
+<span style="color: #C9CFD8">от: Отдел приёмки</span>
+<span class="mono" style="color: #A9CCFF; font-size: 12px">\\fs01\incoming\Orion24\2026-10-31\</span>
+</div>
+<div style="padding: 12px; border-radius: 8px; border: 1px solid #2A2F38; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between"><b>Вега — платы питания</b><span style="color: #9AA3AF">вчера</span></div>
+<span style="color: #9AA3AF">скопировано · 120 фото</span>
+</div>
+<div style="padding: 12px; border-radius: 8px; border: 1px solid #2A2F38; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between"><b>Орион-24 — дисплеи</b><span style="color: #9AA3AF">29.10</span></div>
+<span style="color: #9AA3AF">скопировано · 88 фото</span>
+</div>
+<div style="color: #8B95A3; padding-top: 6px">Можно также перетащить письмо сюда или вставить путь к папке вручную.</div>
+</section>
+
+<section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px">
+<div><div class="lbl">План копирования</div><div style="font-size: 16px; font-weight: 700; margin-top: 4px">Распознано 4 папки · 860 фото · 2 проекта</div></div>
+<div style="display: flex; gap: 8px"><button type="button" class="btn">Изменить сопоставление</button><button type="button" class="btn pri">Копировать всё</button></div>
+</div>
+<div style="overflow-x: auto">
+<table>
+<thead><tr><th>Источник</th><th>Проект</th><th>Куда (создаётся папка с датой)</th><th>Фото</th><th>Статус</th></tr></thead>
+<tbody>
+<tr><td class="mono">SSD_XS2280\</td><td><span class="kk">КК</span> Орион-24</td><td class="mono" style="color: #A9CCFF">…\КК\Орион-24\N15\SSD XS-2280\2026-10-31</td><td>486</td><td style="min-width: 120px"><div class="bar"><i style="width: 100%; background: #3DD68C"></i></div><span style="color: #3DD68C">готово</span></td></tr>
+<tr><td class="mono">MB15_revB\</td><td><span class="kk">КК</span> Орион-24</td><td class="mono" style="color: #A9CCFF">…\КК\Орион-24\N15\Матплата MB-15\2026-10-31</td><td>212</td><td><div class="bar"><i style="width: 64%"></i></div><span style="color: #9AA3AF">136 / 212</span></td></tr>
+<tr><td class="mono">AX210\</td><td><span class="kk">КК</span> Орион-24</td><td class="mono" style="color: #A9CCFF">…\КК\Орион-24\N15\Wi-Fi AX-210\2026-10-31</td><td>98</td><td><span style="color: #9AA3AF">в очереди</span></td></tr>
+<tr style="background: #2A2112"><td class="mono">FPC40_new\</td><td><span class="st">СТ</span> Вега</td><td><span style="color: #F2A93B; font-weight: 600">Новая деталь — нет папки.</span><br><span class="mono" style="color: #C9CFD8">…\СТ\Вега\[устройство?]\Шлейф FPC-40\2026-10-31</span></td><td>64</td><td><button type="button" class="btn" style="height: 32px">Создать папку</button></td></tr>
+</tbody>
+</table>
+</div>
+<div style="color: #8B95A3">Правила сопоставления «папка в письме → проект / устройство / деталь» — [источник дадите позже]. Неизвестное подсвечивается и ждёт подтверждения.</div>
+</div>
+
+<div class="lbl" style="padding-left: 4px">Сводка по скопированным деталям</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 8px; border-color: #7A2A2E">
+<div style="display: flex; justify-content: space-between"><b>SSD XS-2280 512GB</b><span class="pill" style="background: #3A1416; color: #FF8A8A">3 деф. в окт.</span></div>
+<span>Типов: <b>2</b> (Тип 2 с 14.10)</span>
+<span style="color: #9AA3AF">Последняя проверка 28.10 · Иванова</span>
+<a href="Compare.dc.html" class="btn pri" style="text-decoration: none; justify-content: center">Открыть сравнение</a>
+</div>
+<div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between"><b>Матплата MB-15 rev.B</b><span class="pill" style="background: #3A2A10; color: #F2A93B">2 типа</span></div>
+<span>Замечаний в окт.: <b>1</b></span>
+<span style="color: #9AA3AF">Последняя проверка 30.10 · Иванова</span>
+<a href="Compare.dc.html" class="btn" style="text-decoration: none; justify-content: center">Открыть сравнение</a>
+</div>
+<div class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between"><b>Wi-Fi AX-210</b><span class="pill" style="background: #12301F; color: #3DD68C">без проблем</span></div>
+<span>Типов: <b>1</b></span>
+<span style="color: #9AA3AF">Последняя проверка 21.10 · Соколов</span>
+<a href="Compare.dc.html" class="btn" style="text-decoration: none; justify-content: center">Открыть сравнение</a>
+</div>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

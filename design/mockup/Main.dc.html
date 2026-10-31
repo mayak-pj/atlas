@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — вход</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:900px;font-size:13px;box-sizing:border-box}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;background:#1E232B;border:1px solid #333A45;color:#E6E8EB;font:600 14px "Segoe UI","Inter",sans-serif;cursor:pointer;min-height:44px;box-sizing:border-box}
+.tag:hover{border-color:#4C9AFF}
+.tag.on{background:#16304F;border-color:#4C9AFF;box-shadow:0 0 0 3px rgba(76,154,255,.25)}
+.av{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#0F1115}
+.go{display:inline-flex;align-items:center;justify-content:center;height:48px;padding:0 28px;border-radius:8px;background:#4C9AFF;color:#0B1B2E;font-weight:700;font-size:15px;text-decoration:none}
+.go:hover{background:#6AACFF;color:#0B1B2E}
+.mono{font-family:"JetBrains Mono",Consolas,monospace}
+.live{width:8px;height:8px;border-radius:50%;background:#3DD68C;box-shadow:0 0 0 3px rgba(61,214,140,.2)}
+</style>
+</helmet>
+<div class="app" style="display: flex; align-items: center; justify-content: center; padding: 48px 16px">
+<div style="width: 100%; max-width: 1080px; display: flex; flex-wrap: wrap; gap: 24px">
+
+<section class="panel" style="flex: 999 1 560px; min-width: 0; padding: 40px; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; align-items: center; gap: 14px">
+<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><rect x="2" y="2" width="40" height="40" rx="10" fill="#16304F" stroke="#4C9AFF" stroke-width="2"/><path d="M12 31 L22 11 L32 31 M16 24 H28" stroke="#E6E8EB" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<div>
+<div style="font-size: 28px; font-weight: 800; letter-spacing: .12em">ATLAS</div>
+<div style="color: #9AA3AF">Сверка фото деталей на однотипность и дефекты</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Кто вы? Выберите фамилию — без пароля</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="6">
+<button type="button" class="{{p.cls}}" onClick="{{p.pick}}"><span class="av" style="background: {{p.color}}">{{p.ini}}</span>{{p.name}}</button>
+</sc-for>
+<button type="button" class="tag" style="color: #9AA3AF; border-style: dashed; padding-left: 14px">+ Добавить себя</button>
+</div>
+</div>
+
+<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+<a class="go" href="Compare.dc.html">Войти как {{who}}</a>
+<span style="color: #8B95A3">Последний вход: вчера, 17:42</span>
+</div>
+
+<div class="panel" style="background: #1B2029; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+<div class="lbl" style="color: #F2A93B">С вашего последнего входа</div>
+<div style="display: flex; flex-wrap: wrap; gap: 18px">
+<div style="display: flex; gap: 8px; align-items: center"><span style="font-size: 22px; font-weight: 800; color: #F2A93B">2</span><span>новых правила<br><span style="color: #8B95A3">1 касается SSD XS-2280</span></span></div>
+<div style="display: flex; gap: 8px; align-items: center"><span style="font-size: 22px; font-weight: 800; color: #7DB4FF">3</span><span>комментария<br><span style="color: #8B95A3">1 адресован вам</span></span></div>
+<div style="display: flex; gap: 8px; align-items: center"><span style="font-size: 22px; font-weight: 800; color: #E6E8EB">5</span><span>новых папок<br><span style="color: #8B95A3">не проверены</span></span></div>
+</div>
+</div>
+</section>
+
+<aside class="panel" style="flex: 1 1 320px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div class="lbl">Сейчас в работе</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; gap: 10px; align-items: flex-start"><span class="live" style="margin-top: 6px"></span><div><b>Петров</b><div style="color: #9AA3AF">КК · Орион-24 · SSD XS-2280</div><div class="mono" style="color: #8B95A3; font-size: 12px">2026-10-31 · 214 / 486</div></div></div>
+<div style="display: flex; gap: 10px; align-items: flex-start"><span class="live" style="margin-top: 6px"></span><div><b>Кузнецова</b><div style="color: #9AA3AF">СТ · Вега · Плата питания PWR-7</div><div class="mono" style="color: #8B95A3; font-size: 12px">2026-10-30 · 61 / 120</div></div></div>
+</div>
+<div style="height: 1px; background: #2A2F38"></div>
+<div class="lbl">Последние проверенные папки</div>
+<div style="display: flex; flex-direction: column; gap: 10px; color: #C9CFD8">
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>Матплата MB-15 · 2 типа</span><span style="color: #8B95A3">30.10 · Иванова</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>Дисплей LCD-156 · 1 дефект</span><span style="color: #8B95A3">30.10 · Петров</span></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><span>SSD XS-2280 · без замечаний</span><span style="color: #8B95A3">28.10 · Иванова</span></div>
+</div>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sel: 'Смирнова' }; }
+  renderVals() {
+    const list = [
+      ['Смирнова', 'СМ', '#7DB4FF'], ['Петров', 'ПЕ', '#3DD68C'], ['Иванова', 'ИВ', '#F2A93B'],
+      ['Кузнецова', 'КУ', '#C59CFF'], ['Соколов', 'СО', '#FF8A8A'], ['Морозова', 'МО', '#5FD3D3']
+    ];
+    const people = list.map(([name, ini, color]) => ({
+      name, ini, color,
+      cls: name === this.state.sel ? 'tag on' : 'tag',
+      pick: () => this.setState({ sel: name })
+    }));
+    return { people, who: this.state.sel };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — правила</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:900px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.btn.pri{background:#4C9AFF;border-color:#4C9AFF;color:#0B1B2E;font-weight:700}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.rule{padding:16px;display:flex;flex-direction:column;gap:8px}
+.new{border-color:#8A6420;background:#1F1A10}
+.who{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 2px;border-radius:999px;background:#1E232B;border:1px solid #333A45;font-weight:600;font-size:12px}
+.who .av{width:20px;height:20px;font-size:9px}
+.f{display:flex;flex-direction:column;gap:6px;color:#9AA3AF}
+.f input,.f select,.f textarea{background:#0F1115;border:1px solid #333A45;border-radius:7px;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;padding:8px 10px}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab" href="Compare.dc.html">Сравнение</a>
+<a class="tab" href="Import.dc.html">Импорт</a>
+<a class="tab" href="Database.dc.html">База типов</a>
+<a class="tab on" href="Rules.dc.html">Правила<span class="cnt" style="background: #3A2A10; color: #F2A93B">2 новых</span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 14px; padding: 16px; max-width: 1320px; width: 100%; box-sizing: border-box; margin: 0 auto">
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
+<button type="button" class="btn" style="border-color: #4C9AFF">Все</button><button type="button" class="btn">Общие</button><button type="button" class="btn">К детали</button><button type="button" class="btn">КК</button><button type="button" class="btn">СТ</button>
+<span style="flex: 1"></span>
+<button type="button" class="btn">Отметить все прочитанными</button>
+</div>
+
+<article class="panel rule new">
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><span class="pill" style="background: #F2A93B; color: #2A1A00">НОВОЕ</span><span class="pill" style="background: #16304F; color: #A9CCFF">SSD XS-2280</span><span style="flex: 1"></span><span class="who"><span class="av" style="background: #3DD68C">ПЕ</span>Петров</span><span style="color: #8B95A3">сегодня 08:51</span></div>
+<b style="font-size: 15px">Площадку под 3-й NAND проверять всегда — с 14.10 идёт Тип 2</b>
+<span style="color: #C9CFD8">Если на площадке чип — это Тип 2, не дефект. Если площадка с остатками припоя — дефект «сбит элемент».</span>
+</article>
+
+<article class="panel rule new">
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><span class="pill" style="background: #F2A93B; color: #2A1A00">НОВОЕ</span><span class="pill" style="background: #20252D; color: #C9CFD8">Общее</span><span style="flex: 1"></span><span class="who"><span class="av" style="background: #F2A93B">ИВ</span>Иванова</span><span style="color: #8B95A3">вчера</span></div>
+<b style="font-size: 15px">Размытое фото — всегда замечание, даже если дефектов не видно</b>
+<span style="color: #C9CFD8">Указывать SN и просить переснять.</span>
+</article>
+
+<article class="panel rule">
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><span class="pill" style="background: #2A1E3D; color: #C59CFF">СТ · Плата питания PWR-7</span><span style="flex: 1"></span><span class="who"><span class="av" style="background: #C59CFF">КУ</span>Кузнецова</span><span style="color: #8B95A3">12.10</span></div>
+<b style="font-size: 15px">Сверять дорожку у разъёма X3: две дорожки вместо одной — отдельный тип</b>
+</article>
+
+<article class="panel rule">
+<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><span class="pill" style="background: #20252D; color: #C9CFD8">Общее</span><span style="flex: 1"></span><span class="who"><span class="av" style="background: #FF8A8A">СО</span>Соколов</span><span style="color: #8B95A3">02.09</span></div>
+<b style="font-size: 15px">Сначала — сравнение с прошлыми проверками этой детали, потом между собой</b>
+</article>
+</main>
+
+<aside class="panel" style="flex: 1 1 300px; max-width: 380px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Новое правило</div>
+<label class="f">Заголовок<input placeholder="Коротко, что проверять"></label>
+<label class="f">Относится к<select><option>Общее</option><option>Проект…</option><option>Устройство…</option><option>Деталь…</option></select></label>
+<label class="f">Описание<textarea rows="5" placeholder="Подробности, можно приложить фото"></textarea></label>
+<button type="button" class="btn">Приложить фото</button>
+<button type="button" class="btn pri">Опубликовать</button>
+<div style="color: #8B95A3">После публикации у коллег вкладка «Правила» подсветится, а правило к детали покажется в сводке на экране сравнения.</div>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

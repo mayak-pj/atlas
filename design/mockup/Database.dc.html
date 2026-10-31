@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — база типов</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:960px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.ping{width:8px;height:8px;border-radius:50%;background:#F2A93B}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 12px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.btn:hover{border-color:#5A6372}
+.btn.pri{background:#4C9AFF;border-color:#4C9AFF;color:#0B1B2E;font-weight:700}
+.btn.red{border-color:#7A2A2E;color:#FF8A8A}
+.btn.grn{border-color:#2B6B4A;color:#3DD68C}
+.mono{font-family:"JetBrains Mono",Consolas,monospace}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.card{background:#171A1F;border:1px solid #2A2F38;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:border-color .2s,opacity .6s}
+.card:hover{border-color:#5A6372}
+.card.sel{border-color:#4C9AFF;box-shadow:0 0 0 2px rgba(76,154,255,.3)}
+.img{position:relative;height:150px;background:#26292E;transition:filter .9s ease}
+.stamp{position:absolute;left:50%;top:50%;margin:-26px 0 0 -82px;width:164px;height:52px;box-sizing:border-box;border:4px double #E5484D;color:#E5484D;border-radius:8px;font:900 22px "Segoe UI","Inter",sans-serif;letter-spacing:.12em;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(2.6) rotate(-14deg);pointer-events:none;background:rgba(229,72,77,.06)}
+.card.archs .img{filter:grayscale(1) brightness(.75)}
+.card.archs .stamp{opacity:.95;transform:scale(1) rotate(-14deg)}
+.card.archs{opacity:.8}
+.card.arch .img{filter:grayscale(1) brightness(.75)}
+.card.arch .stamp{animation:stamp .55s .45s cubic-bezier(.2,.9,.3,1.3) forwards}
+.card.arch{animation:thud .25s 1s}
+.card.back .img{animation:color .9s}
+@keyframes stamp{0%{opacity:0;transform:scale(2.6) rotate(-24deg)}70%{opacity:1;transform:scale(.9) rotate(-12deg)}100%{opacity:.95;transform:scale(1) rotate(-14deg)}}
+@keyframes thud{0%{transform:translateY(0)}40%{transform:translateY(3px)}100%{transform:translateY(0)}}
+@keyframes color{0%{filter:grayscale(1) brightness(.75)}100%{filter:none}}
+.search{display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;border-radius:10px;background:#171A1F;border:1px solid #333A45}
+.search:focus-within{border-color:#4C9AFF}
+.search input{flex:1;background:transparent;border:0;outline:0;color:#E6E8EB;font:500 15px "Segoe UI","Inter",sans-serif;min-width:0}
+.chip{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;border:1px solid #333A45;color:#C9CFD8;background:#1A1E25}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab" href="Compare.dc.html">Сравнение</a>
+<a class="tab" href="Import.dc.html">Импорт</a>
+<a class="tab on" href="Database.dc.html">База типов</a>
+<a class="tab" href="Rules.dc.html">Правила<span class="ping"></span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 14px; padding: 16px">
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<label class="search">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8B95A3" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+<input value="{{q}}" onChange="{{onQ}}" placeholder="Поиск по названию, артикулу, устройству, описанию…" aria-label="Поиск">
+<span style="color: #8B95A3">{{found}}</span>
+</label>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<span class="chip">Все проекты</span><span class="chip">КК</span><span class="chip">СТ</span><span class="chip">Устройство: Ноутбук N15</span><span class="chip" style="color: #8B95A3">Архив — всегда внизу</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+<div class="{{c.cls}}" onClick="{{c.pick}}">
+<div class="img">
+<svg viewBox="0 0 400 150" width="100%" height="100%" aria-hidden="true">
+<rect x="20" y="25" width="360" height="100" rx="6" fill="{{c.pcb}}"/>
+<rect x="60" y="45" width="60" height="60" rx="3" fill="#15171A"/>
+<rect x="135" y="45" width="60" height="60" rx="3" fill="#15171A"/>
+<rect x="210" y="45" width="60" height="60" rx="3" fill="#15171A" opacity="{{c.extra}}"/>
+<rect x="290" y="55" width="40" height="40" rx="3" fill="#0E0F11"/>
+<rect x="365" y="35" width="10" height="80" fill="#D4A63A"/>
+<circle cx="{{c.cx}}" cy="75" r="40" fill="none" stroke="#FF3B30" stroke-width="4"/>
+<text x="{{c.tx}}" y="20" fill="#FF3B30" font-size="18" font-weight="900" font-family="Segoe UI, Inter, sans-serif">{{c.type}}</text>
+</svg>
+<div class="stamp">В АРХИВЕ</div>
+</div>
+<div style="padding: 12px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; justify-content: space-between; gap: 8px"><b>{{c.name}}</b><span class="pill" style="background: {{c.tbg}}; color: {{c.tfg}}">{{c.type}}</span></div>
+<span style="color: #C9CFD8">{{c.desc}}</span>
+<span class="mono" style="color: #8B95A3; font-size: 11px">{{c.art}} · {{c.date}} · {{c.who}}</span>
+<button type="button" class="{{c.bcls}}" onClick="{{c.toggle}}">{{c.blabel}}</button>
+</div>
+</div>
+</sc-for>
+</div>
+</main>
+
+<aside class="panel" style="flex: 1 1 300px; max-width: 360px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Карточка типа</div>
+<div style="font-size: 18px; font-weight: 700">{{s.name}}</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="pill" style="background: {{s.tbg}}; color: {{s.tfg}}">{{s.type}}</span><span class="pill" style="background: #20252D; color: #C9CFD8">{{s.status}}</span></div>
+<div><span class="lbl">Отличие</span><div style="margin-top: 4px">{{s.desc}}</div></div>
+<div><span class="lbl">Артикул / модель</span><div class="mono" style="margin-top: 4px">{{s.art}}</div></div>
+<div><span class="lbl">Добавил</span><div style="margin-top: 4px">{{s.who}}, {{s.date}}</div></div>
+<div><span class="lbl">Все типы устройства «Ноутбук N15»</span>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; color: #C9CFD8">
+<span>SSD XS-2280 — Тип 1, Тип 2, <span style="color: #8B95A3">Тип 0 (архив)</span></span>
+<span>Матплата MB-15 — Тип 1, Тип 2</span>
+<span>Дисплей LCD-156 — Тип 1</span>
+</div></div>
+<span style="flex: 1"></span>
+<button type="button" class="btn">Сравнить с текущей папкой</button>
+<button type="button" class="btn pri">+ Новый тип (из выделения)</button>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { q: '', sel: 1, arch: { 6: true }, anim: null, back: null };
+  }
+  renderVals() {
+    const s = this.state;
+    const D = [
+      { id: 1, name: 'SSD XS-2280 512GB', type: 'ТИП 2', desc: 'Есть 3-й чип NAND на месте пустой площадки', art: '512-XS-B', date: '14.10.2026', who: 'Петров', extra: 1, cx: 240 },
+      { id: 2, name: 'SSD XS-2280 512GB', type: 'ТИП 1', desc: 'Базовый: 2 чипа NAND, площадка пустая', art: '512-XS-A', date: '03.2025', who: 'Иванова', extra: 0, cx: 240 },
+      { id: 3, name: 'Матплата MB-15 rev.B', type: 'ТИП 2', desc: 'Другой разъём питания, сдвинут к краю', art: 'MB15-B-02', date: '30.10.2026', who: 'Иванова', extra: 1, cx: 310 },
+      { id: 4, name: 'Матплата MB-15 rev.B', type: 'ТИП 1', desc: 'Штатный разъём питания', art: 'MB15-B-01', date: '06.2025', who: 'Соколов', extra: 1, cx: 90 },
+      { id: 5, name: 'Плата питания PWR-7', type: 'ТИП 1', desc: 'Одна дорожка у разъёма X3', art: 'PWR7-A', date: '11.2025', who: 'Кузнецова', extra: 0, cx: 165 },
+      { id: 6, name: 'SSD XS-2280 512GB', type: 'ТИП 0', desc: 'Старая ревизия, контроллер другой', art: '512-XS-0', date: '01.2024', who: 'Морозова', extra: 0, cx: 310 }
+    ];
+    const q = s.q.trim().toLowerCase();
+    const isA = (d) => !!s.arch[d.id];
+    let list = D.filter((d) => !q || (d.name + ' ' + d.art + ' ' + d.desc + ' ' + d.type).toLowerCase().indexOf(q) >= 0);
+    list = list.filter((d) => !isA(d) || d.id === s.anim).concat(list.filter((d) => isA(d) && d.id !== s.anim));
+    const tcol = (t) => t === 'ТИП 2' ? ['#3A2A10', '#F2A93B'] : t === 'ТИП 0' ? ['#2A2F38', '#AEB6C2'] : ['#12301F', '#3DD68C'];
+    const toggle = (id) => (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const a = Object.assign({}, this.state.arch);
+      if (a[id]) { delete a[id]; this.setState({ arch: a, back: id, anim: null }); }
+      else {
+        a[id] = true; this.setState({ arch: a, anim: id, back: null });
+        clearTimeout(this.t); this.t = setTimeout(() => this.setState({ anim: null }), 1700);
+      }
+    };
+    const view = (d) => {
+      const a = isA(d), [tbg, tfg] = tcol(d.type);
+      let cls = 'card';
+      if (a) cls += d.id === s.anim ? ' arch' : ' archs';
+      else if (d.id === s.back) cls += ' back';
+      if (d.id === s.sel) cls += ' sel';
+      return Object.assign({}, d, {
+        cls, tbg, tfg, tx: d.cx - 30, pcb: '#1E5A3A',
+        bcls: a ? 'btn grn' : 'btn red', blabel: a ? 'Вернуть из архива' : 'В архив',
+        status: a ? 'В архиве — не сравнивать' : 'Активный',
+        pick: () => this.setState({ sel: d.id }), toggle: toggle(d.id)
+      });
+    };
+    const cards = list.map(view);
+    const selD = D.find((d) => d.id === s.sel) || D[0];
+    return {
+      q: s.q, cards, s: view(selD),
+      found: 'найдено: ' + cards.length,
+      onQ: (e) => this.setState({ q: e.target.value })
+    };
+  }
+  componentWillUnmount() { clearTimeout(this.t); }
+}
+</script>
+</body>
+</html>

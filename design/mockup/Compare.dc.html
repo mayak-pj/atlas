@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Atlas — сравнение</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0F1115}
+a{color:#7DB4FF}a:hover{color:#A9CCFF}
+.app{font-family:"Segoe UI","Inter",system-ui,sans-serif;color:#E6E8EB;background:#0F1115;min-height:960px;font-size:13px;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:14px;min-height:48px;padding:0 16px;background:#16191E;border-bottom:1px solid #2A2F38;flex-wrap:wrap}
+.logo{font-weight:800;font-size:15px;letter-spacing:.14em;margin-right:8px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:40px;border-radius:6px;color:#AEB6C2;text-decoration:none;font-weight:500}
+.tab:hover{background:#21252C;color:#E6E8EB}
+.tab.on{background:#232A35;color:#fff;box-shadow:inset 0 -2px 0 #4C9AFF}
+.ping{width:8px;height:8px;border-radius:50%;background:#F2A93B;animation:ping 1.6s infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(242,169,59,.7)}70%{box-shadow:0 0 0 7px rgba(242,169,59,0)}100%{box-shadow:0 0 0 0 rgba(242,169,59,0)}}
+.cnt{font-size:11px;font-weight:700;background:#2B3A52;color:#A9CCFF;border-radius:999px;padding:1px 7px}
+.me{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;background:#16304F;border:1px solid #4C9AFF;font-weight:600}
+.av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0F1115}
+.ctx{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:#13161B;border-bottom:1px solid #2A2F38}
+.kk{font-weight:800;padding:3px 10px;border-radius:5px;background:#4C9AFF;color:#0B1B2E;letter-spacing:.05em}
+.crumb{color:#8B95A3}.crumb b{color:#E6E8EB;font-weight:600}
+.panel{background:#171A1F;border:1px solid #2A2F38;border-radius:10px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:7px;background:#20252D;border:1px solid #333A45;color:#E6E8EB;font:500 13px "Segoe UI","Inter",sans-serif;cursor:pointer}
+.btn:hover{border-color:#5A6372}
+.btn.on{background:#16304F;border-color:#4C9AFF;color:#fff}
+.btn.pri{background:#4C9AFF;border-color:#4C9AFF;color:#0B1B2E;font-weight:700}
+.btn.t2{border-color:#F2A93B;color:#F2A93B}.btn.t2.on{background:#3A2A10;color:#FFD08A}
+.btn.def{border-color:#FF5A5F;color:#FF8A8A}.btn.def.on{background:#3A1416;color:#FFB3B3}
+.btn.rem{border-color:#C59CFF;color:#C59CFF}.btn.rem.on{background:#2A1E3D;color:#E2CCFF}
+.ib{width:36px;justify-content:center;padding:0}
+.view{position:relative;height:500px;overflow:hidden;border-radius:8px;background:#0B0C0F;cursor:grab;border:1px solid #2A2F38}
+.vh{position:absolute;left:10px;top:10px;z-index:2;display:flex;gap:6px;align-items:center;background:rgba(15,17,21,.85);padding:5px 10px;border-radius:6px;pointer-events:none}
+.thumb{width:74px;height:52px;border-radius:6px;border:2px solid #2A2F38;background:#1E5A3A;position:relative;cursor:pointer;flex:none;padding:0}
+.thumb.on{border-color:#4C9AFF}
+.thumb span{position:absolute;left:4px;bottom:2px;font:600 10px "JetBrains Mono",monospace;color:#E6E8EB}
+.mk{position:absolute;right:4px;top:4px;width:10px;height:10px;border-radius:50%}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.mono{font-family:"JetBrains Mono",Consolas,monospace}
+.folder{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border-radius:7px;border:1px solid transparent;cursor:pointer}
+.folder:hover{background:#1C2027}
+.folder.on{background:#16304F;border-color:#2F5E94}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="logo">ATLAS</span>
+<nav class="tabs">
+<a class="tab on" href="Compare.dc.html">Сравнение</a>
+<a class="tab" href="Import.dc.html">Импорт</a>
+<a class="tab" href="Database.dc.html">База типов</a>
+<a class="tab" href="Rules.dc.html">Правила<span class="ping"></span></a>
+<a class="tab" href="Comments.dc.html">Комментарии<span class="cnt">3</span></a>
+<a class="tab" href="Dashboard.dc.html">Дашборд</a>
+<a class="tab" href="Draft.dc.html">Черновик</a>
+</nav>
+<span style="flex: 1"></span>
+<span style="color: #8B95A3">Онлайн: Петров, Кузнецова</span>
+<span class="me"><span class="av" style="background: #7DB4FF">СМ</span>Смирнова</span>
+<button type="button" class="btn ib" aria-label="Настройки и история"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+</header>
+
+<div class="ctx">
+<span class="kk">КК</span>
+<span class="crumb">Проект <b>Орион-24</b></span><span class="crumb">›</span>
+<span class="crumb">Устройство <b>Ноутбук N15</b></span><span class="crumb">›</span>
+<span class="crumb">Деталь <b>SSD XS-2280 512GB</b></span>
+<span style="flex: 1"></span>
+<span class="mono" style="color: #8B95A3">\\nas\atlas\КК\Орион-24\N15\SSD\2026-10-31</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; flex: 1">
+
+<aside class="panel" style="flex: 1 1 240px; max-width: 280px; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+<div class="row"><span class="lbl">Новые — не проверены</span><span class="pill" style="background: #3A2A10; color: #F2A93B">5</span></div>
+<div class="folder on"><b>SSD XS-2280 512GB</b><span style="color: #9AA3AF">КК · Орион-24 · 486 фото</span><span class="mono" style="color: #8B95A3; font-size: 11px">скопировано 31.10 09:12</span></div>
+<div class="folder"><b>Матплата MB-15 rev.B</b><span style="color: #9AA3AF">КК · Орион-24 · 212 фото</span><span class="mono" style="color: #8B95A3; font-size: 11px">скопировано 31.10 09:12</span></div>
+<div class="folder"><b>Плата питания PWR-7</b><span style="color: #9AA3AF">СТ · Вега · 120 фото</span><span style="color: #3DD68C; font-size: 11px">● Кузнецова работает</span></div>
+<div class="folder"><b>Шлейф FPC-40</b><span style="color: #9AA3AF">СТ · Вега · 64 фото</span></div>
+<div class="folder"><b>Wi-Fi модуль AX-210</b><span style="color: #9AA3AF">КК · Орион-24 · 98 фото</span></div>
+<div style="height: 1px; background: #2A2F38; margin: 4px 0"></div>
+<div class="lbl">Проверено на этой неделе</div>
+<div class="folder"><div class="row"><b>Матплата MB-15</b><span class="pill" style="background: #3A2A10; color: #F2A93B">2 типа</span></div><span style="color: #8B95A3">30.10 · Иванова</span></div>
+<div class="folder"><div class="row"><b>Дисплей LCD-156</b><span class="pill" style="background: #3A1416; color: #FF8A8A">1 деф.</span></div><span style="color: #8B95A3">30.10 · Петров</span></div>
+<div class="folder"><div class="row"><b>SSD XS-2280</b><span class="pill" style="background: #12301F; color: #3DD68C">ОК</span></div><span style="color: #8B95A3">28.10 · Иванова</span></div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<div class="panel" style="padding: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center">
+<button type="button" class="{{l1Cls}}" onClick="{{setOne}}">1 фото</button><button type="button" class="{{l2Cls}}" onClick="{{setTwo}}">2 фото</button><button type="button" class="btn">4 фото</button><button type="button" class="btn">N…</button>
+<span style="width: 1px; height: 24px; background: #333A45; margin: 0 4px"></span>
+<button type="button" class="btn ib" aria-label="Уменьшить" onClick="{{zoomOut}}">−</button>
+<span class="mono" style="min-width: 52px; text-align: center">{{zoomPct}}</span>
+<button type="button" class="btn ib" aria-label="Увеличить" onClick="{{zoomIn}}">+</button>
+<button type="button" class="btn" onClick="{{fit}}">Вписать</button>
+<span class="pill" style="background: #16304F; color: #A9CCFF">⇄ синхронно</span>
+<span style="width: 1px; height: 24px; background: #333A45; margin: 0 4px"></span>
+<button type="button" class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>Вырезать</button>
+<button type="button" class="{{annCls}}" onClick="{{toggleAnn}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Обвести</button>
+<button type="button" class="btn"><b style="color: #FF5A5F">Аа</b>Подпись</button>
+<span style="flex: 1"></span>
+<button type="button" class="btn pri">+ В базу типов</button>
+</div>
+
+<div style="display: grid; grid-template-columns: {{cols}}; gap: 10px">
+<sc-if value="{{two}}" hint-placeholder-val="{{true}}">
+<div class="view" onWheel="{{wheel}}" onMouseDown="{{down}}" onMouseMove="{{move}}" onMouseUp="{{up}}" onMouseLeave="{{up}}">
+<div class="vh"><span class="pill" style="background: #12301F; color: #3DD68C">ЭТАЛОН</span><span>{{refName}}</span></div>
+<div style="position: absolute; inset: 0; transform-origin: 0 0; transform: {{tf}}">
+<svg viewBox="0 0 800 420" width="100%" height="100%" aria-hidden="true">
+<rect width="800" height="420" fill="#26292E"/>
+<rect x="40" y="110" width="720" height="200" rx="10" fill="#1E5A3A" stroke="#2F7A50" stroke-width="2"/>
+<circle cx="52" cy="210" r="12" fill="#26292E"/>
+<g stroke="#2F7A50" stroke-width="2" fill="none"><path d="M250 180 H270 M250 230 H270 M400 180 H420 M400 230 H420 M550 205 H580 M670 175 H740 M670 205 H740 M670 235 H740"/></g>
+<g fill="#D4A63A"><rect x="742" y="130" width="16" height="9"/><rect x="742" y="145" width="16" height="9"/><rect x="742" y="160" width="16" height="9"/><rect x="742" y="175" width="16" height="9"/><rect x="742" y="190" width="16" height="9"/><rect x="742" y="220" width="16" height="9"/><rect x="742" y="235" width="16" height="9"/><rect x="742" y="250" width="16" height="9"/><rect x="742" y="265" width="16" height="9"/><rect x="742" y="280" width="16" height="9"/></g>
+<rect x="120" y="140" width="130" height="130" rx="4" fill="#15171A"/><text x="185" y="210" fill="#5C6470" font-size="14" text-anchor="middle" font-family="monospace">NAND A</text>
+<rect x="270" y="140" width="130" height="130" rx="4" fill="#15171A"/><text x="335" y="210" fill="#5C6470" font-size="14" text-anchor="middle" font-family="monospace">NAND B</text>
+<rect x="420" y="140" width="130" height="130" rx="4" fill="none" stroke="#C9A55A" stroke-width="2" stroke-dasharray="6 5"/>
+<rect x="420" y="140" width="130" height="130" rx="4" fill="#15171A" opacity="{{refChip}}"/>
+<rect x="590" y="160" width="80" height="80" rx="4" fill="#0E0F11"/><text x="630" y="205" fill="#5C6470" font-size="12" text-anchor="middle" font-family="monospace">CTRL</text>
+<g fill="#B88A5A"><rect x="600" y="260" width="10" height="6"/><rect x="620" y="260" width="10" height="6"/><rect x="640" y="260" width="10" height="6"/><rect x="700" y="265" width="10" height="6"/><rect x="600" y="135" width="10" height="6"/></g>
+<text x="70" y="298" fill="#9FC9AE" font-size="12" font-family="monospace">SN S4K2-0017</text>
+</svg>
+</div>
+</div>
+</sc-if>
+
+<div class="view" style="height: {{vh}}" onWheel="{{wheel}}" onMouseDown="{{down}}" onMouseMove="{{move}}" onMouseUp="{{up}}" onMouseLeave="{{up}}">
+<div class="vh"><span class="pill" style="background: #16304F; color: #A9CCFF">{{curTag}}</span><span class="mono">{{pos}}</span><span class="mono" style="color: #9AA3AF">{{cur.sn}}</span></div>
+<div style="position: absolute; inset: 0; transform-origin: 0 0; transform: {{tf}}; filter: {{blur}}">
+<svg viewBox="0 0 800 420" width="100%" height="100%" aria-hidden="true">
+<rect width="800" height="420" fill="#26292E"/>
+<rect x="40" y="110" width="720" height="200" rx="10" fill="#1E5A3A" stroke="#2F7A50" stroke-width="2"/>
+<circle cx="52" cy="210" r="12" fill="#26292E"/>
+<g stroke="#2F7A50" stroke-width="2" fill="none"><path d="M250 180 H270 M250 230 H270 M400 180 H420 M400 230 H420 M550 205 H580 M670 175 H740 M670 205 H740 M670 235 H740"/></g>
+<g fill="#D4A63A"><rect x="742" y="130" width="16" height="9"/><rect x="742" y="145" width="16" height="9"/><rect x="742" y="160" width="16" height="9"/><rect x="742" y="175" width="16" height="9"/><rect x="742" y="190" width="16" height="9"/><rect x="742" y="220" width="16" height="9"/><rect x="742" y="235" width="16" height="9"/><rect x="742" y="250" width="16" height="9"/><rect x="742" y="265" width="16" height="9"/><rect x="742" y="280" width="16" height="9"/></g>
+<rect x="120" y="140" width="130" height="130" rx="4" fill="#15171A"/><text x="185" y="210" fill="#5C6470" font-size="14" text-anchor="middle" font-family="monospace">NAND A</text>
+<rect x="270" y="140" width="130" height="130" rx="4" fill="#15171A"/><text x="335" y="210" fill="#5C6470" font-size="14" text-anchor="middle" font-family="monospace">NAND B</text>
+<rect x="420" y="140" width="130" height="130" rx="4" fill="none" stroke="#C9A55A" stroke-width="2" stroke-dasharray="6 5"/>
+<rect x="420" y="140" width="130" height="130" rx="4" fill="#15171A" opacity="{{cur.chip}}"/>
+<rect x="590" y="160" width="80" height="80" rx="4" fill="#0E0F11"/><text x="630" y="205" fill="#5C6470" font-size="12" text-anchor="middle" font-family="monospace">CTRL</text>
+<g fill="#B88A5A"><rect x="600" y="260" width="10" height="6"/><rect x="620" y="260" width="10" height="6"/><rect x="640" y="260" width="10" height="6"/><rect x="600" y="135" width="10" height="6"/></g>
+<rect x="700" y="265" width="10" height="6" fill="#B88A5A" opacity="{{cur.capOk}}"/>
+<g opacity="{{cur.capBad}}"><path d="M698 268 l6 -5 l7 4 l-3 6 z" fill="#7A5A3A"/><path d="M688 276 l30 -16" stroke="#C8D0C0" stroke-width="1.5"/></g>
+<text x="70" y="298" fill="#9FC9AE" font-size="12" font-family="monospace">SN {{cur.sn}}</text>
+<g opacity="{{annOp}}">
+<circle cx="{{cur.ax}}" cy="{{cur.ay}}" r="{{cur.ar}}" fill="none" stroke="#FF3B30" stroke-width="5"/>
+<text x="{{cur.tx}}" y="{{cur.ty}}" fill="#FF3B30" font-size="34" font-weight="900" font-family="Segoe UI, Inter, sans-serif" stroke="#0F1115" stroke-width="5" paint-order="stroke">{{cur.label}}</text>
+</g>
+</svg>
+</div>
+</div>
+</div>
+
+<div class="panel" style="padding: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<button type="button" class="btn ib" aria-label="Предыдущее фото" onClick="{{prev}}">◀</button>
+<div style="display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0">
+<sc-for list="{{strip}}" as="t" hint-placeholder-count="9">
+<button type="button" class="{{t.cls}}" onClick="{{t.go}}" aria-label="Фото {{t.n}}"><span>{{t.n}}</span><i class="mk" style="background: {{t.color}}"></i></button>
+</sc-for>
+</div>
+<button type="button" class="btn ib" aria-label="Следующее фото" onClick="{{next}}">▶</button>
+</div>
+
+<div class="panel" style="padding: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<span class="lbl" style="margin-right: 4px">Фото {{pos}} —</span>
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="4">
+<button type="button" class="{{m.cls}}" onClick="{{m.pick}}">{{m.label}}</button>
+</sc-for>
+<sc-if value="{{isDef}}" hint-placeholder-val="{{false}}">
+<span style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<label style="color: #9AA3AF">SN <input class="mono" value="{{cur.sn}}" style="height: 34px; width: 120px; background: #0F1115; border: 1px solid #FF5A5F; border-radius: 6px; color: #E6E8EB; padding: 0 8px"></label>
+<label style="color: #9AA3AF">Вид <select style="height: 36px; background: #0F1115; border: 1px solid #333A45; border-radius: 6px; color: #E6E8EB; padding: 0 8px"><option>Сбит / повреждён элемент</option><option>Размытое фото</option><option>Прислано не то фото</option><option>[список дефектов — позже]</option></select></label>
+</span>
+</sc-if>
+<span style="flex: 1"></span>
+<span style="color: #8B95A3">Колесо — зум · перетаскивание — сдвиг · ◀ ▶ — листать на том же месте</span>
+</div>
+</main>
+
+<aside class="panel" style="flex: 1 1 280px; max-width: 320px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+<div class="lbl">Сводка по детали</div>
+<div style="font-size: 16px; font-weight: 700">SSD XS-2280 512GB</div>
+<div style="background: #3A1416; border: 1px solid #7A2A2E; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 4px">
+<b style="color: #FF8A8A">Проблемная деталь — будьте внимательнее</b>
+<span style="color: #F1C5C5">3 дефекта за октябрь · последний 14.10</span>
+<span style="color: #F1C5C5">Последняя проверка: 28.10, Иванова</span>
+</div>
+<div class="lbl">Типы</div>
+<div class="row"><span><b>Тип 1</b> — без 3-го чипа NAND</span><span style="color: #8B95A3">с 03.2025</span></div>
+<div class="row"><span><b style="color: #F2A93B">Тип 2</b> — с 3-м чипом NAND</span><span style="color: #8B95A3">с 14.10.2026</span></div>
+<div class="row" style="color: #8B95A3"><span>Тип 0 (старый)</span><span>в архиве</span></div>
+<div class="lbl">Дефекты и замечания</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div><span class="mono">S4K2-0388</span> · сбит конденсатор<br><span style="color: #8B95A3">14.10 · Петров</span></div>
+<div><span class="mono">S4K2-0352</span> · размытое фото<br><span style="color: #8B95A3">09.10 · Иванова</span></div>
+<div><span class="mono">S4K2-0301</span> · царапина на CTRL<br><span style="color: #8B95A3">02.10 · Соколов</span></div>
+</div>
+<div style="height: 1px; background: #2A2F38"></div>
+<div class="lbl">Текущая папка (по отметкам)</div>
+<div class="row"><span>Тип 1</span><b>{{c1}}</b></div>
+<div class="row"><span style="color: #F2A93B">Тип 2</span><b>{{c2}}</b></div>
+<div class="row"><span style="color: #FF8A8A">Дефекты</span><b>{{cd}}</b></div>
+<div class="row"><span style="color: #C59CFF">Замечания</span><b>{{cr}}</b></div>
+<div class="row"><span style="color: #8B95A3">Не отмечено</span><b>{{cn}}</b></div>
+<a href="Draft.dc.html" class="btn pri" style="justify-content: center; text-decoration: none">Завершить → письмо</a>
+</aside>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { one: false, z: 1, x: 0, y: 0, idx: 2, ann: true, marks: { 0: 't1', 1: 't1', 2: 't2', 4: 'def', 6: 'rem' } };
+    this.drag = null;
+  }
+  renderVals() {
+    const s = this.state, total = 486;
+    const P = [
+      { chip: 0, def: 0, blur: 0 }, { chip: 0, def: 0, blur: 0 }, { chip: 1, def: 0, blur: 0 }, { chip: 0, def: 0, blur: 0 },
+      { chip: 0, def: 1, blur: 0 }, { chip: 1, def: 0, blur: 0 }, { chip: 0, def: 0, blur: 1 }, { chip: 0, def: 0, blur: 0 }
+    ];
+    const at = (i) => {
+      const p = P[i % 8];
+      const sn = 'S4K2-' + String(400 + i).padStart(4, '0');
+      const a = p.def ? { ax: 705, ay: 268, ar: 34, tx: 610, ty: 345, label: 'ДЕФЕКТ' }
+        : p.chip ? { ax: 485, ay: 205, ar: 95, tx: 420, ty: 95, label: 'ТИП 2' }
+        : p.blur ? { ax: 400, ay: 210, ar: 0, tx: 300, ty: 95, label: 'РАЗМЫТО' }
+        : { ax: 0, ay: 0, ar: 0, tx: 0, ty: 0, label: '' };
+      return Object.assign({ sn, chip: p.chip, capOk: p.def ? 0 : 1, capBad: p.def, blurred: p.blur }, a);
+    };
+    const cur = at(s.idx);
+    const clamp = (v) => Math.min(12, Math.max(1, v));
+    const zoomAt = (f, mx, my) => this.setState((st) => {
+      const nz = clamp(st.z * f), k = nz / st.z;
+      if (nz === 1) return { z: 1, x: 0, y: 0 };
+      return { z: nz, x: mx - (mx - st.x) * k, y: my - (my - st.y) * k };
+    });
+    const go = (i) => this.setState({ idx: Math.max(0, Math.min(total - 1, i)) });
+    const colors = { t1: '#3DD68C', t2: '#F2A93B', def: '#FF5A5F', rem: '#C59CFF' };
+    const strip = [];
+    for (let i = Math.max(0, s.idx - 4); i <= Math.min(total - 1, s.idx + 4); i++) {
+      strip.push({ n: i + 1, cls: i === s.idx ? 'thumb on' : 'thumb', color: colors[s.marks[i]] || 'transparent', go: () => go(i) });
+    }
+    const curMark = s.marks[s.idx];
+    const setMark = (k) => this.setState((st) => {
+      const m = Object.assign({}, st.marks);
+      if (m[st.idx] === k) delete m[st.idx]; else m[st.idx] = k;
+      return { marks: m };
+    });
+    const marks = [['t1', 'Тип 1', ''], ['t2', 'Тип 2', ' t2'], ['def', 'Дефект', ' def'], ['rem', 'Замечание', ' rem']].map(([k, label, c]) => ({
+      label, cls: 'btn' + c + (curMark === k ? ' on' : ''), pick: () => setMark(k)
+    }));
+    const vals = Object.values(s.marks);
+    const cnt = (k) => vals.filter((v) => v === k).length;
+    return {
+      cur, marks, strip,
+      isDef: curMark === 'def',
+      pos: (s.idx + 1) + ' / ' + total,
+      tf: 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.z + ')',
+      blur: cur.blurred ? 'blur(2.5px)' : 'none',
+      annOp: s.ann ? 1 : 0,
+      annCls: s.ann ? 'btn on' : 'btn',
+      two: !s.one, cols: s.one ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', vh: s.one ? '640px' : '500px',
+      curTag: s.one ? 'ЛИСТАНИЕ' : 'НОВОЕ',
+      l1Cls: s.one ? 'btn on' : 'btn', l2Cls: s.one ? 'btn' : 'btn on',
+      setOne: () => this.setState({ one: true }), setTwo: () => this.setState({ one: false }),
+      refChip: 0, refName: 'Тип 1 · 28.10 · S4K2-0017',
+      zoomPct: Math.round(s.z * 100) + '%',
+      c1: cnt('t1'), c2: cnt('t2'), cd: cnt('def'), cr: cnt('rem'), cn: total - vals.length,
+      toggleAnn: () => this.setState({ ann: !s.ann }),
+      prev: () => go(s.idx - 1), next: () => go(s.idx + 1),
+      zoomIn: () => zoomAt(1.4, 300, 250), zoomOut: () => zoomAt(1 / 1.4, 300, 250),
+      fit: () => this.setState({ z: 1, x: 0, y: 0 }),
+      wheel: (e) => { const r = e.currentTarget.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX - r.left, e.clientY - r.top); },
+      down: (e) => { e.preventDefault(); this.drag = { sx: e.clientX, sy: e.clientY, x: this.state.x, y: this.state.y }; },
+      move: (e) => { const d = this.drag; if (d) this.setState({ x: d.x + e.clientX - d.sx, y: d.y + e.clientY - d.sy }); },
+      up: () => { this.drag = null; }
+    };
+  }
+}
+</script>
+</body>
+</html>

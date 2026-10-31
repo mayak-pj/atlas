@@ -78,6 +78,7 @@ class LoginDialog(QDialog):
         row = QHBoxLayout()
         row.setSpacing(12)
         self.go_button = QPushButton()
+        self.go_button.setObjectName("login_go")  # по имени кнопку находит --selfcheck
         self.go_button.setProperty("role", "primary")
         self.go_button.setDefault(True)
         self.go_button.setCursor(Qt.PointingHandCursor)
@@ -106,6 +107,7 @@ class LoginDialog(QDialog):
 
     def _make_add_button(self):
         button = QPushButton("+ Добавить себя")
+        button.setObjectName("login_add")  # по имени кнопку находит --selfcheck
         button.setProperty("role", "dashed")
         button.setCursor(Qt.PointingHandCursor)
         button.clicked.connect(self._add_self)

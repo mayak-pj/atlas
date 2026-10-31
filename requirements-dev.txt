@@ -5,3 +5,4 @@ pytest-qt==4.4.0
 vermin==1.9.2
 # Сборка — только на Windows/CI
 pyinstaller==6.22.3; sys_platform == "win32"
+pefile==2024.8.26; sys_platform == "win32"

@@ -61,7 +61,38 @@ def run_login(ctx, window):
     return login.run() is not None
 
 
+def _option(args, name, default=None):
+    """Значение после ключа. argparse нельзя: в оконном exe sys.stderr = None, и его сообщения об ошибке падают."""
+    if name in args and args.index(name) + 1 < len(args):
+        return args[args.index(name) + 1]
+    return default
+
+
+def _run_check_command(args):
+    """Код выхода проверки или None, если это обычный запуск. Импорт — только при вызове."""
+    if "--selfcheck" in args:
+        out = _option(args, "--selfcheck")
+        if not out:
+            return 2
+        from atlas.selfcheck import run
+
+        return run(Path(out))
+    if "--dbcheck" in args:
+        folder = _option(args, "--dbcheck")
+        seconds = _option(args, "--seconds", "60")
+        if not folder or not seconds.isdigit():
+            return 2
+        from atlas.dbcheck import run_check
+
+        report = _option(args, "--report") or AppPaths.discover().root / "reports"
+        return run_check(Path(folder), Path(report), int(seconds), _option(args, "--label"))
+    return None
+
+
 def main(argv=None):
+    code = _run_check_command(list(argv if argv is not None else sys.argv)[1:])
+    if code is not None:
+        return code
     from PyQt5.QtWidgets import QApplication, QMessageBox
 
     paths = AppPaths.discover()

@@ -1,0 +1,117 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8.10"
+          architecture: x64
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Vermin
+        run: python -m vermin --target=3.8- --no-tips --violations atlas/ tests/ packaging/bundle_contents.py scripts/
+
+      - name: Tests
+        timeout-minutes: 10
+        env:
+          QT_QPA_FONTDIR: C:/Windows/Fonts  # offscreen без шрифтов не рисует текст
+        run: python -m pytest -q
+
+      - name: Build
+        run: python -m PyInstaller packaging/atlas.spec --noconfirm --distpath dist --workpath build/pyinstaller
+
+      - name: Check bundle for Windows 7
+        shell: pwsh
+        run: |
+          python scripts/check_pe_imports.py dist/atlas --report dist/pe_imports_report.txt
+          if ($LASTEXITCODE -ne 0) { throw "сборка не подходит для Windows 7" }
+          if (Test-Path dist\atlas\_internal\ucrtbase.dll) { throw "ucrtbase.dll попал в сборку" }
+          if (Test-Path dist\atlas\_internal\tkinter) { throw "tkinter попал в сборку" }
+          $bytes = (Get-ChildItem -Recurse -File dist\atlas | Measure-Object -Sum Length)
+          "Размер сборки: {0:N0} байт, файлов {1}" -f $bytes.Sum, $bytes.Count
+
+      - name: Assemble
+        run: python scripts/assemble_dist.py dist/atlas
+
+      # Настоящий путь пользователя: окно, вход, вкладки — из папки с русским именем и по UNC.
+      - name: Selfcheck from Cyrillic folder and UNC
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $programs = Join-Path $PWD "build\Программы Атлас"
+          New-Item -ItemType Directory -Force $programs, ci_reports | Out-Null
+          Copy-Item -Recurse dist\atlas "$programs\Atlas"
+
+          function Invoke-Selfcheck($exe, $label) {
+            $out = Join-Path $PWD "ci_reports\$label"
+            $run = Start-Process -FilePath $exe -ArgumentList "--selfcheck", $out -Wait -PassThru
+            Write-Host "===== $label (код $($run.ExitCode)) ====="
+            Get-Content -Encoding UTF8 "$out\selfcheck.txt"
+            if ($run.ExitCode -ne 0) { throw "${label}: проверка завершилась с кодом $($run.ExitCode)" }
+          }
+
+          Invoke-Selfcheck "$programs\Atlas\atlas.exe" "cyrillic"
+          New-SmbShare -Name atlas_programs -Path $programs -FullAccess Everyone | Out-Null
+          Invoke-Selfcheck "\\localhost\atlas_programs\Atlas\atlas.exe" "unc"
+          Remove-SmbShare -Name atlas_programs -Force
+
+      # Два процесса пишут в одну базу через SMB. Это не заменяет проверку на настоящем сетевом диске
+      # (docs/WIN7_CHECK.md), но ловит грубые ошибки блокировок и путей.
+      - name: Two processes on one database over SMB
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD "build\Общая база"
+          New-Item -ItemType Directory -Force "$folder\Проверка" | Out-Null
+          New-SmbShare -Name atlas_db -Path $folder -FullAccess Everyone | Out-Null
+          $target = "\\localhost\atlas_db\Проверка"
+          $report = Join-Path $PWD "ci_reports\dbcheck"
+          $runs = foreach ($label in "pc1", "pc2") {
+            $run = Start-Process -FilePath dist\atlas\atlas.exe -PassThru -ArgumentList `
+              "--dbcheck", $target, "--report", $report, "--seconds", "45", "--label", $label
+            $null = $run.Handle  # без этого ExitCode после завершения пуст
+            $run
+          }
+          foreach ($run in $runs) { $run.WaitForExit() }
+          Get-Content -Encoding UTF8 "$report\dbcheck_pc1.txt", "$report\dbcheck_pc2.txt"
+          Remove-SmbShare -Name atlas_db -Force
+          foreach ($run in $runs) {
+            if ($run.ExitCode -ne 0) { throw "проверка базы завершилась с кодом $($run.ExitCode)" }
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist\atlas\logs, dist\atlas\var, dist\atlas\reports -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\atlas -DestinationPath atlas-win7-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-win7-x64
+          path: atlas-win7-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci_reports
+          path: |
+            ci_reports
+            dist/pe_imports_report.txt
+          if-no-files-found: ignore

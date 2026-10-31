@@ -55,3 +55,21 @@ uv pip install -p .venv -r requirements-dev.txt
 ```
 
 Проверено на Apple Silicon (arm64): Python 3.8, PyQt5 5.15.10, PyQt5-Qt5 5.15.19 (на Windows — 5.15.2, см. `requirements.txt`).
+
+## Сборка под Windows 7
+
+Собирает GitHub Actions (`.github/workflows/build-windows.yml`) при push в `main` и вручную: тесты, PyInstaller, проверка импортов на Win7,
+`--selfcheck` из папки с кириллицей и по UNC, две `--dbcheck` на общей базе по SMB. Результат — артефакт `atlas-win7-x64.zip`,
+отчёты и снимки — `ci_reports`. На целевой машине проверять по `docs/WIN7_CHECK.md` (лежит и в zip).
+
+Локально на Windows:
+
+```bat
+python -m pip install -r requirements-dev.txt
+python -m PyInstaller packaging\atlas.spec --noconfirm --distpath dist --workpath build\pyinstaller
+python scripts\check_pe_imports.py dist\atlas
+python scripts\assemble_dist.py dist\atlas
+```
+
+Проверки без человека: `atlas.exe --selfcheck ПАПКА`, `atlas.exe --dbcheck ПАПКА [--report ПАПКА] [--seconds N] [--label ИМЯ]`.
+Exe оконный и в консоль ничего не пишет: результат — код выхода и отчёт в файле.

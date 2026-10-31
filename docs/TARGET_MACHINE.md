@@ -90,9 +90,9 @@
 
 | Что | Откуда | Куда в Atlas |
 |---|---|---|
-| Сборка под Win7: workflow, spec, проверка импортов | `curator`: `.github/workflows/build-windows.yml`, `packaging/curator.spec`, `scripts/check_pe_imports.py` | `build/`, `.github/workflows/` (шаг 0.5) |
+| Сборка под Win7: workflow, spec, проверка импортов | `curator`: `.github/workflows/build-windows.yml`, `packaging/curator.spec`, `scripts/check_pe_imports.py` | `packaging/`, `scripts/`, `.github/workflows/` (шаг 0.5; `build/` в `.gitignore`) |
 | Запуск из UNC и кириллической папки в CI (`New-SmbShare`, `--snapshot`) | `curator`: тот же workflow | `.github/workflows/` (шаг 0.5) |
-| Проверка без человека: `--snapshot`, отчёт до создания `QApplication` | `curator`: `packaging/qt_smoke_entry.py`, `platform/` | `atlas/app.py`, `build/` (шаг 0.5) |
+| Проверка без человека: `--snapshot`, отчёт до создания `QApplication` | `curator`: `packaging/qt_smoke_entry.py`, `platform/` | `atlas/selfcheck.py`, `--selfcheck` (шаг 0.5) |
 | Подготовка Qt | `curator`: `src/curator/platform/qt_runtime.py` | `core/` (шаг 0.3–0.4) |
 | Логирование и сбор ошибок для показа в окне | `curator`: `src/curator/logging_setup.py` | `core/` (шаг 0.3) |
 | Повторы при сбоях сети | `curator`: `src/curator/fs/retry.py` | `shared/fs/` |

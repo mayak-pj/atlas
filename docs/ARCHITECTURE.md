@@ -7,6 +7,8 @@
 ```
 atlas/
   app.py                      # точка входа: конфиг → ядро → загрузка функций → главное окно
+  selfcheck.py                # --selfcheck: вход и вкладки без человека, отчёт и снимки (CI, выезд)
+  dbcheck.py                  # --dbcheck: SQLite на сетевом диске, обрыв сети, два ПК
   core/                       # ядро: ничего не знает о конкретных функциях
     app_context.py            # AppContext: config, db, bus, services, user, paths
     feature.py                # FeatureSpec, Feature (базовый класс)
@@ -38,7 +40,12 @@ config/
   app.json                    # сетевые пути, режим fake/real, лимиты памяти
 data/                         # справочники: defect_kinds.json, placement_rules.json, hotkeys.json …
 templates/                    # mail_reply.html, excel_columns.json
+packaging/                    # atlas.spec, bundle_contents.py, version_info.txt, bat/ (проверки на выезде)
+scripts/                      # check_pe_imports.py, assemble_dist.py
 ```
+
+Новая функция попадает в сборку сама: `packaging/bundle_contents.py` обходит `atlas/`, берёт все модули и все файлы, кроме кода
+(без `tests` и `_template`). Рядом с exe лежат `config/`, `data/`, `templates/`, их можно менять без пересборки.
 
 ## Контракт функции
 

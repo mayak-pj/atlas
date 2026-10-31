@@ -10,3 +10,7 @@ dist/
 .DS_Store
 config/local.json
 *.sqlite-journal
+
+var/
+logs/
+*.sqlite

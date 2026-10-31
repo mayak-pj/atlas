@@ -50,8 +50,8 @@
 uv venv --python 3.8 .venv                      # Rosetta не нужна: PyQt5 ставится нативно на arm64
 uv pip install -p .venv -r requirements-dev.txt
 .venv/bin/python -m pytest                      # QT_QPA_PLATFORM=offscreen задан в tests/conftest.py
-.venv/bin/vermin --target=3.8 --no-tips --violations atlas/
-.venv/bin/python -m atlas                       # пустое окно
+.venv/bin/vermin --target=3.8- --no-tips --violations atlas/ tests/
+.venv/bin/python -m atlas                       # окно с вкладками из config/features.json
 ```
 
 Проверено на Apple Silicon (arm64): Python 3.8, PyQt5 5.15.10, PyQt5-Qt5 5.15.19 (на Windows — 5.15.2, см. `requirements.txt`).

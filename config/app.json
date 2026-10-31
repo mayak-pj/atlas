@@ -1,0 +1,7 @@
+{
+  "mode": "fake",
+  "database": {
+    "path": "var/atlas.sqlite",
+    "busy_timeout_ms": 5000
+  }
+}

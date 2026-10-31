@@ -11,7 +11,7 @@
 - **Python 3.8** (на целевой машине 3.8.10 x64). Запрещено то, чего нет в 3.8: `match`, `list[str]`/`dict[...]`
   в аннотациях без `from __future__ import annotations`, `str.removeprefix/removesuffix`, `dict | dict`,
   `zoneinfo`, `functools.cache`, `asyncio.to_thread`, параметр `strict=` у `zip`.
-  Проверка: `vermin --target=3.8 --no-tips --violations atlas/`.
+  Проверка: `vermin --target=3.8- --no-tips --violations atlas/ tests/`.
 - **PyQt5 5.15.10** (Qt 5.15.2 на Windows; на Mac — PyQt5-Qt5 5.15.19). Никакого Qt6 и PySide2.
 - Пути Qt — только от пакета PyQt5, никаких `QLibraryInfo`: иначе ломается запуск из папки с кириллицей.
   Эмодзи и символы вроде `✓` в интерфейсе нельзя — только SVG. Прав администратора на цели нет: только portable-папка.

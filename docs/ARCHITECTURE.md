@@ -14,7 +14,9 @@ atlas/
     bus.py                    # EventBus: publish/subscribe (через Qt-сигналы, потокобезопасно)
     services.py               # ServiceRegistry: register/get/get_optional
     db.py                     # подключение SQLite, ретраи, MigrationRunner (миграции ядра + каждой функции)
-    config.py                 # config/*.json + локальные настройки пользователя
+    config.py                 # config/*.json + локальные настройки машины (config/local.json, не в git)
+    logging_setup.py          # журнал в logs/, сбор ошибок
+    qt_runtime.py             # подготовка Qt до QApplication
     theme/                    # atlas.qss, tokens.json (цвета), иконки SVG
     shell/                    # главное окно: верхняя полоса, вкладки, строка контекста, слоты панелей
   shared/                     # переиспользуемое, без бизнес-логики
@@ -66,6 +68,24 @@ class Feature:
 
 Ядро загружает только функции из `config/features.json`. Отключённая функция **не импортируется**.
 
+```json
+{"features": [{"id": "rules", "enabled": true, "tab_order": 40}]}
+```
+
+`tab_order` в `features.json` необязателен и важнее значения в `FeatureSpec`. Запись без `tab_order` берёт значение из `FeatureSpec`.
+
+Ошибка функции (импорт, зависимости, миграции, запуск) не роняет приложение: она пишется в журнал, в `registry.failures` и в событие `feature.failed`.
+
+## БД из кода функции
+
+```python
+rows = ctx.db.read(lambda conn: conn.execute("SELECT ...").fetchall())
+ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
+```
+
+На каждый вызов — своё подключение, поэтому вызывать можно из любого потока (но не из GUI). При блокировке транзакция откатывается и функция вызывается заново, поэтому внутри неё — только работа с базой и никаких вложенных `read`/`write`. Если база занята дольше всех повторов — `DatabaseBusyError`.
+Миграции применяются при старте; менять уже применённый файл нельзя (проверяется контрольная сумма).
+
 ## Правила связей
 1. `features/X` импортирует только `atlas.core.*` и `atlas.shared.*`. Проверяет `tests/test_boundaries.py` (ast-разбор импортов).
 2. Сообщить другим — `ctx.bus.publish("finding.added", {...})`. Что-то получить — `ctx.services.get_optional("type_db")`;
@@ -79,6 +99,7 @@ class Feature:
 
 | id | Что делает | Вкладка | Слоты, куда встраивается |
 |---|---|---|---|
+| `hello` | тестовая: проверка вкладки, сервиса, миграции | Привет | — |
 | `login` | вход по фамилии, теги | — (диалог при старте) | `shell.user` |
 | `presence` | кто сейчас работает и над какой папкой | — | `shell.online`, `compare.left` |
 | `compare` | просмотр 1…N фото, синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
@@ -98,6 +119,7 @@ class Feature:
 
 | Событие | Кто публикует | Данные |
 |---|---|---|
+| `feature.failed` | ядро (registry) | `{id, stage, error}` |
 | `user.logged_in` | login | `{user}` |
 | `folder.copied` | import_mail | `{folder_id, part_id}` |
 | `folder.opened` | compare | `{folder_id, part_id}` |
@@ -113,6 +135,7 @@ class Feature:
 
 | Имя | Владелец | Методы |
 |---|---|---|
+| `hello` | hello (тестовая) | `greet(name)` |
 | `image_cache` | shared/viewer (ядро) | `get(path, level)`, `prefetch(paths)` |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |

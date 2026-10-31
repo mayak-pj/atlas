@@ -43,3 +43,15 @@
 | `docs/TARGET_MACHINE.md` | целевая машина и уже проверенное (заполняется на шаге 0.1) |
 | `docs/OPEN_ITEMS.md` | что ещё нужно от вас |
 | `design/mockup/` | исходники макета (8 экранов) |
+
+## Окружение разработчика (macOS)
+
+```bash
+uv venv --python 3.8 .venv                      # Rosetta не нужна: PyQt5 ставится нативно на arm64
+uv pip install -p .venv -r requirements-dev.txt
+.venv/bin/python -m pytest                      # QT_QPA_PLATFORM=offscreen задан в tests/conftest.py
+.venv/bin/vermin --target=3.8 --no-tips --violations atlas/
+.venv/bin/python -m atlas                       # пустое окно
+```
+
+Проверено на Apple Silicon (arm64): Python 3.8, PyQt5 5.15.10, PyQt5-Qt5 5.15.19 (на Windows — 5.15.2, см. `requirements.txt`).

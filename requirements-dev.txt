@@ -1,0 +1,7 @@
+-r requirements.txt
+# pytest 8.3.x — последняя ветка с поддержкой Python 3.8.
+pytest==8.3.5
+pytest-qt==4.4.0
+vermin==1.9.2
+# Сборка — только на Windows/CI
+pyinstaller==6.22.3; sys_platform == "win32"

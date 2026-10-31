@@ -1,0 +1,7 @@
+# Python 3.8.10 x64 (Windows 7). Версии — как в digger/curator, проверены на целевой машине.
+PyQt5==5.15.10
+PyQt5-Qt5==5.15.2; sys_platform != "darwin"
+PyQt5-Qt5==5.15.19; sys_platform == "darwin"
+PyQt5-sip==12.13.0
+# Windows-only (Outlook COM) — понадобится на этапе 11
+pywin32==306; sys_platform == "win32"

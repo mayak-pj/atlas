@@ -19,3 +19,12 @@
   до этапа 1. COM Outlook нигде не использовался, код писать с нуля. Чтение `~/Code/*/my_reports` агенту не разрешено, поэтому экран/DPI не заполнены.
   Шаг без кода: pytest и vermin не запускались, окружения ещё нет (шаг 0.2). Папка `atlas` пока не git-репозиторий.
 - Дальше: шаг 0.2 — окружение на macOS; рецепт в TARGET_MACHINE (`uv venv --python 3.8`, Rosetta не нужна).
+
+## 2026-10-31 · шаг 0.2 — окружение на macOS
+- Сделано: `.venv` через `uv venv --python 3.8` (arm64, нативно, без Rosetta); `requirements.txt` (PyQt5 5.15.10, Qt-колёса по платформе,
+  `pywin32` с маркером win32), `requirements-dev.txt` (pytest 8.3.5, pytest-qt 4.4.0, vermin 1.9.2, pyinstaller только win32), `pytest.ini`,
+  `tests/conftest.py` (offscreen), `tests/test_smoke.py`, заглушка `atlas/__main__.py` (пустое окно). Рецепт — в README.
+- Проверено: `pytest` — 2 passed; `vermin --target=3.8` чистый; `main()` в offscreen запускается и завершается кодом 0.
+- Решения: `pywin32==306` взят как последняя версия под 3.8 — на шаге 11 перепроверить. `.gitignore` уже был.
+- Осталось: окно проверено только offscreen; реальное окно на экране Mac не открывалось (команда `python -m atlas`).
+- Дальше: шаг 0.3 — ядро (Opus).

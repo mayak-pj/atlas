@@ -26,7 +26,7 @@
   - **Готово:** нет «?» в таблицах, которые можно заполнить из репозиториев; остальное вынесено в `docs/OPEN_ITEMS.md`.
   - Чат: можно очистить → **0.2**, Sonnet
 
-- [ ] **0.2 Окружение на macOS** — *Sonnet*
+- [x] **0.2 Окружение на macOS** — *Sonnet*
   - Python той версии, что в TARGET_MACHINE (по умолчанию 3.8, через pyenv), venv, `requirements.txt` с точными версиями
     (Windows-only пакеты — с маркером `; sys_platform == "win32"`).
   - На Apple Silicon проверить, ставится ли Qt5 нативно; если нет — x86_64 Python под Rosetta. Записать в README.

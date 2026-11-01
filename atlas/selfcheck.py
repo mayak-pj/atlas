@@ -97,22 +97,6 @@ def _check_formats(check):
         check.result("формат изображений {}".format(name), name in formats)
 
 
-def _make_test_photo(path):
-    """JPEG настоящего размера с шумом: однотонный файл декодировался бы нереально быстро."""
-    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter
-
-    side = 1024
-    noise = QImage(os.urandom(side * side), side, side, side, QImage.Format_Grayscale8).copy()
-    image = QImage(3456, 5184, QImage.Format_RGB32)
-    image.fill(QColor("#1F3A5F"))
-    painter = QPainter(image)
-    painter.setOpacity(0.2)
-    painter.setCompositionMode(QPainter.CompositionMode_Overlay)
-    painter.fillRect(image.rect(), QBrush(noise))
-    painter.end()
-    return image.save(str(path), "JPEG", 95)
-
-
 def _wait_for_image(app, cache, photo, level):
     """Запрос через настоящую очередь и сигнал. Возвращает мс; None — картинка не пришла."""
     from PyQt5.QtCore import QEventLoop, QTimer
@@ -138,13 +122,14 @@ def _check_image_levels(app, check, work):
     from atlas.shared.viewer.disk_cache import DiskCache, default_cache_dir
     from atlas.shared.viewer.image_cache import CacheSettings, ImageCache
     from atlas.shared.viewer.levels import L0, L1, L2, L3
+    from atlas.shared.viewer.test_photo import save_noise_photo
 
     # Лимит 0 только у этой проверки записи: кэш здесь не наполняется
     check.result("папка кэша фото", DiskCache(default_cache_dir(), 0).enabled, str(default_cache_dir()))
     folder = work / "Фото проверка"
     folder.mkdir()
     photo = folder / "плата 1.jpg"
-    check.result("тестовое фото", _make_test_photo(photo), "{:.1f} МБ".format(photo.stat().st_size / 1024 / 1024))
+    check.result("тестовое фото", save_noise_photo(photo), "{:.1f} МБ".format(photo.stat().st_size / 1024 / 1024))
     for name, level, size in (("L1", L1, "864×1296"), ("L2", L2, "1728×2592"), ("L3", L3, "3456×5184")):
         started = time.perf_counter()
         image = decode_file(photo, level)

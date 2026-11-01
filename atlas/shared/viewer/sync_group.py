@@ -87,6 +87,13 @@ class SyncGroup(QObject):
                 if view is not self._leader:
                     view.set_state(*self._state)
 
+    def set_state(self, zoom, cx, cy):
+        """Задать место всей группе. Напрямую view.set_state нельзя: группа вернёт своё, когда придёт новое фото."""
+        self._state = (zoom, cx, cy)
+        for view in self._views:
+            view.set_state(zoom, cx, cy)
+        self.changed.emit(zoom, cx, cy)
+
     def fit(self):
         """Кнопка «Вписать»: все окна, в том числе без синхронизации."""
         self._state = _FIT_STATE

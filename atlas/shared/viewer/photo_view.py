@@ -106,6 +106,11 @@ class PhotoView(QWidget):
         """False, пока на экране прежнее фото: отмечать сейчас нельзя, это проверит экран сравнения."""
         return self._image is not None and self._image_path == self._path
 
+    @property
+    def is_sharp(self):
+        """На экране текущее фото нужного масштабу уровня."""
+        return self.is_current_shown and self._level == self._needed_level()
+
     def state(self):
         return self._state.state()
 

@@ -143,6 +143,15 @@ def test_zoom_buttons_with_no_touched_window_use_first(pair):
     assert first.state()[0] == pytest.approx(2) and second.state()[0] == pytest.approx(2)
 
 
+def test_group_state_survives_new_photo(pair, cache):
+    group, first, second = pair
+    group.set_state(5, 0.4, 0.6)
+    assert first.state() == pytest.approx((5, 0.4, 0.6)) and second.state() == pytest.approx((5, 0.4, 0.6))
+    group.show_photo(second, "new.jpg")
+    cache.deliver("new.jpg")
+    assert second.state() == pytest.approx((5, 0.4, 0.6))
+
+
 def test_new_window_takes_group_state(pair, make_view):
     group, first, second = pair
     first.zoom_by(3)

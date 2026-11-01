@@ -94,7 +94,22 @@ def _run_check_command(args):
 
         report = _option(args, "--report") or AppPaths.discover().root / "reports"
         return run_check(Path(folder), Path(report), int(seconds), _option(args, "--label"))
+    if "--viewbench" in args:
+        return _run_viewbench(args)
     return None
+
+
+def _run_viewbench(args):
+    folder = _option(args, "--viewbench")
+    if folder is not None and folder.startswith("--"):
+        folder = None  # папка не указана, следующий аргумент — другой ключ
+    numbers = {name: _option(args, name, default) for name, default in (("--photos", "500"), ("--flips", "20"), ("--workers", "0"))}
+    if not all(value.isdigit() for value in numbers.values()):
+        return 2
+    from atlas.viewbench import run
+
+    report = _option(args, "--report") or AppPaths.discover().root / "reports"
+    return run(folder, Path(report), int(numbers["--photos"]), int(numbers["--flips"]), int(numbers["--workers"]) or None, label=_option(args, "--label"))
 
 
 def main(argv=None):

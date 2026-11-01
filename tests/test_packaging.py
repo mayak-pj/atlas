@@ -32,7 +32,7 @@ def test_every_feature_module_is_bundled():
         assert "atlas.features.{}".format(entry["id"]) in modules
     assert "atlas.features.login.ui" in modules  # factory: импорт по имени
     assert "atlas.features.login.dialog" in modules
-    assert "atlas.selfcheck" in modules and "atlas.dbcheck" in modules
+    assert "atlas.selfcheck" in modules and "atlas.dbcheck" in modules and "atlas.viewbench" in modules
 
 
 def test_template_and_tests_are_not_bundled():
@@ -109,6 +109,6 @@ def test_dbcheck_rejects_bad_seconds(tmp_path):
     assert _run("-m", "atlas", "--dbcheck", str(tmp_path), "--seconds", "x").returncode == 2
 
 
-@pytest.mark.parametrize("name", ["check_win7.bat", "check_db.bat"])
+@pytest.mark.parametrize("name", ["check_win7.bat", "check_db.bat", "check_view.bat"])
 def test_bat_files_fit_cp866(name):
     (REPO / "packaging" / "bat" / name).read_text(encoding="utf-8").encode("cp866")

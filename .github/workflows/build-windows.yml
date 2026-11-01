@@ -96,6 +96,17 @@ jobs:
             if ($run.ExitCode -ne 0) { throw "проверка базы завершилась с кодом $($run.ExitCode)" }
           }
 
+      # Короткий замер просмотра: проверяет, что он работает в сборке. Цифры сервера CI не описывают целевую машину.
+      - name: Viewer speed check
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $report = Join-Path $PWD "ci_reports\viewbench"
+          $run = Start-Process -FilePath dist\atlas\atlas.exe -Wait -PassThru -ArgumentList `
+            "--viewbench", "--report", $report, "--photos", "40", "--flips", "3", "--label", "ci"
+          Get-Content -Encoding UTF8 "$report\viewbench_ci.txt"
+          if ($run.ExitCode -ne 0) { throw "замер завершился с кодом $($run.ExitCode)" }
+
       - name: Package
         shell: pwsh
         run: |

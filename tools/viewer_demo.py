@@ -143,7 +143,7 @@ def shoot(demo, app, out):
         demo.grab().save(str(out / "layout_{}_fit.png".format(count)))
         views[-1].set_state(1.0, 0.5, 0.5)
         views[-1].zoom_by(6)
-        waited = _wait(app, lambda: all(v.shown_level == v._needed_level() for v in views))
+        waited = _wait(app, lambda: all(v.is_sharp for v in views))
         print("  зум 6×: чётко через {:.3f} с, уровни {}".format(waited, [v.shown_level for v in views]))
         started = time.perf_counter()
         for _ in range(10):

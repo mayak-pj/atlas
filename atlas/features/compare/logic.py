@@ -298,6 +298,17 @@ class CompareModel:
         self._indexes[self.active] = index
         return changed
 
+    def rotate_active(self, delta, pattern=None):
+        """Только активное окно (синхронность выключена). Вернёт {номер фото папки: поворот} для записи в базу.
+
+        Активен эталон — поворачивается его ракурс в памяти, в базу ничего не идёт: это чужие фото.
+        """
+        if self.reference_active:
+            turn_angle(self.ref_photos, self.ref_index, delta, pattern)
+            self.reference = self.ref_photos[self.ref_index]
+            return {}
+        return self.rotate_angle(self.active_index, delta, pattern) if self.photos else {}
+
     def show_angle(self, view, pattern=None):
         """Текущие окна переходят на этот ракурс; нет его в папке — окна не меняются. Вернёт номера окон, где фото сменилось."""
         changed = []

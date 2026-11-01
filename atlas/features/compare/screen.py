@@ -249,6 +249,7 @@ class CompareScreen(QWidget):
         row.addWidget(self._button("Вписать", self.fit))
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
+        self.sync_button.setToolTip("Включено: зум, сдвиг и поворот у всех окон вместе. Выключено: у каждого окна свои")
         row.addWidget(self.sync_button)
         self._compare_only.append(self.sync_button)
         row.addStretch(1)
@@ -843,23 +844,44 @@ class CompareScreen(QWidget):
 
     # --- поворот --------------------------------------------------------------
     def rotate(self, delta):
-        """Кнопка или клавиша, действует на весь ракурс. «Сравнение» — все окна вместе, «Ракурсы» — только активное. Пока идёт «мигалка» — нельзя."""
+        """Кнопка или клавиша, действует на весь ракурс. Пока идёт «мигалка» — нельзя.
+
+        «Сравнение»: при включённой синхронности все окна вместе, при выключенной — только активное, чтобы выровнять окна.
+        При одном фото всегда вместе: эталон появится в «мигалке» и должен совпасть. «Ракурсы» — только активное.
+        """
         if self._flicker is not None:
             return
         if self._angles_on:
             self._rotate_angle(delta)
         elif self.model.photos:
-            self._rotate_windows(delta)
+            if self.model.count == 1 or self.sync_button.isChecked():
+                self._rotate_windows(delta)
+            else:
+                self._rotate_active(delta)
 
     def _rotate_windows(self, delta):
         model = self.model
         changed = model.rotate_windows(delta, self._name_pattern)
-        rotations = []
+        self.group.rotate(delta, self._window_rotations())
+        self._after_rotate(changed)
+
+    def _rotate_active(self, delta):
+        """Группу не трогаем: у окон свои места. Другое текущее окно с тем же ракурсом повернётся вместе с активным."""
+        changed = self.model.rotate_active(delta, self._name_pattern)
+        for view, rotation in self._window_rotations():
+            view.set_rotation(rotation)
+        self._after_rotate(changed)
+
+    def _window_rotations(self):
+        model = self.model
+        result = []
         for view in self._visible_views():
             photo = model.reference if view is self.views[0] else model.current(self.views.index(view) - 1)
-            rotations.append((view, photo.rotation))
-        self.group.rotate(delta, rotations)
-        self.strip.set_rotations([photo.rotation for photo in model.shown_photos])
+            result.append((view, photo.rotation))
+        return result
+
+    def _after_rotate(self, changed):
+        self.strip.set_rotations([photo.rotation for photo in self.model.shown_photos])
         size = self.active_view().shown_image_size
         if size is not None:  # сетка и лента — по новой ориентации; при листании они по-прежнему не прыгают
             self._orientation_known = True

@@ -396,3 +396,57 @@ def test_sync_zoom_and_pan_work_with_rotated_window(app, qtbot):
     current._user_change(current._state.pan_by, -40, 25)
     assert reference.state() == pytest.approx(current.state())
     assert current.state()[1:] != pytest.approx((0.5, 0.5))
+
+
+def _found_reference(app):
+    screen = app.screen
+    screen.set_reference_folder([PhotoItem(100, app.screen.model.photos[0].path), PhotoItem(101, app.screen.model.photos[1].path)])
+    screen.set_layout(2)
+    app.wait_shown()
+    return screen
+
+
+def test_sync_off_turns_only_active_current(app, qtbot):
+    screen = _found_reference(app)
+    screen.sync_button.click()
+    assert not screen.sync_button.isChecked()
+    app.press(Qt.Key_PageDown)
+    assert [view.rotation for view in screen.views[:2]] == [0, 90]
+    saved(app, qtbot, {0: 90, 1: 90})
+
+
+def test_sync_off_aligns_reference_in_memory_then_they_turn_together(app, qtbot):
+    screen = _found_reference(app)
+    app.press(Qt.Key_PageDown)  # всё вместе: текущая папка в базе 90
+    saved(app, qtbot, {0: 90, 1: 90})
+    screen.sync_button.click()
+    screen._on_view_clicked(screen.views[0])
+    assert screen.model.reference_active
+    app.press(Qt.Key_PageUp)  # эталон обратно, текущее окно не трогаем
+    assert [view.rotation for view in screen.views[:2]] == [0, 90]
+    assert [item.rotation for item in screen.strip._items] == [0, 0]  # на ленте сейчас эталон: весь его ракурс
+    saved(app, qtbot, {0: 90, 1: 90})  # в базу эталон не попал
+    screen.sync_button.click()
+    app.press(Qt.Key_PageDown)  # снова вместе, разница сохраняется
+    assert [view.rotation for view in screen.views[:2]] == [90, 180]
+
+
+def test_sync_off_keeps_other_window_place_and_group_state(app):
+    screen = _found_reference(app)
+    screen.group.set_state(6.0, 0.3, 0.4)
+    screen.sync_button.click()
+    other = screen.views[0].state()
+    group_state = screen.group.state
+    app.press(Qt.Key_PageDown)
+    assert screen.views[0].state() == other
+    assert screen.group.state == group_state
+    assert screen.views[1].state() == pytest.approx((6.0, 0.6, 0.3))
+
+
+def test_single_window_always_turns_with_reference(app):
+    screen = _found_reference(app)
+    screen.sync_button.click()
+    screen.set_layout(1)
+    app.wait_shown()
+    app.press(Qt.Key_PageDown)
+    assert screen.model.reference.rotation == 90

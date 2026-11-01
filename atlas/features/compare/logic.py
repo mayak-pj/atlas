@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, replace
+from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -108,6 +109,28 @@ def load_defect_kinds(data_dir):
         return list(DEFAULT_DEFECT_KINDS)
 
 
+def neighbor_since(today, year_only=True, days=0):
+    """С какой даты («ГГГГ-ММ-ДД») искать такую же деталь в соседних проектах; None — без ограничения.
+
+    year_only — с 1 января текущего года; иначе days > 0 — последние days суток; иначе без ограничения.
+    """
+    if year_only:
+        return date(today.year, 1, 1).isoformat()
+    if days and days > 0:
+        return (today - timedelta(days=int(days))).isoformat()
+    return None
+
+
+def reference_angles(photos, pattern=None):
+    """{ракурс: индекс первого фото с таким ракурсом} по именам файлов; имя не разобрано — фото пропускается."""
+    result = {}
+    for number, photo in enumerate(photos):
+        parsed = parse_photo_name(photo.name, pattern)
+        if parsed is not None and parsed.view not in result:
+            result[parsed.view] = number
+    return dict(sorted(result.items()))
+
+
 def neighbor_indexes(index, total, direction):
     """Какие фото подготовить, сначала самое важное. direction — знак последнего шага (1 или -1)."""
     ahead = [index + direction * step for step in range(1, NEIGHBORS_AHEAD + 1)]
@@ -125,6 +148,9 @@ class CompareModel:
     def __init__(self):
         self.photos = []
         self.reference = None  # PhotoItem
+        self.ref_photos = []  # фото найденной папки эталона; пусто — эталон одиночный (первое фото папки или путь)
+        self.ref_index = 0
+        self.reference_active = False  # активно окно эталона: стрелки листают найденную папку
         self.count = 1
         self.active = 0
         self.direction = 1  # знак последнего шага: что предзагружать
@@ -134,10 +160,46 @@ class CompareModel:
     def currents_count(self):
         return max(1, self.count - 1)
 
+    @property
+    def has_reference_folder(self):
+        return bool(self.ref_photos)
+
+    @property
+    def shown_photos(self):
+        """Что листает активное окно: фото найденной папки (эталон) или текущей папки."""
+        return self.ref_photos if self.reference_active else self.photos
+
+    @property
+    def shown_index(self):
+        return self.ref_index if self.reference_active else self.active_index
+
+    def set_reference(self, photo):
+        """Одиночный эталон: найденная папка забывается."""
+        self.reference = photo
+        self.ref_photos = []
+        self.ref_index = 0
+        self.reference_active = False
+
+    def set_reference_folder(self, photos, index=0):
+        """Эталон — фото другой папки; листается, когда его окно активно."""
+        if not photos:
+            raise ValueError("В папке эталона нет фото")
+        self.ref_photos = list(photos)
+        self.go_reference(index)
+        self.direction = 1
+
+    def go_reference(self, index):
+        self.ref_index = min(max(index, 0), len(self.ref_photos) - 1)
+        self.reference = self.ref_photos[self.ref_index]
+
+    def set_reference_active(self, active):
+        """Эталон активным может быть только найденная папка и только если эталон на экране."""
+        self.reference_active = bool(active) and self.has_reference_folder and self.count > 1
+
     def set_photos(self, photos):
         """Новая папка. Раскладка сохраняется, эталон пока — первое фото папки."""
         self.photos = list(photos)
-        self.reference = self.photos[0] if self.photos else None
+        self.set_reference(self.photos[0] if self.photos else None)
         self.active = 0
         self.direction = 1
         self._indexes = [0] * MAX_CURRENTS
@@ -149,6 +211,8 @@ class CompareModel:
             raise ValueError("Раскладка {} фото не поддерживается".format(count))
         before = self.currents_count
         self.count = count
+        if count == 1:
+            self.reference_active = False
         if self.currents_count > before:
             self._spread_from(before - 1)
         self.active = min(self.active, self.currents_count - 1)
@@ -157,6 +221,7 @@ class CompareModel:
         if not 0 <= window < self.currents_count:
             raise ValueError("Нет текущего окна {}".format(window))
         self.active = window
+        self.reference_active = False
 
     def index(self, window):
         return self._indexes[window]
@@ -171,10 +236,16 @@ class CompareModel:
 
     def flip(self, step):
         """Листает активное окно, по краям папки останавливается. True — фото сменилось."""
-        return self.go(self.active_index + step)
+        return self.go(self.shown_index + step)
 
     def go(self, index):
         """Перейти в активном окне к фото с этим номером. True — фото сменилось."""
+        if self.reference_active:
+            index = min(max(index, 0), len(self.ref_photos) - 1)
+            changed = index != self.ref_index
+            self.direction = 1 if index >= self.ref_index else -1
+            self.go_reference(index)
+            return changed
         if not self.photos:
             return False
         index = min(max(index, 0), len(self.photos) - 1)

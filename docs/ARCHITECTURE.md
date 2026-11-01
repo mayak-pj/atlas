@@ -144,6 +144,8 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `compare.right` | compare | сводка по детали (`findings`), правила (`rules`). Колонка 280–320 px, пустая не занимает места |
 | `compare.toolbar` | compare | кнопки в панели инструментов (`annotate_tools`, `type_db`). Кнопкам — `setFocusPolicy(Qt.NoFocus)`, иначе стрелки и пробел достанутся им |
 
+Настройки `compare` в `config/app.json`: `compare.neighbor_search_year_only` (true — соседние проекты за текущий календарный год), `compare.neighbor_search_days` (если год выключен и число больше 0 — последние N суток; иначе без ограничения). «Соседние проекты» — проекты того же вида (`projects.kind`), кроме своего.
+
 Настройки `folders` в `config/*.json`: `folders.refresh_s` (60), `folders.done_days` (7), `folders.limit` (50). События `folder.copied`, `folder.opened`, `folder.done`, `photo.marked` обновляют панель сразу, остальные изменения — по таймеру.
 
 Слот `draft.actions` появится вместе с владельцем.
@@ -174,13 +176,13 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
 | `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT, exact=False)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
-| `compare` | compare | `open_folder(folder_id)` — из GUI-потока, база читается в фоне; `set_reference(path)`; `current_folder()` → Folder или None |
+| `compare` | compare | `open_folder(folder_id)` — из GUI-потока, база читается в фоне; `set_reference(path)`; `set_reference_folder(folder_id)` — эталон из фото другой папки (листается, окно эталона становится активным по клику; раскладка 1 → 2); `find_same_part()` — то же для «Найти такую же деталь»; `current_folder()` → Folder или None |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
 | `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
 | `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
-| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)` |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `latest_for_part(name, project_id, kind, exclude_project_id, exclude_folder_id, since)` — последняя папка детали с таким названием (с фото), `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)` |
 
 ## Картинки 3456×5184, 5–15 МБ
 

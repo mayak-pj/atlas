@@ -8,9 +8,10 @@ from PyQt5.QtWidgets import (
 )
 
 from atlas.core import theme
+from atlas.core.domain.photo_names import parse_photo_name
 from atlas.features.compare.logic import (
     DEFAULT_MARK_KEYS, MAX_WINDOWS, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
-    neighbor_indexes, position_text, toggle_mark,
+    neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
@@ -28,6 +29,8 @@ TAG_REFERENCE = "ЭТАЛОН"
 TAG_SINGLE = "ЛИСТАНИЕ"
 TAG_CURRENT = "НОВОЕ"
 TEXT_KIND_NONE = "Вид не выбран"
+TEXT_REFERENCE_MARKS = "Эталон из другой папки — отметки недоступны"
+TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 
 
 class SlotColumn(QVBoxLayout):
@@ -73,6 +76,7 @@ def _key(text):
 class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
+    find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
 
     def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
         super().__init__(parent)
@@ -83,6 +87,9 @@ class CompareScreen(QWidget):
         self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
         self._index_by_id = {}
         self._panel_photo = None  # фото, для которого сейчас заполнена панель отметок
+        self._strip_of_reference = False  # лента сейчас показывает папку эталона
+        self._reference_note = ""  # подпись найденной папки: проект, дата
+        self._reference_tag = TAG_REFERENCE
         self.setFocusPolicy(Qt.StrongFocus)  # стрелки и пробел приходят сюда, кнопки фокус не берут
         self.model = CompareModel()
         self.group = SyncGroup(cache, self)
@@ -133,6 +140,7 @@ class CompareScreen(QWidget):
         middle = QVBoxLayout()
         middle.setSpacing(10)
         middle.addWidget(self._build_toolbar())
+        middle.addWidget(self._build_reference_bar())
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
         middle.addWidget(self._build_strip_panel())
@@ -176,11 +184,34 @@ class CompareScreen(QWidget):
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
         row.addWidget(self.sync_button)
+        row.addWidget(self._separator())
+        self.find_button = self._button("Найти такую же деталь", self.find_requested.emit)
+        self.find_button.setToolTip("Открыть эталоном последнюю проверку такой же детали")
+        self.find_button.setEnabled(False)
+        row.addWidget(self.find_button)
         self.toolbar_layout = QHBoxLayout()  # слот compare.toolbar
         self.toolbar_layout.setSpacing(6)
         row.addLayout(self.toolbar_layout)
         row.addStretch(1)
         return bar
+
+    def _build_reference_bar(self):
+        """Строка про эталон из найденной папки и кнопки его ракурсов; без найденной папки скрыта."""
+        self.reference_bar = QFrame()
+        self.reference_bar.setProperty("role", "panel")
+        row = QHBoxLayout(self.reference_bar)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.setSpacing(6)
+        self.reference_label = QLabel("")
+        self.reference_label.setProperty("role", "caption")
+        row.addWidget(self.reference_label)
+        self._angle_row = QHBoxLayout()
+        self._angle_row.setSpacing(6)
+        row.addLayout(self._angle_row)
+        row.addStretch(1)
+        self._angle_buttons = {}
+        self.reference_bar.hide()
+        return self.reference_bar
 
     def _build_strip_panel(self):
         self.strip_panel = QFrame()
@@ -271,6 +302,9 @@ class CompareScreen(QWidget):
         self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in self.model.photos])
         self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
         self.marks_status.setText("")
+        self._strip_of_reference = False
+        self._fill_reference_bar()
+        self.find_button.setEnabled(bool(self.model.photos))
         self._apply_layout()
         self._cache.prefetch([photo.path for photo in self.model.photos])
 
@@ -279,14 +313,75 @@ class CompareScreen(QWidget):
         self.model.set_photos([])
         self._index_by_id = {}
         self.strip.set_items([])
+        self._strip_of_reference = False
+        self._fill_reference_bar()
+        self.find_button.setEnabled(False)
         self.message.setText(text)
         self._apply_layout()
 
     def set_reference(self, photo):
         """Заменить эталон. На текущие окна и их индексы это не влияет."""
         self._end_flicker()
-        self.model.reference = photo
+        self.model.set_reference(photo)
+        self._strip_of_reference = False
+        self._fill_reference_bar()
         self._apply_layout()
+
+    def set_reference_folder(self, photos, note="", other_project=False):
+        """Эталон — фото другой папки (первое), листается стрелками, когда его окно активно.
+
+        При одном окне раскладка становится «2 фото»: эталону нужно место. Текущая папка остаётся открытой.
+        """
+        self._end_flicker()
+        if self.model.count == 1:
+            self.set_layout(2)
+        self.model.set_reference_folder(photos)
+        self._reference_note = note
+        self._reference_tag = TAG_OTHER_PROJECT if other_project else TAG_REFERENCE
+        self._fill_reference_bar()
+        self._apply_layout()
+
+    def _fill_reference_bar(self):
+        for button in self._angle_buttons.values():
+            self._angle_row.removeWidget(button)
+            button.deleteLater()
+        self._angle_buttons = {}
+        model = self.model
+        if not model.has_reference_folder:
+            self._reference_tag = TAG_REFERENCE
+            self._reference_note = ""
+            return
+        self.reference_label.setText("Эталон: {}".format(self._reference_note))
+        angles = reference_angles(model.ref_photos, self._name_pattern)
+        if len(angles) < 2:
+            return  # выбирать нечего
+        for angle, index in angles.items():
+            button = self._button("Ракурс {}".format(angle), lambda _=False, i=index: self.go_reference(i), checkable=True)
+            self._angle_buttons[angle] = button
+            self._angle_row.addWidget(button)
+        self._check_angle()
+
+    def _check_angle(self):
+        """Кнопка ракурса нажата у того, чьё фото сейчас эталон."""
+        shown = self._angle_of(self.model.reference)
+        for angle, button in self._angle_buttons.items():
+            button.setChecked(angle == shown)
+
+    def _angle_of(self, photo):
+        parsed = parse_photo_name(photo.name, self._name_pattern) if photo else None
+        return parsed.view if parsed else None
+
+    def go_reference(self, index):
+        """Кнопка ракурса: показать это фото найденной папки эталоном. Активным окном остаётся прежнее."""
+        if self._flicker is not None or not self.model.has_reference_folder:
+            return
+        self.model.go_reference(index)
+        self._check_angle()
+        if self.model.count == 1:
+            return  # эталона на экране нет: он покажется при раскладке «2 фото»
+        self._show_in(self.views[0])
+        if self.model.reference_active:
+            self._sync_strip()
 
     def set_layout(self, count):
         self._end_flicker()
@@ -320,10 +415,11 @@ class CompareScreen(QWidget):
         return self.views[window + 1]
 
     def active_view(self):
-        return self._view_of(self.model.active)
+        return self.views[0] if self.model.reference_active else self._view_of(self.model.active)
 
     def _apply_layout(self):
         has_photos = bool(self.model.photos)
+        self.reference_bar.setVisible(has_photos and self.model.has_reference_folder and self.model.count > 1)
         self.message.setVisible(not has_photos)
         self.strip_panel.setVisible(has_photos)
         self.marks_panel.setVisible(has_photos)
@@ -346,10 +442,14 @@ class CompareScreen(QWidget):
         self._sync_strip()
 
     def _sync_strip(self):
+        model = self.model
+        if model.reference_active != self._strip_of_reference:  # лента показывает то, что листает активное окно
+            self._strip_of_reference = model.reference_active
+            self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in model.shown_photos])
         self._update_marks()
-        self.strip.set_current(self.model.active_index)
-        self.prev_button.setEnabled(self.model.active_index > 0)
-        self.next_button.setEnabled(self.model.active_index < len(self.model.photos) - 1)
+        self.strip.set_current(model.shown_index)
+        self.prev_button.setEnabled(model.shown_index > 0)
+        self.next_button.setEnabled(model.shown_index < len(model.shown_photos) - 1)
 
     def _after_show(self):
         """show_photo отменил очередь: соседей просим сразу, миниатюры — когда листание остановится."""
@@ -363,8 +463,9 @@ class CompareScreen(QWidget):
     def _request_neighbors(self):
         """Самое важное — последним, в очереди новые идут первыми. Эталон — для «мигалки», при 1 фото его нет на экране."""
         model = self.model
-        wanted = [model.photos[number] for number in neighbor_indexes(model.active_index, len(model.photos), model.direction)]
-        if model.reference is not None:
+        shown = model.shown_photos
+        wanted = [shown[number] for number in neighbor_indexes(model.shown_index, len(shown), model.direction)]
+        if model.reference is not None and not model.reference_active:
             wanted.append(model.reference)
         for photo in reversed(wanted):
             self._cache.get(photo.path, L1, NEIGHBOR)
@@ -382,7 +483,7 @@ class CompareScreen(QWidget):
         if view is self.views[0]:
             photo = self.model.reference
             self.group.show_photo(view, photo.path)
-            view.set_caption(TAG_REFERENCE, photo.name, reference=True)
+            view.set_caption(self._reference_tag, self._reference_text(photo), reference=True)
             self._after_show()
             return
         window = self.views.index(view) - 1
@@ -392,6 +493,12 @@ class CompareScreen(QWidget):
         position = position_text(self.model.index(window), len(self.model.photos))
         view.set_caption(tag, "{}  {}".format(position, photo.name))
         self._after_show()
+
+    def _reference_text(self, photo):
+        model = self.model
+        if not model.has_reference_folder:
+            return photo.name
+        return "{}  {}".format(position_text(model.ref_index, len(model.ref_photos)), photo.name)
 
     def _mark_active(self):
         for view in self.views:
@@ -429,7 +536,7 @@ class CompareScreen(QWidget):
     def can_mark(self):
         """Отмечать можно, только пока на экране именно то фото, на которое смотрит человек."""
         model = self.model
-        if not model.photos or self._flicker is not None:
+        if not model.photos or self._flicker is not None or model.reference_active:
             return False
         return model.photos[model.active_index].id is not None and self.active_view().is_current_shown
 
@@ -479,11 +586,14 @@ class CompareScreen(QWidget):
         same = self._panel_photo is not None and self._panel_photo.id == photo.id
         self._panel_photo = photo
         enabled = self.can_mark
-        self.marks_title.setText("Фото {} —".format(position_text(model.active_index, len(model.photos))))
+        if model.reference_active:  # чужая папка: отметки не ставятся
+            self.marks_title.setText(TEXT_REFERENCE_MARKS)
+        else:
+            self.marks_title.setText("Фото {} —".format(position_text(model.active_index, len(model.photos))))
         for mark, button in self.mark_buttons.items():
             button.setEnabled(enabled)
             button.setChecked(photo.mark == mark)
-        is_defect = photo.mark == "defect"
+        is_defect = photo.mark == "defect" and not model.reference_active
         self.defect_box.setVisible(is_defect)
         if is_defect and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
             self.sn_edit.setText(default_sn(photo, self._name_pattern))
@@ -493,7 +603,7 @@ class CompareScreen(QWidget):
 
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):
-        self.go(self.model.active_index + step)
+        self.go(self.model.shown_index + step)
 
     def go(self, index):
         """Перейти в активном окне к фото с этим номером: стрелки, кнопки, клик по ленте."""
@@ -501,16 +611,19 @@ class CompareScreen(QWidget):
             return
         self._show_in(self.active_view())
         self._sync_strip()
+        if self.model.reference_active:
+            self._check_angle()
+            return  # чужая папка: событие photo.changed только про текущую
         window = self.model.active
         self.photo_changed.emit(self.model.current(window), self.model.index(window))
 
     def _begin_flicker(self):
-        if self._flicker is not None or self.model.reference is None:
+        if self._flicker is not None or self.model.reference is None or self.model.reference_active:
             return
         view = self.active_view()
         self._flicker = (view, view.state())
         self.group.show_photo(view, self.model.reference.path)
-        view.set_caption(TAG_REFERENCE, self.model.reference.name, reference=True)
+        view.set_caption(self._reference_tag, self._reference_text(self.model.reference), reference=True)
         self._update_marks()
 
     def _end_flicker(self):
@@ -556,9 +669,14 @@ class CompareScreen(QWidget):
     def _on_view_clicked(self, view):
         self.setFocus()
         self.group.touch(view)
-        if view is self.views[0] or self._flicker is not None:
-            return  # эталон не листается: активным остаётся прежнее окно
-        self.model.set_active(self.views.index(view) - 1)
+        if self._flicker is not None:
+            return
+        if view is self.views[0]:
+            if not self.model.has_reference_folder or self.model.count == 1:
+                return  # одиночный эталон не листается: активным остаётся прежнее окно
+            self.model.set_reference_active(True)
+        else:
+            self.model.set_active(self.views.index(view) - 1)
         self._mark_active()
         self._sync_strip()
         self._after_show()

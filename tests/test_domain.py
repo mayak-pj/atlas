@@ -252,3 +252,36 @@ def test_login_migration_moves_existing_users(tmp_path):
     assert (user.name, user.color, last_login) == ("Петров", "#111111", "2026-10-31 09:00:00")
     tables = database.read(lambda c: {r[0] for r in c.execute("SELECT name FROM sqlite_master")})
     assert "login_users" not in tables
+
+
+def _folder_with_photo(parts, folders, kind, project, device, part_name, date_text, photos=1):
+    part = parts.ensure(kind, project, device, part_name)
+    folder = folders.add(part.id, "\\\\сервер\\{}\\{}\\{}".format(project, part_name, date_text), date_text)
+    folders.add_photos(folder.id, ["{}.jpg".format(number) for number in range(photos)])
+    return folder
+
+
+def test_latest_for_part_matches_name_loosely_and_takes_newest(parts, folders, part):
+    old = _folder_with_photo(parts, folders, "A", "Орион-24", "N15", "SSD XS-2280", "2026-01-05")
+    new = _folder_with_photo(parts, folders, "A", "Орион-24", "N16", "ssd_xs 2280", "2026-03-05")  # другое устройство
+    assert folders.latest_for_part("SSD XS-2280").id == new.id
+    assert folders.latest_for_part("SSDXS2280", exclude_folder_id=new.id).id == old.id
+    assert folders.latest_for_part("другая деталь") is None
+
+
+def test_latest_for_part_own_project_neighbors_kind_and_date(parts, folders):
+    own = _folder_with_photo(parts, folders, "A", "Орион-24", "N15", "SSD", "2026-01-05")
+    near = _folder_with_photo(parts, folders, "A", "Лира", "L1", "SSD", "2026-02-01")
+    other_kind = _folder_with_photo(parts, folders, "B", "Вега", "V1", "SSD", "2026-05-01")
+    project = parts.get(folders.get(own.id).part_id).project_id
+    assert folders.latest_for_part("SSD", project_id=project).id == own.id
+    found = folders.latest_for_part("SSD", kind="A", exclude_project_id=project)
+    assert found.id == near.id and found.id != other_kind.id
+    assert folders.latest_for_part("SSD", kind="A", exclude_project_id=project, since="2026-02-02") is None
+    assert folders.latest_for_part("SSD", kind="B", exclude_project_id=project).id == other_kind.id
+
+
+def test_latest_for_part_skips_folders_without_photos(parts, folders):
+    _folder_with_photo(parts, folders, "A", "Орион-24", "N15", "SSD", "2026-03-05", photos=0)
+    kept = _folder_with_photo(parts, folders, "A", "Орион-24", "N15", "SSD", "2026-01-05")
+    assert folders.latest_for_part("SSD").id == kept.id

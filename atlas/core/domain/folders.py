@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from atlas.core.domain.text import now_text
+from atlas.core.domain.text import normalize_name, now_text
 
 STATUSES = ("new", "in_work", "done")
 MARK_DEFECT = "defect"
@@ -104,6 +104,29 @@ class FoldersService:
         args = ((status,) if status is not None else ()) + (int(limit),)
         sql = "SELECT {} FROM folders {}ORDER BY folder_date DESC, id DESC LIMIT ?".format(_FOLDER_COLUMNS, where)
         return [Folder(*row) for row in self.db.read(lambda conn: conn.execute(sql, args).fetchall())]
+
+    def latest_for_part(self, name, project_id=None, kind=None, exclude_project_id=None, exclude_folder_id=None,
+                        since=None):
+        """Последняя по дате папка детали с таким названием (регистр и разделители не важны) или None.
+
+        project_id — только этот проект; kind и exclude_project_id — проекты этого вида, кроме одного;
+        since — «ГГГГ-ММ-ДД», не старше. Пустые папки (без фото) пропускаются: показывать в них нечего.
+        """
+        conditions = ["p.name_key = ?", "EXISTS (SELECT 1 FROM photos WHERE folder_id = f.id)"]
+        args = [normalize_name(name)]
+        for sql, value in (
+            ("r.id = ?", project_id), ("r.kind = ?", kind), ("r.id <> ?", exclude_project_id),
+            ("f.id <> ?", exclude_folder_id), ("f.folder_date >= ?", since),
+        ):
+            if value is not None:
+                conditions.append(sql)
+                args.append(value)
+        sql = (
+            "SELECT {} FROM folders f JOIN parts p ON p.id = f.part_id JOIN devices d ON d.id = p.device_id "
+            "JOIN projects r ON r.id = d.project_id WHERE {} ORDER BY f.folder_date DESC, f.id DESC LIMIT 1"
+        ).format(", ".join("f." + column.strip() for column in _FOLDER_COLUMNS.split(",")), " AND ".join(conditions))
+        row = self.db.read(lambda conn: conn.execute(sql, args).fetchone())
+        return Folder(*row) if row is not None else None
 
     def set_status(self, folder_id, status, user_id=None):
         if status not in STATUSES:

@@ -5,6 +5,7 @@ import logging
 import queue
 import threading
 from dataclasses import replace
+from datetime import date
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
@@ -21,9 +22,13 @@ SLOT_TOOLBAR = "compare.toolbar"
 EVENT_FOLDER_OPENED = "folder.opened"
 EVENT_PHOTO_CHANGED = "photo.changed"
 EVENT_PHOTO_MARKED = "photo.marked"
+SHELL_MESSAGE_MS = 15000
 STOP_WAIT_S = 2.0  # сеть могла пропасть: дольше не держим закрытие программы
 TEXT_LOAD_FAILED = "Не удалось открыть папку"
 TEXT_FOLDER_GONE = "Папка не найдена"
+TEXT_NOT_FOUND = "Такой же детали нет в других проверках"
+TEXT_NOT_FOUND_NEIGHBORS = "Такой же детали нет ни в этом проекте, ни в соседних проектах"
+TEXT_FIND_FAILED = "Не удалось найти такую же деталь"
 TEXT_MARK_FAILED = "Отметка не сохранена: база недоступна, попробуйте ещё раз"
 
 
@@ -32,6 +37,18 @@ class _Signals(QObject):
     failed = pyqtSignal(int)
     marked = pyqtSignal(object)  # MarkResult
     mark_failed = pyqtSignal(int)  # id фото
+    found = pyqtSignal(int, object)  # номер поиска, FindResult или None
+    find_failed = pyqtSignal(int)
+
+
+class FindResult:
+    """Чужая папка для эталона. source: own — тот же проект, neighbor — соседний проект, given — задана вызывающим."""
+
+    def __init__(self, source, folder, part, photos):
+        self.source = source
+        self.folder = folder
+        self.part = part
+        self.photos = photos
 
 
 class MarkResult:
@@ -45,7 +62,8 @@ class MarkResult:
 
 
 class CompareFeature(Feature):
-    """Сервис «compare»: open_folder(folder_id), set_reference(path), current_folder()."""
+    """Сервис «compare»: open_folder(folder_id), set_reference(path), set_reference_folder(folder_id),
+    find_same_part(), current_folder()."""
 
     def on_start(self):
         self.screen = None
@@ -57,6 +75,9 @@ class CompareFeature(Feature):
         self.signals.failed.connect(self._on_failed)
         self.signals.marked.connect(self._on_marked)
         self.signals.mark_failed.connect(self._on_mark_failed)
+        self.signals.found.connect(self._on_found)
+        self.signals.find_failed.connect(self._on_find_failed)
+        self._find_request = 0
         # Отметки пишутся одной очередью: две быстрые отметки одного фото не должны прийти в базу в обратном порядке
         self._mark_queue = queue.Queue()
         self._mark_thread = threading.Thread(target=self._mark_loop, daemon=True)
@@ -69,6 +90,7 @@ class CompareFeature(Feature):
         self.screen = CompareScreen(cache, self._hotkeys(), load_pattern(data), logic.load_defect_kinds(data))
         self.screen.photo_changed.connect(self._on_photo_changed)
         self.screen.mark_requested.connect(self._on_mark_requested)
+        self.screen.find_requested.connect(self.find_same_part)
         shell = self.ctx.shell
         if shell is not None:
             shell.register_slot(SLOT_LEFT, self.screen.left_layout)
@@ -101,6 +123,18 @@ class CompareFeature(Feature):
     def set_reference(self, path):
         """Показать в окне эталона это фото."""
         self.screen.set_reference(logic.PhotoItem(None, str(path)))
+
+    def set_reference_folder(self, folder_id):
+        """Показать в окне эталона фото этой папки (первое; дальше листаются). Чтение базы — в фоне; из GUI-потока."""
+        self._find(lambda: self._given(folder_id))
+
+    def find_same_part(self):
+        """«Найти такую же деталь»: последняя проверка в своём проекте, иначе в соседних; открывается эталоном."""
+        folder = self.folder
+        if folder is None or self.screen is None:
+            return
+        self.screen.find_button.setEnabled(False)
+        self._find(lambda: self._search(folder))
 
     def current_folder(self):
         """Folder или None."""
@@ -139,6 +173,89 @@ class CompareFeature(Feature):
         ]
         return folder, part, photos
 
+    # --- поиск такой же детали ------------------------------------------------
+    def _find(self, work):
+        self._find_request += 1
+        request = self._find_request
+        self._threads = [thread for thread in self._threads if thread.is_alive()]
+        thread = threading.Thread(target=self._find_work, args=(request, work), daemon=True)
+        self._threads.append(thread)
+        thread.start()
+
+    def _find_work(self, request, work):
+        try:
+            result = work()
+        except Exception:  # нет сети, база занята
+            log.exception("Не удалось найти такую же деталь")
+            self.signals.find_failed.emit(request)
+            return
+        self.signals.found.emit(request, result)
+
+    def _neighbor_since(self):
+        config = self.ctx.config
+        return logic.neighbor_since(
+            date.today(),
+            bool(config.get("compare.neighbor_search_year_only", True)),
+            int(config.get("compare.neighbor_search_days", 0) or 0),
+        )
+
+    def _search(self, folder):
+        """Не в GUI-потоке. Сначала свой проект, потом проекты того же вида за выбранный срок."""
+        services = self.ctx.services
+        folders = services.get("folders")
+        part = services.get("parts").get(folder.part_id)
+        if part is None:
+            return None
+        found = folders.latest_for_part(part.name, project_id=part.project_id, exclude_folder_id=folder.id)
+        source = "own"
+        if found is None:
+            found = folders.latest_for_part(
+                part.name, kind=part.kind, exclude_project_id=part.project_id, since=self._neighbor_since()
+            )
+            source = "neighbor"
+        return self._result(source, found) if found is not None else None
+
+    def _given(self, folder_id):
+        folder = self.ctx.services.get("folders").get(folder_id)
+        if folder is None:
+            raise LookupError("{}: {}".format(TEXT_FOLDER_GONE, folder_id))
+        return self._result("given", folder)
+
+    def _result(self, source, folder):
+        _folder, part, photos = self._read(folder)
+        return FindResult(source, folder, part, photos)
+
+    def _on_found(self, request, result):
+        if request != self._find_request or self.screen is None:
+            return
+        self.screen.find_button.setEnabled(self.folder is not None)
+        shell = self.ctx.shell
+        if result is None:
+            if shell is not None:
+                shell.show_message(TEXT_NOT_FOUND_NEIGHBORS, SHELL_MESSAGE_MS)
+            return
+        if not result.photos:
+            if shell is not None:
+                shell.show_message(TEXT_NOT_FOUND, SHELL_MESSAGE_MS)
+            return
+        part = result.part
+        where = "{}, {}".format(part.project if part else "?", result.folder.folder_date)
+        other = result.source == "neighbor"
+        note = where
+        if other:
+            warning = "В проекте нет такой детали, взята из проекта {}".format(where)
+            note = warning[0].lower() + warning[1:]
+            if shell is not None:
+                shell.show_message(warning, SHELL_MESSAGE_MS)
+        self.screen.set_reference_folder(result.photos, note, other)
+
+    def _on_find_failed(self, request):
+        if request != self._find_request or self.screen is None:
+            return
+        self.screen.find_button.setEnabled(self.folder is not None)
+        if self.ctx.shell is not None:
+            self.ctx.shell.show_message(TEXT_FIND_FAILED, SHELL_MESSAGE_MS)
+
     # --- ответы ---------------------------------------------------------------
     def _on_failed(self, request):
         if request == self._request and self.screen is not None:
@@ -149,6 +266,7 @@ class CompareFeature(Feature):
             return  # пришёл ответ на устаревший запрос, или папок ещё нет
         folder, part, photos = result
         self.folder = folder
+        self._find_request += 1  # найденная для прежней папки деталь больше не нужна
         self.screen.set_photos(photos)
         if self.ctx.shell is not None and part is not None:
             self.ctx.shell.set_context(part.kind, part.project, part.device, part.name, folder.path)

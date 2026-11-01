@@ -176,3 +176,56 @@ def test_defect_kinds_file_and_fallback(tmp_path):
     assert load_defect_kinds(tmp_path) == DEFAULT_DEFECT_KINDS
     (tmp_path / "defect_kinds.json").write_text('{"kinds": [" Один ", "", "Два"]}', encoding="utf-8")
     assert load_defect_kinds(tmp_path) == ["Один", "Два"]
+
+
+def test_neighbor_since_by_year_days_or_unlimited():
+    from datetime import date
+    from atlas.features.compare.logic import neighbor_since
+    today = date(2026, 11, 1)
+    assert neighbor_since(today, True, 30) == "2026-01-01"
+    assert neighbor_since(today, False, 30) == "2026-10-02"
+    assert neighbor_since(today, False, 0) is None
+
+
+def test_reference_angles_first_photo_of_each_angle_and_unparsed_skipped():
+    from atlas.features.compare.logic import reference_angles
+    names = ["0402_1_AA.jpg", "0402_1_BB.jpg", "левый файл.jpg", "0402_3_AA.jpg", "0402_2_AA.jpg"]
+    photos = [PhotoItem(number, "/п/" + name) for number, name in enumerate(names)]
+    assert reference_angles(photos) == {1: 0, 2: 4, 3: 3}
+    assert reference_angles([PhotoItem(1, "/п/а.jpg")]) == {}
+
+
+def test_reference_folder_is_flipped_only_when_active_and_stops_at_edges():
+    model = _model(5, 2)
+    refs = [PhotoItem(100 + number, "/чужая/{}.jpg".format(number)) for number in range(3)]
+    model.set_reference_folder(refs)
+    assert model.reference is refs[0]
+    model.set_reference_active(True)
+    assert model.flip(1) and model.flip(1) and not model.flip(1)
+    assert model.reference is refs[2] and model.ref_index == 2
+    assert model.active_index == 0  # текущая папка не двигалась
+    assert model.flip(-1) and model.direction == -1 and model.reference is refs[1]
+    model.set_active(0)  # клик по текущему окну
+    assert not model.reference_active and model.flip(1) and model.active_index == 1 and model.reference is refs[1]
+
+
+def test_reference_cannot_be_active_without_folder_or_in_layout_1():
+    model = _model(5, 2)
+    model.set_reference_active(True)
+    assert not model.reference_active  # одиночный эталон не листается
+    model.set_reference_folder([PhotoItem(1, "/чужая/1.jpg"), PhotoItem(2, "/чужая/2.jpg")])
+    model.set_reference_active(True)
+    model.set_layout(1)
+    assert not model.reference_active
+    model.set_reference_active(True)
+    assert not model.reference_active
+    with pytest.raises(ValueError):
+        model.set_reference_folder([])
+
+
+def test_new_folder_and_single_reference_forget_found_folder():
+    model = _model(5, 2)
+    model.set_reference_folder([PhotoItem(1, "/чужая/1.jpg"), PhotoItem(2, "/чужая/2.jpg")])
+    model.set_reference_active(True)
+    model.set_photos([PhotoItem(7, "/новая/7.jpg")])
+    assert not model.has_reference_folder and not model.reference_active and model.reference.id == 7

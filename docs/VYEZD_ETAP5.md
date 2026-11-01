@@ -21,7 +21,7 @@ tags: [atlas, выезд, чек-лист]
 Нужен **один файл**. Остальное программа создаёт сама.
 
 - [ ] **Скачать сборку из GitHub Actions** (на Mac, с интернетом):
-  1. Открыть готовую проверенную сборку: <https://github.com/mayak-pj/atlas/actions/runs/41318379815> (все 705 тестов и проверка на Windows 7 пройдены). Список всех запусков — <https://github.com/mayak-pj/atlas/actions/workflows/build-windows.yml>.
+  1. Открыть готовую проверенную сборку: <https://github.com/mayak-pj/atlas/actions/runs/41332907221> (все 717 тестов и проверка на Windows 7 пройдены). Список всех запусков — <https://github.com/mayak-pj/atlas/actions/workflows/build-windows.yml>.
   2. Если берёте другой запуск — только **зелёный** и не старше «Функция add_folder: кнопка «Добавить папку…»…» (в более ранних нет кнопки). Красный или жёлтый — не брать.
   3. Внизу страницы, раздел **Artifacts** → скачать **`atlas-win7-x64`**.
   4. GitHub отдаёт zip в zip: внутри скачанного файла лежит **`atlas-win7-x64.zip`** — он и нужен.

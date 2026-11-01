@@ -67,13 +67,13 @@ class Filmstrip(QWidget):
         self._items[index] = replace(self._items[index], mark_color=color)
         self.update()
 
-    def set_rotation(self, index, rotation):
-        """Фото повернули: миниатюра пересчитывается из L0, файл и кэш не меняются."""
-        item = self._items[index]
-        if item.rotation == rotation:
-            return
-        self._items[index] = replace(item, rotation=rotation)
-        self._thumbs.pop(item.path, None)
+    def set_rotations(self, rotations):
+        """Поворот каждой миниатюры, по порядку. Изменившиеся пересчитываются из L0, файл и кэш не меняются."""
+        for index, rotation in enumerate(rotations):
+            item = self._items[index]
+            if item.rotation != rotation:
+                self._items[index] = replace(item, rotation=rotation)
+                self._thumbs.pop(item.path, None)
         self.request_visible()
         self.update()
 

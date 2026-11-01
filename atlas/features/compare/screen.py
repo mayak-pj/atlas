@@ -114,7 +114,7 @@ class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
     find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
-    rotation_changed = pyqtSignal(int, int)  # id фото папки, новый поворот: записать в базу
+    rotation_changed = pyqtSignal(object, int)  # [id фото папки], новый поворот: записать в базу
 
     def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
         super().__init__(parent)
@@ -824,7 +824,7 @@ class CompareScreen(QWidget):
 
     # --- поворот --------------------------------------------------------------
     def rotate(self, delta):
-        """Кнопка или клавиша. «Сравнение» — все окна вместе, «Ракурсы» — только активное. Пока идёт «мигалка» — нельзя."""
+        """Кнопка или клавиша, действует на весь ракурс. «Сравнение» — все окна вместе, «Ракурсы» — только активное. Пока идёт «мигалка» — нельзя."""
         if self._flicker is not None:
             return
         if self._angles_on:
@@ -834,39 +834,39 @@ class CompareScreen(QWidget):
 
     def _rotate_windows(self, delta):
         model = self.model
-        changed = model.rotate_windows(delta)
+        changed = model.rotate_windows(delta, self._name_pattern)
         rotations = []
         for view in self._visible_views():
             photo = model.reference if view is self.views[0] else model.current(self.views.index(view) - 1)
             rotations.append((view, photo.rotation))
         self.group.rotate(delta, rotations)
-        if model.reference_active:
-            self.strip.set_rotation(model.ref_index, model.reference.rotation)
-        else:
-            for index, rotation in changed.items():
-                self.strip.set_rotation(index, rotation)
+        self.strip.set_rotations([photo.rotation for photo in model.shown_photos])
         size = self.active_view().shown_image_size
         if size is not None:  # сетка и лента — по новой ориентации; при листании они по-прежнему не прыгают
             self._orientation_known = True
             self._apply_orientation(size)
-        for index, rotation in changed.items():
-            self._save_rotation(model.photos[index], rotation)
+        self._save_rotations(changed)
 
     def _rotate_angle(self, delta):
         """Окно ракурса поворачивается само по себе. Сетка не меняется: ракурс N всегда на одном месте."""
         number = self.angles.active_photo()
         if number is None:
             return  # у SN нет этого ракурса
-        rotation = self.model.rotate_photo(number, delta)
-        self.active_view().set_rotation(rotation)
-        place = self.angles.set_of_photo(number)
-        if self.angles.plan.sets[place].first_photo == number:
-            self.strip.set_rotation(place, rotation)
-        self._save_rotation(self.model.photos[number], rotation)
+        changed = self.model.rotate_angle(number, delta, self._name_pattern)
+        self.active_view().set_rotation(changed[number])
+        photos = self.model.photos
+        self.strip.set_rotations([photos[item.first_photo].rotation for item in self.angles.plan.sets])
+        self._save_rotations(changed)
 
-    def _save_rotation(self, photo, rotation):
-        if photo.id is not None:
-            self.rotation_changed.emit(photo.id, rotation)
+    def _save_rotations(self, changed):
+        """{номер фото: поворот} в базу, по одной записи на каждый поворот: окна разных ракурсов могут стоять по-разному."""
+        grouped = {}
+        for index, rotation in changed.items():
+            photo_id = self.model.photos[index].id
+            if photo_id is not None:
+                grouped.setdefault(rotation, []).append(photo_id)
+        for rotation, photo_ids in grouped.items():
+            self.rotation_changed.emit(photo_ids, rotation)
 
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):

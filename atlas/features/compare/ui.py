@@ -289,8 +289,8 @@ class CompareFeature(Feature):
         job = (self.folder, photo.id, mark, sn, defect_kind, user.id if user else None)
         self._mark_queue.put(lambda: self._mark_job(job))
 
-    def _on_rotation_changed(self, photo_id, rotation):
-        self._mark_queue.put(lambda: self._rotation_job(photo_id, rotation))
+    def _on_rotation_changed(self, photo_ids, rotation):
+        self._mark_queue.put(lambda: self._rotation_job(photo_ids, rotation))
 
     def _mark_loop(self):
         while True:
@@ -307,11 +307,11 @@ class CompareFeature(Feature):
             log.exception("Не удалось сохранить отметку фото %s", photo_id)
             self.signals.mark_failed.emit(photo_id)
 
-    def _rotation_job(self, photo_id, rotation):
+    def _rotation_job(self, photo_ids, rotation):
         try:
-            self.ctx.services.get("folders").set_rotation(photo_id, rotation)
+            self.ctx.services.get("folders").set_rotation(photo_ids, rotation)
         except Exception:  # на экране поворот уже виден и работает, не сохранился только на будущее
-            log.exception("Не удалось сохранить поворот фото %s", photo_id)
+            log.exception("Не удалось сохранить поворот фото %s", photo_ids)
             self.signals.rotation_failed.emit()
 
     def _write_mark(self, folder, photo_id, mark, sn, defect_kind, user_id):

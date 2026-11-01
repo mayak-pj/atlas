@@ -191,15 +191,19 @@ class FoldersService:
 
         self.db.write(work)
 
-    def set_rotation(self, photo_id, rotation):
-        """Запомнить поворот фото: 0, 90, 180 или 270 градусов по часовой стрелке. Отметку и статус папки не трогает."""
+    def set_rotation(self, photo_ids, rotation):
+        """Запомнить поворот фото одной транзакцией: 0, 90, 180 или 270 градусов по часовой стрелке.
+
+        Отметки и статус папки не трогает. Какого-то фото нет — LookupError, не меняется ни одно.
+        """
         if rotation not in ROTATIONS:
             raise ValueError("Недопустимый поворот: {}".format(rotation))
+        rows = [(rotation, photo_id) for photo_id in photo_ids]
 
         def work(conn):
-            cur = conn.execute("UPDATE photos SET rotation = ? WHERE id = ?", (rotation, photo_id))
-            if cur.rowcount == 0:
-                raise LookupError("Нет фото {}".format(photo_id))
+            for row in rows:
+                if conn.execute("UPDATE photos SET rotation = ? WHERE id = ?", row).rowcount == 0:
+                    raise LookupError("Нет фото {}".format(row[1]))
 
         self.db.write(work)
 

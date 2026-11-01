@@ -5,7 +5,7 @@ import pytest
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QImage, QPainter
 
-from atlas.features.compare.logic import CompareModel, PhotoItem, next_rotation
+from atlas.features.compare.logic import CompareModel, PhotoItem, next_rotation, same_angle
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L0, L1, level_for_scale
 from atlas.shared.viewer.memory_cache import CachedImage
@@ -189,7 +189,7 @@ def test_filmstrip_thumb_turns(qtbot):
     assert upright.height() > upright.width()
     strip.set_mark(0, QColor("#FF0000"))
     assert strip._items[0].rotation == 0
-    strip.set_rotation(0, 90)
+    strip.set_rotations([90])
     turned = strip._thumbs["a"]
     assert turned.width() > turned.height()
     strip.set_mark(0, None)
@@ -201,29 +201,53 @@ def photos(count=4):
     return [PhotoItem(number + 1, "{}.jpg".format(number)) for number in range(count)]
 
 
-def test_model_rotates_visible_currents_and_reference_in_memory():
+def angle_photos():
+    names = ["1_1_A.jpg", "1_1_B.jpg", "1_2_A.jpg", "1_2_B.jpg", "чужое.jpg", "другое.jpg"]
+    return [PhotoItem(number + 1, name) for number, name in enumerate(names)]
+
+
+def test_same_angle_uses_view_from_name():
+    photos = angle_photos()
+    assert same_angle(photos, 0) == [0, 1]
+    assert same_angle(photos, 3) == [2, 3]
+    assert same_angle(photos, 4) == [4]  # имя не разобрано: только само фото
+
+
+def test_model_turns_whole_angle_and_aligns_it():
     model = CompareModel()
-    model.set_photos(photos())
-    model.set_reference_folder([PhotoItem(100, "x.jpg", rotation=90), PhotoItem(101, "y.jpg")])
-    model.set_layout(3)
+    photos = angle_photos()
+    photos[1] = PhotoItem(2, "1_1_B.jpg", rotation=180)  # старый поворот отдельного фото
+    model.set_photos(photos)
+    assert model.rotate_angle(0, 90) == {0: 90, 1: 90}
+    assert [photo.rotation for photo in model.photos] == [90, 90, 0, 0, 0, 0]
+
+
+def test_model_windows_turn_their_angles_and_reference_in_memory():
+    model = CompareModel()
+    model.set_photos(angle_photos())
+    model.set_reference_folder([
+        PhotoItem(100, "2_1_X.jpg", rotation=90), PhotoItem(101, "2_1_Y.jpg", rotation=90), PhotoItem(102, "2_2_X.jpg"),
+    ])
+    model.set_layout(3)  # в текущих окнах ракурс 1 — два фото одного ракурса
     assert model.rotate_windows(90) == {0: 90, 1: 90}
     assert model.reference.rotation == 180
-    assert model.ref_photos[0].rotation == 180  # при листании вернётся таким же
-    assert model.ref_photos[1].rotation == 0  # другое фото — со своим поворотом
-    assert model.photos[2].rotation == 0
+    assert [photo.rotation for photo in model.ref_photos] == [180, 180, 0]  # весь ракурс эталона, другой — нет
+    model.go(2)
+    assert model.rotate_windows(90) == {2: 90, 3: 90, 0: 180, 1: 180}
 
 
-def test_model_same_photo_in_two_windows_turns_once():
+def test_model_single_reference_turns_alone():
     model = CompareModel()
     model.set_photos(photos(1))
     model.set_layout(3)
     assert model.rotate_windows(90) == {0: 90}
+    assert model.reference.rotation == 90
 
 
 def test_mark_keeps_rotation():
     model = CompareModel()
     model.set_photos(photos())
-    model.rotate_photo(0, 90)
+    model.rotate_angle(0, 90)
     model.set_mark(0, "defect", "S", None)
     assert model.photos[0].rotation == 90
 
@@ -255,38 +279,40 @@ def test_service_validates_and_stores(app):
     folders = app.ctx.services.get("folders")
     photo = folders.photos(app.feature.folder.id)[0]
     folders.mark_photo(photo.id, "remark")
-    folders.set_rotation(photo.id, 270)
+    folders.set_rotation([photo.id], 270)
     again = folders.photos(app.feature.folder.id)[0]
     assert (again.rotation, again.mark) == (270, "remark")
     with pytest.raises(ValueError):
-        folders.set_rotation(photo.id, 45)
+        folders.set_rotation([photo.id], 45)
     with pytest.raises(LookupError):
-        folders.set_rotation(10 ** 6, 90)
+        folders.set_rotation([photo.id, 10 ** 6], 90)
+    assert folders.photos(app.feature.folder.id)[0].rotation == 270  # не вышло — не меняется ни одно
     with pytest.raises(sqlite3.IntegrityError):
         app.ctx.db.write(lambda conn: conn.execute("UPDATE photos SET rotation = 45"))
 
 
-def test_key_rotates_saves_and_survives_reopening(app, qtbot):
+def test_key_turns_whole_angle_saves_and_survives_reopening(app, qtbot):
     screen = app.screen
+    assert [photo.name for photo in screen.model.photos] == ["1_1_A.jpg", "1_1_B.jpg", "1_2_A.jpg", "1_2_B.jpg"]
     app.press(Qt.Key_PageDown)
-    view = screen.active_view()
-    assert view.rotation == 90
-    saved(app, qtbot, {0: 90})
+    assert screen.active_view().rotation == 90
+    saved(app, qtbot, {0: 90, 1: 90})
     app.press(Qt.Key_Right)
     app.wait_shown()
-    assert screen.active_view().rotation == 0  # у следующего фото свой поворот
-    app.press(Qt.Key_Left)
+    assert screen.active_view().rotation == 90  # следующее фото того же ракурса
+    app.press(Qt.Key_Right)
     app.wait_shown()
-    assert screen.active_view().rotation == 90
+    assert screen.active_view().rotation == 0  # другой ракурс
+    assert [item.rotation for item in screen.strip._items] == [90, 90, 0, 0]
     app.feature.open_folder(app.feature.folder.id)
     qtbot.waitUntil(lambda: screen.model.active_index == 0 and screen.active_view().rotation == 90, timeout=3000)
-    assert screen.model.photos[0].rotation == 90
+    assert [photo.rotation for photo in screen.model.photos] == [90, 90, 0, 0]
 
 
 def test_opposite_key_and_buttons(app, qtbot):
     app.press(Qt.Key_PageUp)
     assert app.screen.active_view().rotation == 270
-    saved(app, qtbot, {0: 270})
+    saved(app, qtbot, {0: 270, 1: 270})
     app.screen.rotate_right_button.click()
     assert app.screen.active_view().rotation == 0
     saved(app, qtbot, {})
@@ -296,11 +322,12 @@ def test_reference_turns_with_windows_but_is_not_saved(app, qtbot):
     screen = app.screen
     screen.set_layout(2)
     app.wait_shown()
-    app.press(Qt.Key_Right)  # в текущем окне второе фото, эталон — первое
+    app.press(Qt.Key_Right)
+    app.press(Qt.Key_Right)  # в текущем окне ракурс 2, эталон — первое фото, ракурс 1
     app.wait_shown()
     app.press(Qt.Key_PageDown)
     assert [view.rotation for view in screen.views[:2]] == [90, 90]
-    saved(app, qtbot, {1: 90})
+    saved(app, qtbot, {2: 90, 3: 90})  # ракурс эталона в базе не изменился
 
 
 def test_flicker_shows_reference_with_its_rotation(app, qtbot):
@@ -341,17 +368,15 @@ def test_angles_turn_only_active_window(app, qtbot):
     app.press(Qt.Key_PageDown)
     assert (first.rotation, second.rotation) == (90, 0)
     assert second.state() == before
-    saved(app, qtbot, {0: 90})
-    app.press(Qt.Key_Right)  # следующий SN: окно снова со своим поворотом
-    assert first.rotation == 0
-    app.press(Qt.Key_Left)
-    assert first.rotation == 90
+    saved(app, qtbot, {0: 90, 1: 90})
+    app.press(Qt.Key_Right)  # следующий SN: тот же ракурс повёрнут, другой — нет
+    assert (first.rotation, second.rotation) == (90, 0)
 
 
 def test_rotation_failure_is_shown(app, qtbot, monkeypatch):
     folders = app.ctx.services.get("folders")
 
-    def broken(photo_id, rotation):
+    def broken(photo_ids, rotation):
         raise OSError("нет сети")
 
     monkeypatch.setattr(folders, "set_rotation", broken)

@@ -61,6 +61,25 @@ def next_rotation(rotation, delta):
     return (rotation + delta) % 360
 
 
+def same_angle(photos, number, pattern=None):
+    """Номера всех фото того же ракурса, что и это. Имя не разобрано — ракурс неизвестен, только само фото."""
+    parsed = parse_photo_name(photos[number].name, pattern)
+    if parsed is None:
+        return [number]
+    names = (parse_photo_name(photo.name, pattern) for photo in photos)
+    return [index for index, other in enumerate(names) if other is not None and other.view == parsed.view]
+
+
+def turn_angle(photos, number, delta, pattern=None):
+    """Весь ракурс получает один новый поворот, даже если раньше фото были повёрнуты по-разному. Меняет список на месте."""
+    rotation = next_rotation(photos[number].rotation, delta)
+    changed = {}
+    for index in same_angle(photos, number, pattern):
+        photos[index] = replace(photos[index], rotation=rotation)
+        changed[index] = rotation
+    return changed
+
+
 def mark_token(mark):
     """Токен цвета точки на миниатюре, как в макете; None — отметки нет."""
     if not mark:
@@ -270,26 +289,28 @@ class CompareModel:
         new_sn = old.sn if sn is None else (sn or None)  # None — не менять, как в сервисе folders
         self.photos[index] = replace(old, mark=mark, sn=new_sn, defect_kind=defect_kind)
 
-    def rotate_photo(self, index, delta):
-        """Повернуть фото папки с этим номером; вернёт новый поворот."""
-        rotation = next_rotation(self.photos[index].rotation, delta)
-        self.photos[index] = replace(self.photos[index], rotation=rotation)
-        return rotation
+    def rotate_angle(self, index, delta, pattern=None):
+        """Повернуть фото с этим номером и все фото его ракурса; вернёт {номер: поворот} для записи в базу."""
+        return turn_angle(self.photos, index, delta, pattern)
 
-    def rotate_windows(self, delta):
+    def rotate_windows(self, delta, pattern=None):
         """«Сравнение»: всё вместе. Вернёт {номер фото папки: поворот} — это запишется в базу.
 
-        Эталон поворачивается только в памяти: это чужое фото. Окна с одним и тем же фото поворачиваются один раз.
-        Эталон при одном окне тоже: он появится в «мигалке» и должен совпасть с текущим.
+        Эталон поворачивается только в памяти, вместе со своим ракурсом в найденной папке: это чужие фото.
+        Окна одного ракурса поворачиваются один раз. Эталон при одном окне тоже: он появится в «мигалке».
         """
-        if self.reference is not None:
+        if self.ref_photos:
+            turn_angle(self.ref_photos, self.ref_index, delta, pattern)
+            self.reference = self.ref_photos[self.ref_index]
+        elif self.reference is not None:
             self.reference = replace(self.reference, rotation=next_rotation(self.reference.rotation, delta))
-            if self.ref_photos:
-                self.ref_photos[self.ref_index] = self.reference
-        if not self.photos:
-            return {}
-        indexes = {self._indexes[window] for window in range(self.currents_count)}
-        return {index: self.rotate_photo(index, delta) for index in sorted(indexes)}
+        changed = {}
+        if self.photos:
+            for window in range(self.currents_count):
+                if self._indexes[window] not in changed:
+                    changed.update(self.rotate_angle(self._indexes[window], delta, pattern))
+        return changed
+
     def _spread_from(self, window):
         last = max(len(self.photos) - 1, 0)
         for number in range(window + 1, MAX_CURRENTS):

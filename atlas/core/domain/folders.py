@@ -17,7 +17,7 @@ _SQL_VARIABLES_LIMIT = 900  # в сборках SQLite под Windows преде
 _FOLDER_COLUMNS = (
     "id, part_id, path, folder_date, status, created_by, created_at, status_by, status_at"
 )
-_PHOTO_COLUMNS = "id, folder_id, rel_path, sn, mark, marked_by, marked_at"
+_PHOTO_COLUMNS = "id, folder_id, rel_path, sn, mark, marked_by, marked_at, defect_kind"
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,7 @@ class Photo:
     mark: Optional[str]
     marked_by: Optional[int]
     marked_at: Optional[str]
+    defect_kind: Optional[str] = None
 
 
 def path_key(path):
@@ -141,21 +142,24 @@ class FoldersService:
         )
         return [Photo(*row) for row in rows]
 
-    def mark_photo(self, photo_id, mark, sn=None, user_id=None):
+    def mark_photo(self, photo_id, mark, sn=None, user_id=None, defect_kind=None):
         """mark: "type:N", "defect", "remark" или None (снять отметку).
 
         sn: None — оставить как есть, пустая строка — стереть.
+        defect_kind: только для дефекта; None или пустая строка — вид не выбран. Любая другая отметка вид стирает.
         """
         if not valid_mark(mark):
             raise ValueError("Неизвестная отметка: {}".format(mark))
         new_sn = sn.strip() if sn is not None else None
         clear_sn = new_sn == ""
+        kind = (defect_kind or "").strip() or None if mark == MARK_DEFECT else None
 
         def work(conn):
             cur = conn.execute(
-                "UPDATE photos SET mark = ?, marked_by = ?, marked_at = ?, "
+                "UPDATE photos SET mark = ?, marked_by = ?, marked_at = ?, defect_kind = ?, "
                 "sn = CASE WHEN ? THEN NULL ELSE COALESCE(?, sn) END WHERE id = ?",
-                (mark, user_id if mark else None, now_text() if mark else None, clear_sn, new_sn or None, photo_id),
+                (mark, user_id if mark else None, now_text() if mark else None, kind,
+                 clear_sn, new_sn or None, photo_id),
             )
             if cur.rowcount == 0:
                 raise LookupError("Нет фото {}".format(photo_id))

@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parent.parent
 WORKER = Path(__file__).resolve().parent / "concurrent_writer.py"
 PROCESSES = 4
 ROUNDS = 15
@@ -37,8 +38,9 @@ def test_four_processes_write_to_one_file(tmp_path):
         assert one("PRAGMA integrity_check") == "ok"
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         assert one("PRAGMA journal_mode").lower() == "delete"
-        # Общее создано один раз, несмотря на гонку
-        assert one("SELECT COUNT(*) FROM schema_migrations WHERE owner = 'core'") == 1
+        # Каждая миграция ядра применена один раз, несмотря на гонку
+        core_files = len(list((REPO / "atlas" / "core" / "domain" / "migrations").glob("*.sql")))
+        assert one("SELECT COUNT(*) FROM schema_migrations WHERE owner = 'core'") == core_files
         assert one("SELECT COUNT(*) FROM users") == PROCESSES + 1
         assert one("SELECT COUNT(*) FROM projects") == 1
         assert one("SELECT COUNT(*) FROM devices") == 1

@@ -48,6 +48,10 @@ QPushButton { background: $panel_2; color: $text; border: 1px solid $border_stro
               padding: 0 14px; min-height: ${control_h}px; }
 QPushButton:hover { border-color: $accent; }
 QPushButton:disabled { color: $disabled; border-color: $border; }
+QPushButton[tone="ok"]:checked { background: $ok_soft; border-color: $ok; color: $ok; }
+QPushButton[tone="type2"]:checked { background: $type2_soft; border-color: $type2; color: $type2; }
+QPushButton[tone="defect"]:checked { background: $defect_soft; border-color: $defect; color: $defect; }
+QPushButton[tone="remark"]:checked { background: $remark_soft; border-color: $remark; color: $remark; }
 QPushButton[role="primary"] { background: $accent; color: $on_accent; border: none; font-weight: 700; font-size: ${font_lg}px;
                               min-height: 48px; padding: 0 28px; border-radius: 8px; }
 QPushButton[role="primary"]:hover { background: $accent_hover; }

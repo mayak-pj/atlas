@@ -18,7 +18,8 @@ atlas/
     services.py               # ServiceRegistry: register/get/get_optional
     db.py                     # подключение SQLite, ретраи, MigrationRunner (миграции ядра + каждой функции)
     config.py                 # config/*.json + локальные настройки машины (config/local.json, не в git)
-    domain/                   # таблицы ядра (users, projects, devices, parts, folders, photos) и сервисы к ним
+    domain/                   # таблицы ядра (users, projects, devices, parts, folders, photos) и сервисы к ним;
+                              # photo_names.py — разбор имени фото (артикул, ракурс, SN), шаблон в data/photo_names.json
     logging_setup.py          # журнал в logs/, сбор ошибок
     qt_runtime.py             # подготовка Qt до QApplication
     theme/                    # atlas.qss, tokens.json (цвета), иконки SVG
@@ -40,7 +41,7 @@ atlas/
 config/
   features.json               # какие функции включены и в каком порядке
   app.json                    # сетевые пути, режим fake/real, лимиты памяти
-data/                         # справочники: defect_kinds.json, placement_rules.json, hotkeys.json …
+data/                         # справочники: defect_kinds.json, photo_names.json, placement_rules.json, hotkeys.json …
 templates/                    # mail_reply.html, excel_columns.json
 packaging/                    # atlas.spec, bundle_contents.py, version_info.txt, bat/ (проверки на выезде)
 scripts/                      # check_pe_imports.py, assemble_dist.py
@@ -124,6 +125,8 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `dashboard` | статистика | Дашборд | — |
 | `history_import` | выгрузка старых писем (в конце, необязательно) | — | страница настроек |
 
+Отметки (`compare`): клавиши и кнопки — `data/hotkeys.json` → `compare.marks`, виды дефекта — `data/defect_kinds.json`. `mark_photo`: `sn=None` — не менять, `""` — стереть; `defect_kind` хранится только у дефекта. Запись идёт в фоне одной очередью, на экране отметка появляется после подтверждения базы. `photos.defect_kind` — миграция ядра 002.
+
 ## Слоты оболочки (поддерживать актуальным)
 
 API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (тот же `key` заменяет панель), `remove_panel`, `register_slot(имя, layout)`,
@@ -155,7 +158,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `folder.opened` | compare | `{folder_id, part_id}` (подписчик `folders` подсвечивает карточку) |
 | `folder.done` | report | `{folder_id}` |
 | `photo.changed` | compare | `{folder_id, photo_id, index}` |
-| `photo.marked` | compare | `{photo_id, mark, sn}` |
+| `photo.marked` | compare | `{photo_id, mark, sn}` — после записи в базу; `mark` — `type:N`, `defect`, `remark` или `None` (сняли). Первая отметка переводит папку из `new` в `in_work` |
 | `finding.added` | findings | `{finding_id, part_id, kind, sn}` |
 | `type.added` / `type.archived` / `type.restored` | type_db | `{type_id, part_id}` |
 | `rule.published` | rules | `{rule_id, part_id?}` |
@@ -175,7 +178,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
 | `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
 | `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
-| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id)`, `counts(folder_ids)` |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `counts(folder_ids)` |
 
 ## Картинки 3456×5184, 5–15 МБ
 

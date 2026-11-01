@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QEvent, QPointF, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QIcon, QKeySequence, QPainter, QPixmap, QPolygonF
-from PyQt5.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+)
 
 from atlas.core import theme
-from atlas.features.compare.logic import MAX_WINDOWS, CompareModel, grid_cells, mark_token, neighbor_indexes, position_text
+from atlas.features.compare.logic import (
+    DEFAULT_MARK_KEYS, MAX_WINDOWS, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
+    neighbor_indexes, position_text, toggle_mark,
+)
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.photo_view import PhotoView
@@ -22,6 +27,7 @@ TEXT_NO_PHOTOS = "В папке нет фото"
 TAG_REFERENCE = "ЭТАЛОН"
 TAG_SINGLE = "ЛИСТАНИЕ"
 TAG_CURRENT = "НОВОЕ"
+TEXT_KIND_NONE = "Вид не выбран"
 
 
 class SlotColumn(QVBoxLayout):
@@ -66,9 +72,17 @@ def _key(text):
 
 class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
+    mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
 
-    def __init__(self, cache, hotkeys, parent=None):
+    def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
         super().__init__(parent)
+        self._name_pattern = name_pattern
+        self._defect_kinds = list(defect_kinds)
+        mark_keys = hotkeys.get("marks") or DEFAULT_MARK_KEYS
+        self._mark_keys = {mark: _key(text) for mark, text in mark_keys.items()}
+        self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
+        self._index_by_id = {}
+        self._panel_photo = None  # фото, для которого сейчас заполнена панель отметок
         self.setFocusPolicy(Qt.StrongFocus)  # стрелки и пробел приходят сюда, кнопки фокус не берут
         self.model = CompareModel()
         self.group = SyncGroup(cache, self)
@@ -82,7 +96,7 @@ class CompareScreen(QWidget):
         for view in self.views:
             view.hide()
             view.installEventFilter(self)
-            view.photo_shown.connect(lambda _path, source=view: self._learn_orientation(source))
+            view.photo_shown.connect(lambda _path, source=view: self._on_view_shown(source))
         self._layout_buttons = {}
         tokens = theme.current()
         self.strip = Filmstrip(cache, {
@@ -122,6 +136,7 @@ class CompareScreen(QWidget):
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
         middle.addWidget(self._build_strip_panel())
+        middle.addWidget(self._build_marks_panel())
         middle.addWidget(hint)
 
         root = QHBoxLayout(self)
@@ -181,6 +196,51 @@ class CompareScreen(QWidget):
         row.addWidget(self.next_button)
         return self.strip_panel
 
+    def _build_marks_panel(self):
+        self.marks_panel = QFrame()
+        self.marks_panel.setProperty("role", "panel")
+        row = QHBoxLayout(self.marks_panel)
+        row.setContentsMargins(10, 10, 10, 10)
+        row.setSpacing(8)
+        self.marks_title = QLabel("")
+        self.marks_title.setProperty("role", "caption")
+        row.addWidget(self.marks_title)
+        self.mark_buttons = {}
+        for mark, key in self._mark_keys.items():
+            button = self._button(mark_label(mark), lambda _=False, m=mark: self.request_mark(m), checkable=True)
+            button.setProperty("tone", mark_token(mark))
+            button.setToolTip("Клавиша {}".format(QKeySequence(key).toString()) if key else "")
+            self.mark_buttons[mark] = button
+            row.addWidget(button)
+        self.defect_box = QWidget()
+        box = QHBoxLayout(self.defect_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(8)
+        box.addWidget(QLabel("SN"))
+        self.sn_edit = QLineEdit()
+        self.sn_edit.setMaximumWidth(150)
+        self.sn_edit.editingFinished.connect(self._on_defect_edited)
+        self.sn_edit.returnPressed.connect(self.setFocus)  # иначе стрелки останутся в поле
+        box.addWidget(self.sn_edit)
+        box.addWidget(QLabel("Вид"))
+        self.kind_box = QComboBox()
+        self.kind_box.setFocusPolicy(Qt.NoFocus)
+        self.kind_box.addItem(TEXT_KIND_NONE, None)
+        for kind in self._defect_kinds:
+            self.kind_box.addItem(kind, kind)
+        self.kind_box.activated.connect(lambda _=0: self._on_defect_edited())
+        box.addWidget(self.kind_box)
+        row.addWidget(self.defect_box)
+        self.defect_box.hide()
+        self.marks_status = QLabel("")
+        self.marks_status.setProperty("role", "warn")
+        row.addWidget(self.marks_status)
+        row.addStretch(1)
+        self.counts_label = QLabel("")
+        self.counts_label.setProperty("role", "muted")
+        row.addWidget(self.counts_label)
+        return self.marks_panel
+
     def _arrow_button(self, color, step, tip):
         button = self._button("", lambda: self.flip(step))
         button.setProperty("role", "square")
@@ -209,12 +269,15 @@ class CompareScreen(QWidget):
         self._orientation_known = False
         self.message.setText(TEXT_NO_PHOTOS)
         self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in self.model.photos])
+        self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
+        self.marks_status.setText("")
         self._apply_layout()
         self._cache.prefetch([photo.path for photo in self.model.photos])
 
     def show_failure(self, text):
         self._end_flicker()
         self.model.set_photos([])
+        self._index_by_id = {}
         self.strip.set_items([])
         self.message.setText(text)
         self._apply_layout()
@@ -263,6 +326,7 @@ class CompareScreen(QWidget):
         has_photos = bool(self.model.photos)
         self.message.setVisible(not has_photos)
         self.strip_panel.setVisible(has_photos)
+        self.marks_panel.setVisible(has_photos)
         visible = self._visible_views() if has_photos else []
         for view in self.views:
             self.grid.removeWidget(view)
@@ -282,6 +346,7 @@ class CompareScreen(QWidget):
         self._sync_strip()
 
     def _sync_strip(self):
+        self._update_marks()
         self.strip.set_current(self.model.active_index)
         self.prev_button.setEnabled(self.model.active_index > 0)
         self.next_button.setEnabled(self.model.active_index < len(self.model.photos) - 1)
@@ -337,6 +402,11 @@ class CompareScreen(QWidget):
                 view.style().polish(view)
                 view.update()
 
+    def _on_view_shown(self, view):
+        self._learn_orientation(view)
+        if self.model.photos and view is self.active_view():
+            self._update_marks()  # фото дошло: отмечать можно
+
     def _learn_orientation(self, view):
         """Один раз на папку: при листании сетка не должна прыгать, даже если попалось фото другой ориентации."""
         if self._orientation_known or view is self.views[0]:
@@ -353,6 +423,73 @@ class CompareScreen(QWidget):
             for item in visible:
                 self.grid.removeWidget(item)
             self._place(visible)
+
+    # --- отметки --------------------------------------------------------------
+    @property
+    def can_mark(self):
+        """Отмечать можно, только пока на экране именно то фото, на которое смотрит человек."""
+        model = self.model
+        if not model.photos or self._flicker is not None:
+            return False
+        return model.photos[model.active_index].id is not None and self.active_view().is_current_shown
+
+    def request_mark(self, mark):
+        """Кнопка или клавиша: отметить фото активного окна (то же ещё раз — снять). Запись — в `mark_requested`.
+
+        Пока запись не подтверждена, кнопки показывают старую отметку: сбой не оставляет их в неверном положении.
+        """
+        if self.can_mark:
+            photo = self.model.photos[self.model.active_index]
+            new = toggle_mark(photo.mark, mark)
+            if new == "defect":
+                self.mark_requested.emit(photo, new, default_sn(photo, self._name_pattern), photo.defect_kind)
+            else:
+                self.mark_requested.emit(photo, new, None, None)  # SN остаётся у фото
+        self._update_marks()
+
+    def _on_defect_edited(self):
+        photo = self._panel_photo
+        if photo is None or photo.mark != "defect" or not self.can_mark:
+            return
+        sn = self.sn_edit.text().strip()
+        kind = self.kind_box.currentData()
+        if sn != (photo.sn or "") or kind != photo.defect_kind:
+            self.mark_requested.emit(photo, "defect", sn, kind)
+
+    def apply_mark(self, photo_id, mark, sn, defect_kind):
+        """Отметка записана в базу: точка на ленте, счётчики и панель обновляются сразу."""
+        index = self._index_by_id.get(photo_id)
+        if index is None:
+            return  # папку успели сменить
+        self.model.set_mark(index, mark, sn, defect_kind)
+        self.strip.set_mark(index, self._mark_color(mark))
+        self.marks_status.setText("")
+        self._update_marks()
+
+    def show_mark_failure(self, text):
+        self.marks_status.setText(text)
+
+    def _update_marks(self):
+        """Кнопки по фото активного окна; SN и вид — только у дефекта."""
+        model = self.model
+        if not model.photos:
+            self._panel_photo = None
+            return
+        photo = model.photos[model.active_index]
+        same = self._panel_photo is not None and self._panel_photo.id == photo.id
+        self._panel_photo = photo
+        enabled = self.can_mark
+        self.marks_title.setText("Фото {} —".format(position_text(model.active_index, len(model.photos))))
+        for mark, button in self.mark_buttons.items():
+            button.setEnabled(enabled)
+            button.setChecked(photo.mark == mark)
+        is_defect = photo.mark == "defect"
+        self.defect_box.setVisible(is_defect)
+        if is_defect and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
+            self.sn_edit.setText(default_sn(photo, self._name_pattern))
+            self.kind_box.setCurrentIndex(max(self.kind_box.findData(photo.defect_kind), 0))
+        self.defect_box.setEnabled(enabled)
+        self.counts_label.setText(counts_text(model.photos, self._mark_keys))
 
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):
@@ -374,6 +511,7 @@ class CompareScreen(QWidget):
         self._flicker = (view, view.state())
         self.group.show_photo(view, self.model.reference.path)
         view.set_caption(TAG_REFERENCE, self.model.reference.name, reference=True)
+        self._update_marks()
 
     def _end_flicker(self):
         if self._flicker is None:
@@ -383,6 +521,7 @@ class CompareScreen(QWidget):
         self._show_in(view)
         if not self.group.enabled:  # иначе место вернёт группа
             view.set_state(*state)
+        self._update_marks()
 
     @property
     def flickering(self):
@@ -395,6 +534,9 @@ class CompareScreen(QWidget):
         elif key == self._flicker_key:
             if not event.isAutoRepeat():
                 self._begin_flicker()
+        elif key in self._mark_by_key:
+            if not event.isAutoRepeat():
+                self.request_mark(self._mark_by_key[key])
         else:
             super().keyPressEvent(event)
 

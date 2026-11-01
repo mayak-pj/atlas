@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import threading
+from dataclasses import replace
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
+from atlas.core.domain.photo_names import load_pattern
 from atlas.core.feature import Feature
 from atlas.features.compare import logic
 from atlas.features.compare.screen import CompareScreen
@@ -17,14 +20,28 @@ SLOT_RIGHT = "compare.right"
 SLOT_TOOLBAR = "compare.toolbar"
 EVENT_FOLDER_OPENED = "folder.opened"
 EVENT_PHOTO_CHANGED = "photo.changed"
+EVENT_PHOTO_MARKED = "photo.marked"
 STOP_WAIT_S = 2.0  # сеть могла пропасть: дольше не держим закрытие программы
 TEXT_LOAD_FAILED = "Не удалось открыть папку"
 TEXT_FOLDER_GONE = "Папка не найдена"
+TEXT_MARK_FAILED = "Отметка не сохранена: база недоступна, попробуйте ещё раз"
 
 
 class _Signals(QObject):
     loaded = pyqtSignal(int, object)  # номер запроса, (папка, деталь, фото) или None
     failed = pyqtSignal(int)
+    marked = pyqtSignal(object)  # MarkResult
+    mark_failed = pyqtSignal(int)  # id фото
+
+
+class MarkResult:
+    def __init__(self, folder_id, photo_id, mark, sn, defect_kind, status):
+        self.folder_id = folder_id
+        self.photo_id = photo_id
+        self.mark = mark
+        self.sn = sn
+        self.defect_kind = defect_kind
+        self.status = status  # статус папки после отметки
 
 
 class CompareFeature(Feature):
@@ -38,12 +55,20 @@ class CompareFeature(Feature):
         self.signals = _Signals()
         self.signals.loaded.connect(self._on_loaded)
         self.signals.failed.connect(self._on_failed)
+        self.signals.marked.connect(self._on_marked)
+        self.signals.mark_failed.connect(self._on_mark_failed)
+        # Отметки пишутся одной очередью: две быстрые отметки одного фото не должны прийти в базу в обратном порядке
+        self._mark_queue = queue.Queue()
+        self._mark_thread = threading.Thread(target=self._mark_loop, daemon=True)
+        self._mark_thread.start()
         self.ctx.services.register("compare", self)
 
     def create_tab(self):
         cache = self.ctx.services.get("image_cache")
-        self.screen = CompareScreen(cache, self._hotkeys())
+        data = self.ctx.paths.data
+        self.screen = CompareScreen(cache, self._hotkeys(), load_pattern(data), logic.load_defect_kinds(data))
         self.screen.photo_changed.connect(self._on_photo_changed)
+        self.screen.mark_requested.connect(self._on_mark_requested)
         shell = self.ctx.shell
         if shell is not None:
             shell.register_slot(SLOT_LEFT, self.screen.left_layout)
@@ -54,6 +79,8 @@ class CompareFeature(Feature):
     def on_stop(self):
         self._request += 1  # ответы запросов, которые ещё идут, больше никому не нужны
         self.ctx.services.unregister("compare")
+        self._mark_queue.put(None)
+        self._mark_thread.join(STOP_WAIT_S)
         for thread in self._threads:
             thread.join(STOP_WAIT_S)
 
@@ -105,7 +132,9 @@ class CompareFeature(Feature):
     def _read(self, folder):
         part = self.ctx.services.get("parts").get(folder.part_id)
         photos = [
-            logic.PhotoItem(photo.id, logic.photo_path(folder.path, photo.rel_path), photo.mark)
+            logic.PhotoItem(
+                photo.id, logic.photo_path(folder.path, photo.rel_path), photo.mark, photo.sn, photo.defect_kind
+            )
             for photo in self.ctx.services.get("folders").photos(folder.id)
         ]
         return folder, part, photos
@@ -128,3 +157,43 @@ class CompareFeature(Feature):
     def _on_photo_changed(self, photo, index):
         if self.folder is not None:
             self.ctx.bus.publish(EVENT_PHOTO_CHANGED, {"folder_id": self.folder.id, "photo_id": photo.id, "index": index})
+
+    # --- отметки --------------------------------------------------------------
+    def _on_mark_requested(self, photo, mark, sn, defect_kind):
+        if self.folder is None:
+            return
+        user = self.ctx.user
+        self._mark_queue.put((self.folder, photo.id, mark, sn, defect_kind, user.id if user else None))
+
+    def _mark_loop(self):
+        while True:
+            job = self._mark_queue.get()
+            if job is None:
+                return
+            photo_id = job[1]
+            try:
+                self.signals.marked.emit(self._write_mark(*job))
+            except Exception:  # нет сети, база занята: сообщаем на экране, отметка не меняется
+                log.exception("Не удалось сохранить отметку фото %s", photo_id)
+                self.signals.mark_failed.emit(photo_id)
+
+    def _write_mark(self, folder, photo_id, mark, sn, defect_kind, user_id):
+        folders = self.ctx.services.get("folders")
+        folders.mark_photo(photo_id, mark, sn, user_id, defect_kind)
+        status = folders.get(folder.id).status
+        if mark and status == "new":  # первая отметка: папка в работе (панель папок и коллеги это видят)
+            folders.set_status(folder.id, "in_work", user_id)
+            status = "in_work"
+        return MarkResult(folder.id, photo_id, mark, sn, defect_kind, status)
+
+    def _on_marked(self, result):
+        if self.screen is None:
+            return
+        self.screen.apply_mark(result.photo_id, result.mark, result.sn, result.defect_kind)
+        if self.folder is not None and self.folder.id == result.folder_id and self.folder.status != result.status:
+            self.folder = replace(self.folder, status=result.status)
+        self.ctx.bus.publish(EVENT_PHOTO_MARKED, {"photo_id": result.photo_id, "mark": result.mark, "sn": result.sn})
+
+    def _on_mark_failed(self, photo_id):
+        if self.screen is not None:
+            self.screen.show_mark_failure(TEXT_MARK_FAILED)

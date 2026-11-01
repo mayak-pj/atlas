@@ -181,6 +181,20 @@ def test_marks_sn_and_counts(db, folders, part):
     assert folders.photos(folder.id)[1].sn is None
 
 
+def test_defect_kind_is_kept_only_for_defect(folders, part):
+    folder = folders.add(part.id, "f", "2026-10-31")
+    folders.add_photos(folder.id, ["1.jpg"])
+    photo_id = folders.photos(folder.id)[0].id
+    folders.mark_photo(photo_id, "defect", "SN-1", defect_kind="Размытое фото")
+    assert folders.photos(folder.id)[0].defect_kind == "Размытое фото"
+    folders.mark_photo(photo_id, "defect", "SN-2", defect_kind="")  # вид сняли
+    assert folders.photos(folder.id)[0].defect_kind is None
+    folders.mark_photo(photo_id, "defect", defect_kind="Размытое фото")
+    folders.mark_photo(photo_id, "remark", defect_kind="Размытое фото")  # у замечания вида нет
+    photo = folders.photos(folder.id)[0]
+    assert (photo.mark, photo.defect_kind, photo.sn) == ("remark", None, "SN-2")
+
+
 @pytest.mark.parametrize("mark", ["тип", "type:", "type:x", "DEFECT"])
 def test_unknown_mark_is_rejected(folders, part, mark):
     folder = folders.add(part.id, "f", "2026-10-31")

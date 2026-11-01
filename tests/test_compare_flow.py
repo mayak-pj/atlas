@@ -18,20 +18,20 @@ REPO = Path(__file__).resolve().parent.parent
 COLORS = ["#CC2020", "#20CC20", "#2020CC", "#CCCC20", "#20CCCC", "#CC20CC"]
 
 
-def _photos(folder, count, size=(300, 450)):
+def _photos(folder, count, size=(300, 450), names=None):
     folder.mkdir(parents=True)
-    names = []
+    result = []
     for number in range(count):
         image = QImage(size[0], size[1], QImage.Format_RGB32)
         image.fill(QColor(COLORS[number % len(COLORS)]))
-        name = "фото {:03d}.jpg".format(number + 1)
+        name = names[number] if names else "фото {:03d}.jpg".format(number + 1)
         assert image.save(str(folder / name), "JPEG", 90)
-        names.append(name)
-    return names
+        result.append(name)
+    return result
 
 
 class App:
-    def __init__(self, tmp_path, qtbot, count=6, size=(300, 450), data=True):
+    def __init__(self, tmp_path, qtbot, count=6, size=(300, 450), data=True, names=None):
         self.qtbot = qtbot
         root = tmp_path / "Атлас тест"
         (root / "config").mkdir(parents=True)
@@ -47,11 +47,11 @@ class App:
         services = self.ctx.services
         self.part = services.get("parts").ensure("КК", "Орион-24", "N15", "SSD XS-2280")
         self.folder = services.get("folders").add(self.part.id, str(self.path), "2026-10-31")
-        services.get("folders").add_photos(self.folder.id, _photos(self.path, count, size) if count else [])
+        services.get("folders").add_photos(self.folder.id, _photos(self.path, count, size, names) if count else [])
         self.registry = start_features(self.ctx)
         assert self.registry.failures == []
         self.events = []
-        for name in ("folder.opened", "photo.changed"):
+        for name in ("folder.opened", "photo.changed", "photo.marked"):
             self.ctx.bus.subscribe(name, lambda payload, name=name: self.events.append((name, payload)))
         self.window = build_window(self.registry)
         qtbot.addWidget(self.window)
@@ -277,11 +277,11 @@ def test_flicker_restores_own_place_without_sync(app):
     app.wait_shown()
     app.screen.sync_button.click()
     view = app.screen.views[1]
-    view.set_state(5.0, 0.2, 0.7)
+    view.set_state(5.0, 0.3, 0.7)
     _space(app.screen, QTest.Press)
     _space(app.screen, QTest.Release)
     app.wait_shown()
-    assert view.state() == pytest.approx((5.0, 0.2, 0.7))
+    assert view.state() == pytest.approx((5.0, 0.3, 0.7))
 
 
 def test_flicker_restores_place_after_reference_of_other_shape(app, tmp_path):
@@ -515,5 +515,224 @@ def test_strip_hidden_for_empty_folder(tmp_path, qtbot):
         app.feature.open_folder(app.folder.id)
         app.qtbot.waitUntil(lambda: app.feature.folder is not None, timeout=5000)
         assert not app.screen.strip_panel.isVisible()
+    finally:
+        app.stop()
+
+
+# --- отметки (шаг 3.4) -----------------------------------------------------------
+# в порядке показа: фото сортируются по имени
+REAL_NAMES = ["0211040001792_1_WFL8GKHR_2.jpg", "0402290000836_1_XZ79070.jpg", "IMG_0003.jpg"]
+
+
+def _db_photos(app):
+    return app.ctx.services.get("folders").photos(app.folder.id)
+
+
+def _wait_db(app, check):
+    app.qtbot.waitUntil(lambda: check(_db_photos(app)), timeout=5000)
+
+
+def _marked_events(app):
+    return [payload for name, payload in app.events if name == "photo.marked"]
+
+
+@pytest.fixture
+def named(tmp_path, qtbot):
+    app = App(tmp_path, qtbot, count=3, names=REAL_NAMES)
+    yield app
+    app.stop()
+
+
+def test_mark_key_saves_and_updates_everything(app):
+    app.wait_open()
+    app.press(Qt.Key_Right)
+    app.press(Qt.Key_2)
+    _wait_db(app, lambda photos: photos[1].mark == "type:2")
+    screen = app.screen
+    app.qtbot.waitUntil(lambda: screen.strip._items[1].mark_color is not None, timeout=5000)
+    assert screen.strip._items[1].mark_color.name() == "#f2a93b"
+    assert screen.mark_buttons["type:2"].isChecked() and not screen.mark_buttons["type:1"].isChecked()
+    assert "Тип 2: 1" in screen.counts_label.text() and "Без отметки: 5" in screen.counts_label.text()
+    assert _marked_events(app) == [{"photo_id": _db_photos(app)[1].id, "mark": "type:2", "sn": None}]
+    assert _db_photos(app)[1].marked_at
+
+
+def test_same_mark_again_removes_it(app):
+    app.wait_open()
+    app.press(Qt.Key_1)
+    _wait_db(app, lambda photos: photos[0].mark == "type:1")
+    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:1"].isChecked(), timeout=5000)
+    app.press(Qt.Key_1)
+    _wait_db(app, lambda photos: photos[0].mark is None)
+    app.qtbot.waitUntil(lambda: app.screen.strip._items[0].mark_color is None, timeout=5000)
+    assert "Без отметки: 6" in app.screen.counts_label.text()
+
+
+def test_button_marks_like_the_key(app):
+    app.wait_open()
+    app.screen.mark_buttons["remark"].click()
+    _wait_db(app, lambda photos: photos[0].mark == "remark")
+
+
+def test_first_mark_puts_folder_in_work_and_tells_folders_panel(app):
+    app.wait_open()
+    folders = app.ctx.services.get("folders")
+    assert folders.get(app.folder.id).status == "new"
+    app.press(Qt.Key_1)
+    app.qtbot.waitUntil(lambda: folders.get(app.folder.id).status == "in_work", timeout=5000)
+    app.qtbot.waitUntil(lambda: app.feature.folder.status == "in_work", timeout=5000)
+
+
+def test_defect_takes_sn_from_file_name(named):
+    named.wait_open()
+    named.press(Qt.Key_D)
+    _wait_db(named, lambda photos: photos[0].mark == "defect")
+    assert _db_photos(named)[0].sn == "WFL8GKHR"  # окончание `_2` в SN не входит
+    named.qtbot.waitUntil(lambda: named.screen.defect_box.isVisibleTo(named.screen), timeout=5000)
+    assert named.screen.sn_edit.text() == "WFL8GKHR"
+    assert _marked_events(named)[-1]["sn"] == "WFL8GKHR"
+    named.press(Qt.Key_Right)
+    named.press(Qt.Key_D)
+    _wait_db(named, lambda photos: photos[1].mark == "defect")
+    assert _db_photos(named)[1].sn == "XZ79070"
+
+
+def test_defect_with_unknown_name_has_empty_sn(named):
+    named.wait_open()
+    named.screen.go(2)
+    named.wait_shown()
+    named.press(Qt.Key_D)
+    _wait_db(named, lambda photos: photos[2].mark == "defect")
+    assert _db_photos(named)[2].sn is None
+    named.qtbot.waitUntil(lambda: named.screen.defect_box.isVisibleTo(named.screen), timeout=5000)
+    assert named.screen.sn_edit.text() == ""
+
+
+def test_sn_and_kind_can_be_corrected(named):
+    named.wait_open()
+    named.press(Qt.Key_D)
+    _wait_db(named, lambda photos: photos[0].mark == "defect")
+    screen = named.screen
+    named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
+    screen.sn_edit.setFocus()
+    screen.sn_edit.setText("ZZ1")
+    screen.sn_edit.returnPressed.emit()
+    screen.sn_edit.editingFinished.emit()
+    _wait_db(named, lambda photos: photos[0].sn == "ZZ1")
+    screen.kind_box.setCurrentIndex(2)
+    screen.kind_box.activated.emit(2)
+    expected = screen.kind_box.itemData(2)
+    _wait_db(named, lambda photos: photos[0].defect_kind == expected)
+    assert expected and _db_photos(named)[0].sn == "ZZ1"
+
+
+def test_changing_mark_keeps_hand_typed_sn(named):
+    named.wait_open()
+    named.screen.go(2)  # имя не разобрано: SN вводят руками
+    named.wait_shown()
+    named.press(Qt.Key_D)
+    screen = named.screen
+    named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
+    screen.sn_edit.setText("ZZ1")
+    screen.sn_edit.editingFinished.emit()
+    _wait_db(named, lambda photos: photos[2].sn == "ZZ1")
+    named.press(Qt.Key_2)
+    _wait_db(named, lambda photos: photos[2].mark == "type:2")
+    named.qtbot.waitUntil(lambda: screen.mark_buttons["type:2"].isChecked(), timeout=5000)
+    assert _db_photos(named)[2].sn == "ZZ1" and screen.model.photos[2].sn == "ZZ1"
+
+
+def test_typing_in_sn_field_does_not_mark_or_flip(named):
+    named.wait_open()
+    named.press(Qt.Key_D)
+    screen = named.screen
+    named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
+    screen.sn_edit.setFocus()
+    QTest.keyClicks(screen.sn_edit, "d1")  # буквы и цифры уходят в поле, а не в отметки
+    assert screen.sn_edit.text().endswith("d1")
+    assert named.active_name() == REAL_NAMES[0]
+    assert _db_photos(named)[0].mark == "defect"
+
+
+def test_mark_is_refused_during_flicker_and_while_photo_not_shown(app, monkeypatch):
+    app.wait_open()
+    _space(app.screen, QTest.Press)
+    assert not app.screen.can_mark
+    app.press(Qt.Key_1)
+    _space(app.screen, QTest.Release)
+    app.wait_shown()
+    assert app.screen.can_mark
+    monkeypatch.setattr(type(app.screen.active_view()), "is_current_shown", property(lambda self: False))
+    assert not app.screen.can_mark
+    app.press(Qt.Key_1)
+    app.screen.mark_buttons["defect"].setEnabled(True)  # даже если кнопку включили силой, отметка не пройдёт
+    app.screen.mark_buttons["defect"].click()
+    app.qtbot.wait(150)
+    assert [photo.mark for photo in _db_photos(app)] == [None] * 6
+    assert _marked_events(app) == []
+
+
+def test_buttons_are_disabled_while_flickering(app):
+    app.wait_open()
+    _space(app.screen, QTest.Press)
+    assert not any(button.isEnabled() for button in app.screen.mark_buttons.values())
+    _space(app.screen, QTest.Release)
+    app.qtbot.waitUntil(lambda: all(button.isEnabled() for button in app.screen.mark_buttons.values()), timeout=5000)
+
+
+def test_failed_write_leaves_mark_unchanged_and_says_so(app, monkeypatch):
+    app.wait_open()
+    folders = app.ctx.services.get("folders")
+
+    def broken(*args, **kwargs):
+        raise OSError("сеть пропала")
+
+    monkeypatch.setattr(folders, "mark_photo", broken)
+    app.press(Qt.Key_1)
+    app.qtbot.waitUntil(lambda: bool(app.screen.marks_status.text()), timeout=5000)
+    assert not app.screen.mark_buttons["type:1"].isChecked()
+    assert app.screen.strip._items[0].mark_color is None
+    assert _marked_events(app) == []
+    monkeypatch.undo()
+    app.press(Qt.Key_1)
+    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:1"].isChecked(), timeout=5000)
+    assert app.screen.marks_status.text() == ""
+
+
+def test_two_quick_marks_land_in_order(app):
+    app.wait_open()
+    app.press(Qt.Key_1)
+    app.press(Qt.Key_2)
+    app.press(Qt.Key_3)
+    _wait_db(app, lambda photos: photos[0].mark == "type:3")
+    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:3"].isChecked(), timeout=5000)
+
+
+def test_mark_applies_to_active_window_photo(app):
+    app.wait_open()
+    app.screen.set_layout(3)
+    app.wait_shown()
+    app.screen._on_view_clicked(app.screen.views[2])
+    app.press(Qt.Key_2)
+    _wait_db(app, lambda photos: photos[1].mark == "type:2")
+    assert _db_photos(app)[0].mark is None  # эталон и первое окно не затронуты
+
+
+def test_marks_panel_hidden_without_photos(tmp_path, qtbot):
+    app = App(tmp_path, qtbot, count=0)
+    try:
+        app.feature.open_folder(app.folder.id)
+        app.qtbot.waitUntil(lambda: app.feature.folder is not None, timeout=5000)
+        assert app.screen.marks_panel.isHidden()
+        app.press(Qt.Key_1)  # нет фото: ничего не падает
+    finally:
+        app.stop()
+
+
+def test_mark_keys_come_from_hotkeys_file(tmp_path, qtbot):
+    app = App(tmp_path, qtbot)
+    try:
+        assert app.screen.mark_buttons["defect"].toolTip().endswith("D")
+        assert set(app.screen.mark_buttons) == {"type:1", "type:2", "type:3", "defect", "remark"}
     finally:
         app.stop()

@@ -1,7 +1,11 @@
+from pathlib import Path
+
 import pytest
 
+from atlas.core.domain.photo_names import load_pattern
 from atlas.features.compare.logic import (
-    CompareModel, PhotoItem, grid_cells, mark_token, neighbor_indexes, photo_path, position_text,
+    DEFAULT_DEFECT_KINDS, CompareModel, PhotoItem, counts_text, default_sn, grid_cells, load_defect_kinds, mark_label,
+    mark_token, neighbor_indexes, photo_path, position_text, toggle_mark,
 )
 from atlas.shared.viewer.filmstrip import visible_range
 
@@ -122,3 +126,53 @@ def test_visible_range_centres_and_stops_at_edges():
     assert visible_range(485, 486, 9) == (477, 486)
     assert visible_range(1, 3, 9) == (0, 3)
     assert visible_range(0, 3, 0) == (0, 1)
+
+
+# --- отметки (шаг 3.4) -----------------------------------------------------------
+DATA = Path(__file__).resolve().parents[4] / "data"
+
+
+def _item(name, number=1, mark=None, sn=None):
+    return PhotoItem(number, "C:/папка/" + name, mark, sn)
+
+
+def test_toggle_mark():
+    assert toggle_mark(None, "defect") == "defect"
+    assert toggle_mark("defect", "defect") is None
+    assert toggle_mark("type:1", "type:2") == "type:2"
+
+
+def test_mark_labels():
+    assert [mark_label(m) for m in ("type:1", "type:12", "defect", "remark")] == ["Тип 1", "Тип 12", "Дефект", "Замечание"]
+
+
+def test_default_sn_prefers_saved_then_name_then_empty():
+    pattern = load_pattern(DATA)
+    assert default_sn(_item("0402290000836_1_XZ79070.jpg"), pattern) == "XZ79070"
+    assert default_sn(_item("0402290000836_1_XZ79070.jpg", sn="ИСПРАВЛЕНО"), pattern) == "ИСПРАВЛЕНО"
+    assert default_sn(_item("фото 001.jpg"), pattern) == ""
+
+
+def test_counts_text_lists_only_used_marks_in_key_order():
+    photos = [_item("a.jpg", 1, "defect"), _item("b.jpg", 2, "type:1"), _item("c.jpg", 3, "type:1"), _item("d.jpg", 4)]
+    keys = ["type:1", "type:2", "defect", "remark"]
+    assert counts_text(photos, keys) == "Тип 1: 2 · Дефект: 1 · Без отметки: 1"
+    assert counts_text([], keys) == "Без отметки: 0"
+
+
+def test_model_set_mark_keeps_sn_unless_told():
+    model = CompareModel()
+    model.set_photos([_item("a.jpg", 1), _item("b.jpg", 2)])
+    model.set_mark(0, "defect", "SN1", "Размытое фото")
+    model.set_mark(0, "remark", None, None)  # None — SN остаётся, как в сервисе folders
+    assert (model.photos[0].mark, model.photos[0].sn, model.photos[0].defect_kind) == ("remark", "SN1", None)
+    model.set_mark(0, "defect", "", None)  # пустая строка — стереть
+    assert model.photos[0].sn is None
+    assert model.photos[1].mark is None
+
+
+def test_defect_kinds_file_and_fallback(tmp_path):
+    assert load_defect_kinds(DATA) and all(isinstance(kind, str) for kind in load_defect_kinds(DATA))
+    assert load_defect_kinds(tmp_path) == DEFAULT_DEFECT_KINDS
+    (tmp_path / "defect_kinds.json").write_text('{"kinds": [" Один ", "", "Два"]}', encoding="utf-8")
+    assert load_defect_kinds(tmp_path) == ["Один", "Два"]

@@ -1,13 +1,21 @@
 """Логика экрана сравнения без Qt: какое фото в каком окне и как окна стоят в сетке."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import logging
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from atlas.core.domain.photo_names import parse_photo_name
+
+log = logging.getLogger("atlas.compare")
+
 MAX_WINDOWS = 4
 MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эталон
-DEFAULT_HOTKEYS = {"prev": "Left", "next": "Right", "flicker": "Space"}
+DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "defect": "D", "remark": "R"}
+DEFAULT_HOTKEYS = {"prev": "Left", "next": "Right", "flicker": "Space", "marks": DEFAULT_MARK_KEYS}
+DEFAULT_DEFECT_KINDS = ["Сбит / повреждён элемент", "Размытое фото", "Прислано не то фото"]
 NEIGHBORS_AHEAD = 2  # по ходу листания; при удержании стрелки чтение успевает за показом (замер --viewbench)
 NEIGHBORS_BEHIND = 1
 
@@ -17,6 +25,8 @@ class PhotoItem:
     id: Optional[int]
     path: str
     mark: Optional[str] = None
+    sn: Optional[str] = None
+    defect_kind: Optional[str] = None
 
     @property
     def name(self):
@@ -49,6 +59,53 @@ def mark_token(mark):
     if mark.startswith("type:"):
         return "type2"
     return {"defect": "defect", "remark": "remark"}.get(mark)
+
+
+def mark_label(mark):
+    """Подпись кнопки и счётчика: «Тип 2», «Дефект», «Замечание»."""
+    if mark.startswith("type:"):
+        return "Тип {}".format(mark.split(":", 1)[1])
+    return {"defect": "Дефект", "remark": "Замечание"}.get(mark, mark)
+
+
+def toggle_mark(current, wanted):
+    """Та же отметка ещё раз — снимает её."""
+    return None if current == wanted else wanted
+
+
+def default_sn(photo, pattern=None):
+    """SN для поля: уже сохранённый, иначе из имени файла, иначе пусто (имя не разобрано — вводят руками)."""
+    if photo.sn:
+        return photo.sn
+    parsed = parse_photo_name(photo.name, pattern)
+    return parsed.sn if parsed else ""
+
+
+def mark_counts(photos):
+    """{отметка: сколько, None: без отметки}."""
+    counts = {None: 0}
+    for photo in photos:
+        counts[photo.mark] = counts.get(photo.mark, 0) + 1
+    return counts
+
+
+def counts_text(photos, mark_keys):
+    """«Тип 1: 3 · Дефект: 1 · Без отметки: 12» — только то, что есть, плюс всегда «Без отметки»."""
+    counts = mark_counts(photos)
+    parts = ["{}: {}".format(mark_label(mark), counts[mark]) for mark in mark_keys if counts.get(mark)]
+    parts.append("Без отметки: {}".format(counts[None]))
+    return " · ".join(parts)
+
+
+def load_defect_kinds(data_dir):
+    """Виды дефекта из data/defect_kinds.json; нет файла — временный список."""
+    path = Path(data_dir) / "defect_kinds.json"
+    try:
+        kinds = [str(kind).strip() for kind in json.loads(path.read_text(encoding="utf-8-sig"))["kinds"]]
+        return [kind for kind in kinds if kind]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        log.warning("Нет списка видов дефекта в %s (%s), взят временный", path, exc)
+        return list(DEFAULT_DEFECT_KINDS)
 
 
 def neighbor_indexes(index, total, direction):
@@ -125,6 +182,12 @@ class CompareModel:
         self.direction = 1 if index >= self.active_index else -1
         self._indexes[self.active] = index
         return changed
+
+    def set_mark(self, index, mark, sn, defect_kind):
+        """Новая отметка у фото с этим номером. Эталон, если это то же фото, остаётся как был: он только для показа."""
+        old = self.photos[index]
+        new_sn = old.sn if sn is None else (sn or None)  # None — не менять, как в сервисе folders
+        self.photos[index] = replace(old, mark=mark, sn=new_sn, defect_kind=defect_kind)
 
     def _spread_from(self, window):
         last = max(len(self.photos) - 1, 0)

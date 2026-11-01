@@ -24,5 +24,10 @@
   "presence": {
     "heartbeat_s": 30,
     "offline_after_s": 90
+  },
+  "type_db": {
+    "dir": "var/type_db",
+    "max_side": 2600,
+    "jpeg_quality": 90
   }
 }

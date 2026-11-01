@@ -51,7 +51,7 @@ class App:
         self.registry = start_features(self.ctx)
         assert self.registry.failures == []
         self.events = []
-        for name in ("folder.opened", "photo.changed", "photo.marked"):
+        for name in ("folder.opened", "photo.changed", "photo.marked", "type.added"):
             self.ctx.bus.subscribe(name, lambda payload, name=name: self.events.append((name, payload)))
         self.window = build_window(self.registry)
         qtbot.addWidget(self.window)

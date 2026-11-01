@@ -26,6 +26,10 @@
       "enabled": true
     },
     {
+      "id": "type_db",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

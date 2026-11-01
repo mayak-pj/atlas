@@ -757,3 +757,24 @@ def test_panels_can_be_hidden_one_by_one_and_all_at_once(app):
     screen.hide_all_button.click()
     assert all(box.isVisibleTo(screen) or box is screen.right_box or box is screen.left_box for box in boxes.values())
     assert boxes["top"].isVisibleTo(screen)
+
+
+def test_panel_choice_is_saved_to_file(app):
+    app.screen._panel_buttons["right"].click()
+    app.screen._panel_buttons["bottom"].click()
+    state = app.ctx.paths.root / "var" / "ui_state.json"
+    assert json.loads(state.read_text(encoding="utf-8"))["compare_panels"] == {
+        "left": True, "top": True, "bottom": False, "right": False}
+
+
+def test_panel_choice_is_restored_and_bad_data_is_ignored(app):
+    app.screen.restore_panels({"bottom": False, "left": "да", "лишнее": False})
+    assert app.screen.panels_state() == {"left": True, "top": True, "bottom": False, "right": True}
+    app.screen.restore_panels("не словарь")
+    assert app.screen.panels_state()["bottom"] is False
+    from atlas.features.compare import logic
+    state = app.ctx.paths.root / "var" / "x.json"
+    state.parent.mkdir(exist_ok=True)
+    state.write_text("не json", encoding="utf-8")
+    assert logic.load_ui_state(state) == {}
+    assert logic.load_ui_state(state.parent / "нет.json") == {}

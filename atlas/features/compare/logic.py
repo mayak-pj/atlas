@@ -21,6 +21,17 @@ DEFAULT_HOTKEYS = {
     "marks": DEFAULT_MARK_KEYS,
 }
 ROTATE_STEP = 90
+UI_STATE_FILE = "ui_state.json"
+PANELS_KEY = "compare_panels"
+
+
+def load_ui_state(path):
+    """Сохранённые настройки вида; нет файла или он испорчен — пустой словарь."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 DEFAULT_DEFECT_KINDS = ["Сбит / повреждён элемент", "Размытое фото", "Прислано не то фото"]
 NEIGHBORS_AHEAD = 2  # по ходу листания; при удержании стрелки чтение успевает за показом (замер --viewbench)
 NEIGHBORS_BEHIND = 1

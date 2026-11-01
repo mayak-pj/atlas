@@ -16,6 +16,7 @@ from atlas.features.compare.logic import (
     DEFAULT_HOTKEYS, DEFAULT_MARK_KEYS, MAX_WINDOWS, ROTATE_STEP, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
+from atlas.shared.widgets import FlowLayout
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.photo_view import PhotoView
@@ -123,6 +124,7 @@ class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
     find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
+    panels_changed = pyqtSignal(object)  # {панель: видна}: пользователь спрятал или показал панель
     rotation_changed = pyqtSignal(object, int)  # [id фото папки], новый поворот: записать в базу
 
     def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
@@ -237,7 +239,7 @@ class CompareScreen(QWidget):
         self._panel_boxes = {"left": self.left_box, "top": self.top_box, "bottom": self.bottom_box, "right": self.right_box}
         self._panel_buttons = {}
         for key, text, tip in PANEL_BUTTONS:
-            button = self._button(text, lambda _=False, k=key: self.set_panel_visible(k, self._panel_buttons[k].isChecked()), checkable=True)
+            button = self._button(text, lambda _=False, k=key: self._on_panel_clicked(k), checkable=True)
             button.setProperty("role", "mini")
             button.setChecked(True)
             button.setToolTip(tip)
@@ -252,6 +254,21 @@ class CompareScreen(QWidget):
     def _apply_side(self, key, holder):
         wanted = self._panel_buttons[key].isChecked() and not holder.isHidden()
         self._panel_boxes[key].setVisible(wanted)
+
+    def _on_panel_clicked(self, key):
+        self.set_panel_visible(key, self._panel_buttons[key].isChecked())
+        self.panels_changed.emit(self.panels_state())
+
+    def panels_state(self):
+        return {key: button.isChecked() for key, button in self._panel_buttons.items()}
+
+    def restore_panels(self, state):
+        """Вернуть сохранённый выбор; неизвестные ключи и не-булевы значения пропускаются."""
+        if not isinstance(state, dict):
+            return
+        for key in self._panel_boxes:
+            if isinstance(state.get(key), bool):
+                self.set_panel_visible(key, state[key])
 
     def set_panel_visible(self, key, visible):
         self._panel_buttons[key].setChecked(bool(visible))
@@ -268,6 +285,7 @@ class CompareScreen(QWidget):
         show = not any(button.isChecked() for button in self._panel_buttons.values())
         for key in self._panel_boxes:
             self.set_panel_visible(key, show)
+        self.panels_changed.emit(self.panels_state())
 
     def _build_toolbar(self):
         bar = QFrame()
@@ -337,13 +355,8 @@ class CompareScreen(QWidget):
         row.addWidget(self.find_button)
         self._compare_only.append(self.find_button)
         row.addStretch(1)
-        row = QHBoxLayout()  # третий ряд — слот compare.toolbar: кнопки функций не помещаются во второй ряд и обрезались
-        row.setSpacing(6)
-        rows.addLayout(row)
-        self.toolbar_layout = QHBoxLayout()
-        self.toolbar_layout.setSpacing(6)
-        row.addLayout(self.toolbar_layout)
-        row.addStretch(1)
+        self.toolbar_layout = FlowLayout(spacing=6)  # кнопки функций переносятся на вторую строку, а не сжимаются
+        rows.addLayout(self.toolbar_layout)
         return bar
 
     def _build_reference_bar(self):

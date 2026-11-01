@@ -95,6 +95,8 @@ class CompareFeature(Feature):
         self.screen.mark_requested.connect(self._on_mark_requested)
         self.screen.rotation_changed.connect(self._on_rotation_changed)
         self.screen.find_requested.connect(self.find_same_part)
+        self.screen.restore_panels(logic.load_ui_state(self._state_path()).get(logic.PANELS_KEY))
+        self.screen.panels_changed.connect(self._save_panels)
         shell = self.ctx.shell
         if shell is not None:
             shell.register_slot(SLOT_LEFT, self.screen.left_layout)
@@ -109,6 +111,20 @@ class CompareFeature(Feature):
         self._mark_thread.join(STOP_WAIT_S)
         for thread in self._threads:
             thread.join(STOP_WAIT_S)
+
+    def _state_path(self):
+        return self.ctx.paths.root / "var" / logic.UI_STATE_FILE
+
+    def _save_panels(self, state):
+        """Выбор панелей — в файле рядом с программой (var/, не в git): при следующем запуске панели те же."""
+        path = self._state_path()
+        data = logic.load_ui_state(path)
+        data[logic.PANELS_KEY] = state
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as exc:
+            log.warning("Не записать %s (%s): выбор панелей не сохранён", path, exc)
 
     def _hotkeys(self):
         path = self.ctx.paths.data / "hotkeys.json"

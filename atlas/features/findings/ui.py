@@ -24,7 +24,7 @@ TEXT_NO_FINDINGS = "Дефектов и замечаний раньше не б�
 TEXT_NEVER_CHECKED = "Раньше эта деталь не проверялась"
 TEXT_ARCHIVED = "в архиве"
 TEXT_LOAD_FAILED = "Не удалось прочитать данные: сводка может быть устаревшей"
-TEXT_PROBLEM = "Проблемная деталь — будьте внимательнее"
+TEXT_PROBLEM = "Ранее были замечания — будьте внимательнее"
 NOTICE_MS = 15000
 PILL_DEFECT = "Дефект"
 PILL_REMARK = "Замечание"
@@ -89,8 +89,6 @@ class FindingsPanel(QFrame):
             self._add(_label(TEXT_NO_FOLDER, "muted"))
             return
         self._add(_label(summary.name, "heading"))
-        if summary.similar_names:
-            self._add(_label("Учтены и похожие названия: " + ", ".join(summary.similar_names), "muted"))
         if summary.problem is not None:
             self._add(self._alert(summary))
         if stale:
@@ -216,13 +214,12 @@ class FindingsFeature(Feature):
         if part is None:
             return None
         config = self.ctx.config
-        group = logic.similar_parts(part, parts.all(), logic.match_threshold(config.get("findings.name_match")))
-        ids = [item.id for item in group]
+        ids = sorted({part.id} | {item.id for item in parts.find(part.name)})  # та же деталь — только точное название
         names = {user.id: user.name for user, _ in services.get("users").all()}
         marks = folders.problem_marks(ids, exclude_folder_id, logic.since_text(days))
         problem_days = logic.positive_int(config.get("findings.problem_days"), logic.DEFAULT_PROBLEM_DAYS)
         problem = logic.problem_of(
-            marks, problem_days, logic.positive_int(config.get("findings.problem_min_defects"), logic.DEFAULT_PROBLEM_MIN)
+            marks, problem_days, logic.positive_int(config.get("findings.problem_min_marks"), logic.DEFAULT_PROBLEM_MIN)
         )
         limit = config.get("findings.list_limit", logic.DEFAULT_LIMIT)
         lines, total, defects, remarks = logic.build_findings(marks, names, limit)
@@ -234,7 +231,6 @@ class FindingsFeature(Feature):
             types = logic.build_types(records)
         return logic.Summary(
             part.id, part.name,
-            tuple(sorted({item.name for item in group[1:] if item.name != part.name})),
             types, lines, total, defects, remarks,
             logic.LastCheck(last.status_at, names.get(last.status_by, "")) if last is not None else None,
             problem,
@@ -267,7 +263,7 @@ class FindingsFeature(Feature):
         self.signals.loaded.emit(part_id, summary)
 
     def _announce(self, summary):
-        """Проблемная деталь: уведомление в строке состояния, один раз после открытия папки."""
+        """Ранее были замечания: уведомление в строке состояния, один раз после открытия папки."""
         if not self._notify:
             return
         self._notify = False

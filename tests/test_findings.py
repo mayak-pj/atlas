@@ -15,42 +15,7 @@ from atlas.features.findings import logic
 REPO = Path(__file__).resolve().parent.parent
 
 
-def part(number, name):
-    return SimpleNamespace(id=number, name=name)
-
-
 # --- логика ---------------------------------------------------------------------------------
-def test_same_name_up_to_case_and_separators_is_same_part():
-    assert logic.is_similar("SSD XS-2280 512GB", "ssd_xs2280 512gb", 1.0)
-
-
-def test_similar_name_needs_threshold_and_different_size_is_not_same():
-    assert logic.is_similar("SSD XS-2280 512GB", "SSD XS-2280 512 GB v2", 0.85)
-    assert not logic.is_similar("SSD XS-2280 512GB", "SSD XS-2280 256GB", 0.85)
-    assert not logic.is_similar("SSD XS-2280 512GB", "SSD XS-2280 512GB v2", 1.0)
-
-
-def test_numbers_must_agree_even_if_text_is_almost_same():
-    assert not logic.is_similar("Плата MB-15 rev 3", "Плата MB-15 rev 4", 0.8)
-    assert logic.is_similar("Плата MB-15", "Плата MB-15 rev 4", 0.8)
-
-
-def test_empty_names_never_match():
-    assert not logic.is_similar("", "")
-    assert not logic.is_similar("---", "!!!")
-
-
-def test_similar_parts_keeps_current_first_and_skips_it_in_search():
-    current = part(1, "Плата MB-15")
-    found = logic.similar_parts(current, [part(1, "Плата MB-15"), part(2, "плата mb 15"), part(3, "Шлейф")])
-    assert [item.id for item in found] == [1, 2]
-
-
-@pytest.mark.parametrize("value, expected", [(0.9, 0.9), ("0.7", 0.7), (2, logic.DEFAULT_MATCH), ("x", logic.DEFAULT_MATCH), (None, logic.DEFAULT_MATCH)])
-def test_threshold_from_config_is_checked(value, expected):
-    assert logic.match_threshold(value) == expected
-
-
 def record(number, kind, type_no, text, created, archived=None):
     return SimpleNamespace(id=number, kind=kind, type_no=type_no, description=text, created_at=created, archived_at=archived)
 
@@ -172,18 +137,17 @@ def test_summary_collects_findings_of_other_folders_and_last_check(app):
     assert summary.last_check.when == "2026-10-28 18:00:00" and summary.last_check.author == "Петров"
 
 
-def test_summary_joins_similar_names_from_other_projects(app):
+def test_summary_joins_same_name_from_other_projects_and_devices(app):
     here = app.folder("SSD XS-2280 512GB", project="Орион-24")
-    other = app.folder("ssd xs-2280 512 gb v2", project="Вега-3", date="2026-09-01")
+    other = app.folder("ssd_xs 2280 512gb", project="Вега-3", device="K9", date="2026-09-01")
     app.mark(other, 0, "defect", "S9", None, "2026-09-05 10:00:00")
-    summary = app.open(here)
-    assert summary.total == 1 and summary.similar_names == ("ssd xs-2280 512 gb v2",)
+    assert app.open(here).total == 1
 
 
-def test_summary_does_not_join_different_parts(app):
-    here = app.folder("SSD XS-2280 512GB")
-    other = app.folder("SSD XS-2280 256GB", project="Вега-3")
-    app.mark(other, 0, "defect", "S9", None, "2026-09-05 10:00:00")
+def test_longer_or_similar_name_is_other_part(app):
+    here = app.folder("SSD XS-2280")
+    app.mark(app.folder("SSD XS-2280 512GB", project="Вега-3"), 0, "defect", "S9", None, "2026-09-05 10:00:00")
+    app.mark(app.folder("SSD XS-2281", project="Вега-4"), 0, "defect", "S8", None, "2026-09-05 10:00:00")
     assert app.open(here).total == 0
 
 
@@ -240,7 +204,7 @@ def test_old_texts_disappear_when_summary_replaced(qtbot):
     panel = FindingsPanel()
     qtbot.addWidget(panel)
     panel.show()
-    summary = logic.Summary(1, "Плата", (), (), (), 0, 0, 0, None)
+    summary = logic.Summary(1, "Плата", (), (), 0, 0, 0, None)
     panel.show_summary(summary)
     assert TEXT_NO_FOLDER not in [label.text() for label in panel.findChildren(QLabel) if label.isVisibleTo(panel)]
 
@@ -249,23 +213,28 @@ def test_old_texts_disappear_when_summary_replaced(qtbot):
 NOW = datetime(2026, 11, 1, 12, 0, 0)
 
 
-def test_problem_counts_only_defects_inside_window():
+def test_problem_counts_defects_and_remarks_inside_window():
     marks = [mark(4, "defect", "2026-10-30 10:00:00"), mark(3, "remark", "2026-10-29 10:00:00"),
-             mark(2, "defect", "2026-10-20 10:00:00"), mark(1, "defect", "2026-08-01 10:00:00")]
-    problem = logic.problem_of(marks, 30, 1, NOW)
-    assert (problem.defects, problem.days, problem.last) == (2, 30, "2026-10-30 10:00:00")
+             mark(2, "remark", "2026-05-20 10:00:00"), mark(1, "defect", "2025-01-01 10:00:00")]
+    problem = logic.problem_of(marks, 180, 1, NOW)
+    assert (problem.count, problem.days, problem.last) == (3, 180, "2026-10-30 10:00:00")
 
 
-def test_remarks_alone_do_not_make_part_problem():
-    assert logic.problem_of([mark(1, "remark", "2026-10-30 10:00:00")], 30, 1, NOW) is None
-    assert logic.problem_of([], 30, 1, NOW) is None
+def test_one_remark_or_one_defect_is_enough():
+    assert logic.problem_of([mark(1, "remark", "2026-10-30 10:00:00")], 180, 1, NOW).count == 1
+    assert logic.problem_of([mark(1, "defect", "2026-10-30 10:00:00")], 180, 1, NOW).count == 1
+    assert logic.problem_of([], 180, 1, NOW) is None
 
 
-def test_problem_respects_minimum_and_old_defects():
-    marks = [mark(2, "defect", "2026-10-30 10:00:00"), mark(1, "defect", "2026-08-01 10:00:00")]
-    assert logic.problem_of(marks, 30, 2, NOW) is None
-    assert logic.problem_of(marks, 120, 2, NOW).defects == 2
-    assert logic.problem_of(marks, 30, 0, NOW).defects == 1  # 0 в настройке считается как 1
+def test_problem_respects_minimum_and_old_marks():
+    marks = [mark(2, "remark", "2026-10-30 10:00:00"), mark(1, "defect", "2025-01-01 10:00:00")]
+    assert logic.problem_of(marks, 180, 2, NOW) is None
+    assert logic.problem_of(marks, 1000, 2, NOW).count == 2
+    assert logic.problem_of(marks, 180, 0, NOW).count == 1  # 0 в настройке считается как 1
+
+
+def test_default_window_is_180_days():
+    assert logic.DEFAULT_PROBLEM_DAYS == 180
 
 
 def test_settings_numbers_are_checked():
@@ -273,15 +242,15 @@ def test_settings_numbers_are_checked():
     assert logic.positive_int(0, 30) == 30 and logic.positive_int("x", 30) == 30 and logic.positive_int(None, 30) == 30
 
 
-@pytest.mark.parametrize("number, word", [(1, "дефект"), (2, "дефекта"), (5, "дефектов"), (11, "дефектов"), (21, "дефект"), (112, "дефектов")])
+@pytest.mark.parametrize("number, word", [(1, "замечание"), (2, "замечания"), (5, "замечаний"), (11, "замечаний"), (21, "замечание"), (112, "замечаний")])
 def test_plural(number, word):
-    assert logic.plural(number, logic.DEFECT_FORMS) == word
+    assert logic.plural(number, logic.MARK_FORMS) == word
 
 
 def test_texts():
-    problem = logic.Problem(3, 30, "2026-10-14 10:00:00")
-    assert logic.problem_text(problem, NOW) == "3 дефекта за 30 дней · последний 14.10"
-    assert logic.notice_text("SSD", problem, NOW) == "SSD: проблемная деталь — 3 дефекта за 30 дней, последний 14.10. Будьте внимательнее."
+    problem = logic.Problem(3, 180, "2026-10-14 10:00:00")
+    assert logic.problem_text(problem, NOW) == "3 замечания за 180 дней · последнее 14.10"
+    assert logic.notice_text("SSD", problem, NOW) == "SSD: ранее были замечания — 3 замечания за 180 дней, последнее 14.10. Будьте внимательнее."
 
 
 def recent_stamp(days_ago):
@@ -295,23 +264,23 @@ def alert_texts(panel):
             and label.isVisibleTo(panel)]
 
 
-def test_banner_and_notice_for_part_with_recent_defects(app):
+def test_banner_and_notice_for_part_with_recent_marks(app):
     old = app.folder("Плата MB-15", date="2026-10-01")
     app.mark(old, 0, "defect", "S1", None, recent_stamp(3))
-    app.mark(old, 1, "defect", "S2", None, recent_stamp(10))
+    app.mark(old, 1, "remark", "S2", None, recent_stamp(100))
     messages = []
     app.window.statusBar().messageChanged.connect(messages.append)
     summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
-    assert summary.problem.defects == 2
+    assert summary.problem.count == 2
     texts = alert_texts(app.feature("findings").panel)
-    assert texts[0] == "Проблемная деталь — будьте внимательнее" and texts[1].startswith("2 дефекта за 30 дней")
+    assert texts[0] == "Ранее были замечания — будьте внимательнее" and texts[1].startswith("2 замечания за 180 дней")
     app.qtbot.waitUntil(lambda: any("Будьте внимательнее" in text for text in messages), timeout=2000)
 
 
-def test_no_banner_without_recent_defects(app):
+def test_no_banner_when_marks_are_older_than_window(app):
     old = app.folder("Плата MB-15", date="2026-10-01")
-    app.mark(old, 0, "defect", "S1", None, recent_stamp(90))
-    app.mark(old, 1, "remark", "S2", None, recent_stamp(1))
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(200))
+    app.mark(old, 1, "remark", "S2", None, recent_stamp(400))
     messages = []
     app.window.statusBar().messageChanged.connect(messages.append)
     summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
@@ -333,7 +302,7 @@ def test_notice_once_per_opening_not_per_reload(app):
     assert len([text for text in messages if "Будьте внимательнее" in text]) == 1
 
 
-def test_current_folder_defects_do_not_make_part_problem(app):
+def test_current_folder_marks_do_not_make_part_problem(app):
     folder = app.folder("Плата MB-15")
     app.mark(folder, 0, "defect", "S1", None, recent_stamp(0))
     assert app.open(folder).problem is None
@@ -341,9 +310,9 @@ def test_current_folder_defects_do_not_make_part_problem(app):
 
 def test_problem_window_from_config(app):
     old = app.folder("Плата MB-15", date="2026-10-01")
-    app.mark(old, 0, "defect", "S1", None, recent_stamp(45))
-    app.ctx.config.app.setdefault("findings", {})["problem_days"] = 60
-    assert app.open(app.folder("Плата MB-15", date="2026-10-30")).problem.days == 60
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(250))
+    app.ctx.config.app.setdefault("findings", {})["problem_days"] = 365
+    assert app.open(app.folder("Плата MB-15", date="2026-10-30")).problem.days == 365
 
 
 def test_last_check_not_duplicated_under_banner(app):

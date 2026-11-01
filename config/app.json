@@ -19,10 +19,9 @@
     "retry_after_s": 10
   },
   "findings": {
-    "name_match": 0.85,
     "list_limit": 10,
-    "problem_days": 30,
-    "problem_min_defects": 1
+    "problem_days": 180,
+    "problem_min_marks": 1
   },
   "compare": {
     "neighbor_search_year_only": true,

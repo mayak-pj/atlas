@@ -28,7 +28,7 @@ atlas/
   shared/                     # переиспользуемое, без бизнес-логики
     viewer/                   # PhotoView, SyncGroup, ImageCache, Filmstrip
     annotate/                 # model (фигуры, History — отмена/повтор), paint, store (AnnotationStore), overlay (мышь и рисование поверх PhotoView)
-    widgets/                  # NameTag, ContextBar, FlowLayout, LogoMark, StampAnimation (stamp.py: кадры анимации «В АРХИВЕ»); Toast, SearchBox — по мере надобности
+    widgets/                  # NameTag, ContextBar, FlowLayout, LogoMark, icons (значки кнопок: Lucide, SVG в widgets/icons/ с файлом лицензии ISC; `set_icon(button, "имя", токен цвета)`), StampAnimation (stamp.py: кадры анимации «В АРХИВЕ»); Toast, SearchBox — по мере надобности
     outlook/                  # base.py, outlook_win.py, outlook_fake.py
     fs/                       # moves.py: безопасное перемещение (не перезаписывает, ошибки по файлам); photos.py: поиск .jpg/.jpeg в папке; дальше — копирование, блокировки
   features/

@@ -10,6 +10,7 @@ from atlas.core.feature import Feature
 from atlas.features.sort_types import logic
 from atlas.features.sort_types.ops import Sorter
 from atlas.features.sort_types.repo import Repo
+from atlas.shared.widgets.icons import set_icon
 
 log = logging.getLogger("atlas.sort_types")
 
@@ -51,6 +52,8 @@ class SortTypesFeature(Feature):
         row.setSpacing(6)
         self.sort_button = self._button(TEXT_SORT, self._start_sort)
         self.undo_button = self._button(TEXT_UNDO, self._start_undo)
+        set_icon(self.sort_button, "list-checks")
+        set_icon(self.undo_button, "undo-2")
         row.addWidget(self.sort_button)
         row.addWidget(self.undo_button)
         self._unsubscribe = [self.ctx.bus.subscribe(EVENT_FOLDER_OPENED, self._on_opened)]

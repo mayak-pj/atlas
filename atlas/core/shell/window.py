@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt5.QtCore import QRectF, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QIcon, QPainter, QPen, QPixmap
+from PyQt5.QtCore import QSize, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
@@ -18,28 +17,12 @@ from PyQt5.QtWidgets import (
 from atlas.core import theme
 from atlas.core.shell.slots import SlotRegistry
 from atlas.shared.widgets import ContextBar, LogoMark
+from atlas.shared.widgets.icons import set_icon
 
 log = logging.getLogger("atlas.shell")
 
 SLOT_USER = "shell.user"
 SLOT_ONLINE = "shell.online"
-
-
-def settings_icon(color, size=18):
-    """Значок «настройки» (три ползунка) — рисуется, шрифтовых значков на Win7 нет."""
-    ratio = 2
-    pixmap = QPixmap(size * ratio, size * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setPen(QPen(color, 1.6, Qt.SolidLine, Qt.RoundCap))
-    painter.setBrush(color)
-    for row, knob in ((4, 5), (9, 12), (14, 7)):
-        painter.drawLine(2, row, size - 2, row)
-        painter.drawEllipse(QRectF(knob - 2, row - 2, 4, 4))
-    painter.end()
-    return QIcon(pixmap)
 
 
 class ShellWindow(QMainWindow):
@@ -100,8 +83,7 @@ class ShellWindow(QMainWindow):
         self.settings_button = QPushButton()
         self.settings_button.setProperty("role", "icon")
         self.settings_button.setToolTip("Настройки")
-        self.settings_button.setIcon(settings_icon(theme.current().qcolor("text_dim")))
-        self.settings_button.setIconSize(QSize(18, 18))
+        set_icon(self.settings_button, "settings", size=18)
         self.settings_button.setCursor(Qt.PointingHandCursor)
         self.settings_button.clicked.connect(self._show_settings_menu)
         row.addWidget(self.settings_button)

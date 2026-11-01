@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 
 from atlas.features.add_folder import logic
 from atlas.shared.fs.photos import photo_paths
+from atlas.shared.widgets.icons import set_icon
 
 TITLE = "Добавить папку"
 TEXT_ADD = "Добавить"
@@ -63,6 +64,7 @@ class AddFolderDialog(QDialog):
         self.path = QLineEdit()
         self.path.setPlaceholderText(TEXT_PATH_PLACEHOLDER)
         self.browse_button = QPushButton(TEXT_BROWSE)
+        set_icon(self.browse_button, "folder-open")
         self.browse_button.setFocusPolicy(Qt.NoFocus)
         row = QHBoxLayout()
         row.addWidget(self.path, 1)

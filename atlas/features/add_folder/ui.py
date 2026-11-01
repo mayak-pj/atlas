@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QPushButton
 from atlas.core.feature import Feature
 from atlas.features.add_folder import logic
 from atlas.features.add_folder.dialog import AddFolderDialog
+from atlas.shared.widgets.icons import set_icon
 
 log = logging.getLogger("atlas.add_folder")
 
@@ -44,6 +45,7 @@ class AddFolderFeature(Feature):
         self._no_device = logic.load_no_device(self.ctx.paths.data)
         self.button = QPushButton(TEXT_BUTTON)
         self.button.setFocusPolicy(Qt.NoFocus)  # стрелки и пробел принадлежат экрану сравнения
+        set_icon(self.button, "folder-plus")
         self.button.setToolTip(TEXT_TIP)
         self.button.clicked.connect(lambda _=False: self.start())
         if self.ctx.shell is not None:

@@ -1,10 +1,8 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон, остальные — текущие; раскладка только показывает нужные."""
 from __future__ import annotations
 
-import math
-
-from PyQt5.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QIcon, QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
+from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
     QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
@@ -17,6 +15,7 @@ from atlas.features.compare.logic import (
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.widgets import FlowLayout
+from atlas.shared.widgets.icons import set_icon
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.photo_view import PhotoView
@@ -31,6 +30,8 @@ PANEL_BUTTONS = (
     ("bottom", "Лента", "Показать или скрыть ленту фото, отметки и подсказку внизу"),
     ("right", "Сводка", "Показать или скрыть панель справа (сводка по детали)"),
 )
+PANEL_ICONS = {"left": "panel-left", "top": "wrench", "bottom": "gallery-horizontal", "right": "panel-right"}
+MARK_ICONS = {"defect": ("triangle-alert", "defect"), "remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_SHOW_UI = "Показать всё"
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
@@ -68,51 +69,6 @@ class SlotColumn(QVBoxLayout):
     def removeWidget(self, widget):
         super().removeWidget(widget)
         self._holder.setVisible(self.count() > 0)
-
-
-def _arrow_icon(color, step, size=14):
-    """Стрелка рисуется кодом: символы вроде треугольника на Windows 7 могут оказаться без шрифта."""
-    ratio = 2
-    pixmap = QPixmap(size * ratio, size * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(color)
-    tip, back = (size - 3, 3) if step > 0 else (3, size - 3)
-    painter.drawPolygon(QPolygonF([QPointF(back, 2), QPointF(tip, size / 2), QPointF(back, size - 2)]))
-    painter.end()
-    return QIcon(pixmap)
-
-
-def _rotate_icon(color, clockwise, size=16):
-    """Круговая стрелка, рисуется кодом, как и _arrow_icon. Против часовой — зеркальное отражение."""
-    ratio = 2
-    pixmap = QPixmap(size * ratio, size * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    if not clockwise:
-        painter.translate(size, 0)
-        painter.scale(-1, 1)
-    center, radius, start, sweep = size / 2, size / 2 - 3, 60, -285
-    rect = QRectF(center - radius, center - radius, radius * 2, radius * 2)
-    arc = QPainterPath()
-    arc.arcMoveTo(rect, start)
-    arc.arcTo(rect, start, sweep)
-    painter.setPen(QPen(color, 1.6))
-    painter.drawPath(arc)
-    angle = math.radians(start + sweep)
-    end = QPointF(center + radius * math.cos(angle), center - radius * math.sin(angle))
-    along = QPointF(math.sin(angle), math.cos(angle))  # куда идёт дуга по часовой стрелке, ось y вниз
-    across = QPointF(-along.y(), along.x())
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(color)
-    painter.drawPolygon(QPolygonF([end + along * 4, end + across * 3, end - across * 3]))
-    painter.end()
-    return QIcon(pixmap)
 
 
 def _key(text):
@@ -241,6 +197,7 @@ class CompareScreen(QWidget):
         for key, text, tip in PANEL_BUTTONS:
             button = self._button(text, lambda _=False, k=key: self._on_panel_clicked(k), checkable=True)
             button.setProperty("role", "mini")
+            set_icon(button, PANEL_ICONS[key], size=12)
             button.setChecked(True)
             button.setToolTip(tip)
             self._panel_buttons[key] = button
@@ -248,6 +205,7 @@ class CompareScreen(QWidget):
         row.addStretch(1)
         self.hide_all_button = self._button(TEXT_HIDE_UI, self.toggle_interface)
         self.hide_all_button.setProperty("role", "mini")
+        set_icon(self.hide_all_button, "eye-off", size=12)
         row.addWidget(self.hide_all_button)
         return row
 
@@ -279,6 +237,7 @@ class CompareScreen(QWidget):
         self._panel_buttons[key].setChecked(bool(visible))
         shown = any(button.isChecked() for button in self._panel_buttons.values())
         self.hide_all_button.setText(TEXT_HIDE_UI if shown else TEXT_SHOW_UI)
+        set_icon(self.hide_all_button, "eye-off" if shown else "eye", size=12)
 
     def toggle_interface(self):
         """Скрыть все панели, оставив фото; повторно — вернуть все."""
@@ -326,7 +285,7 @@ class CompareScreen(QWidget):
         plus = self._button("+", lambda: self.group.zoom_by(BUTTON_ZOOM))
         plus.setProperty("role", "square")
         row.addWidget(plus)
-        row.addWidget(self._button("Вписать", self.fit))
+        row.addWidget(self._button("Вписать", self.fit))  # первый ряд без значков: с ними он не помещается в окно шириной 1024
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
         self.sync_button.setToolTip("Включено: зум, сдвиг и поворот у всех окон вместе. Выключено: у каждого окна свои")
@@ -336,13 +295,11 @@ class CompareScreen(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
         rows.addLayout(row)
-        color = theme.current().qcolor("text")
         keys = {delta: QKeySequence(key).toString() for key, delta in self._rotate_keys.items()}
         for delta, tip in ((-ROTATE_STEP, "Повернуть против часовой стрелки"), (ROTATE_STEP, "Повернуть по часовой стрелке")):
             button = self._button("", lambda _=False, d=delta: self.rotate(d))
             button.setProperty("role", "square")
-            button.setIcon(_rotate_icon(color, delta > 0))
-            button.setIconSize(QSize(16, 16))
+            set_icon(button, "rotate-cw" if delta > 0 else "rotate-ccw", "text")
             button.setToolTip("{} (клавиша {})".format(tip, keys.get(delta, "")))
             if delta > 0:
                 self.rotate_right_button = button
@@ -350,6 +307,7 @@ class CompareScreen(QWidget):
                 self.rotate_left_button = button
             row.addWidget(button)
         self.find_button = self._button("Найти такую же деталь", self.find_requested.emit)
+        set_icon(self.find_button, "search")
         self.find_button.setToolTip("Открыть эталоном последнюю проверку такой же детали")
         self.find_button.setEnabled(False)
         row.addWidget(self.find_button)
@@ -396,9 +354,8 @@ class CompareScreen(QWidget):
         row = QHBoxLayout(self.strip_panel)
         row.setContentsMargins(10, 10, 10, 10)
         row.setSpacing(10)
-        color = theme.current().qcolor("text")
-        self.prev_button = self._arrow_button(color, -1, "Предыдущее фото")
-        self.next_button = self._arrow_button(color, 1, "Следующее фото")
+        self.prev_button = self._arrow_button(-1, "Предыдущее фото")
+        self.next_button = self._arrow_button(1, "Следующее фото")
         row.addWidget(self.prev_button)
         row.addWidget(self.strip, 1)
         row.addWidget(self.next_button)
@@ -407,9 +364,12 @@ class CompareScreen(QWidget):
     def _build_marks_panel(self):
         self.marks_panel = QFrame()
         self.marks_panel.setProperty("role", "panel")
-        row = QHBoxLayout(self.marks_panel)
-        row.setContentsMargins(10, 10, 10, 10)
+        outer = QVBoxLayout(self.marks_panel)
+        outer.setContentsMargins(10, 10, 10, 10)
+        outer.setSpacing(8)
+        row = QHBoxLayout()  # первый ряд — отметки и счётчик; SN и вид дефекта — вторым рядом, иначе всё не помещается
         row.setSpacing(8)
+        outer.addLayout(row)
         self.marks_title = QLabel("")
         self.marks_title.setProperty("role", "caption")
         row.addWidget(self.marks_title)
@@ -417,6 +377,8 @@ class CompareScreen(QWidget):
         for mark, key in self._mark_keys.items():
             button = self._button(mark_label(mark), lambda _=False, m=mark: self.request_mark(m), checkable=True)
             button.setProperty("tone", mark_token(mark))
+            if mark in MARK_ICONS:
+                set_icon(button, MARK_ICONS[mark][0], on=MARK_ICONS[mark][1])
             button.setToolTip("Клавиша {}".format(QKeySequence(key).toString()) if key else "")
             self.mark_buttons[mark] = button
             row.addWidget(button)
@@ -439,22 +401,25 @@ class CompareScreen(QWidget):
             self.kind_box.addItem(kind, kind)
         self.kind_box.activated.connect(lambda _=0: self._on_defect_edited())
         box.addWidget(self.kind_box)
-        row.addWidget(self.defect_box)
-        self.defect_box.hide()
-        self.marks_status = QLabel("")
-        self.marks_status.setProperty("role", "warn")
-        row.addWidget(self.marks_status)
         row.addStretch(1)
         self.counts_label = QLabel("")
         self.counts_label.setProperty("role", "muted")
         row.addWidget(self.counts_label)
+        extra = QHBoxLayout()
+        extra.setSpacing(8)
+        outer.addLayout(extra)
+        extra.addWidget(self.defect_box)
+        self.defect_box.hide()
+        self.marks_status = QLabel("")
+        self.marks_status.setProperty("role", "warn")
+        extra.addWidget(self.marks_status)
+        extra.addStretch(1)
         return self.marks_panel
 
-    def _arrow_button(self, color, step, tip):
+    def _arrow_button(self, step, tip):
         button = self._button("", lambda: self.flip(step))
         button.setProperty("role", "square")
-        button.setIcon(_arrow_icon(color, step))
-        button.setIconSize(QSize(14, 14))
+        set_icon(button, "chevron-right" if step > 0 else "chevron-left", "text", size=14)
         button.setToolTip(tip)
         return button
 

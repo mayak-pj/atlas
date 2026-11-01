@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 import logging
 
-from PyQt5.QtCore import QPointF, QRectF, QSize, Qt
-from PyQt5.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QPixmap
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QKeySequence
 from PyQt5.QtWidgets import QHBoxLayout, QInputDialog, QPushButton, QShortcut, QWidget
 
 from atlas.core import theme
 from atlas.core.feature import Feature
 from atlas.shared.annotate.overlay import TOOL_CROP, TOOL_ELLIPSE, TOOL_LABEL, AnnotationOverlay
 from atlas.shared.annotate.store import AnnotationStore
+from atlas.shared.widgets.icons import set_icon
 
 log = logging.getLogger("atlas.annotate_tools")
 
@@ -19,6 +20,7 @@ PANEL_KEY = "annotate_tools"
 DIM_ALPHA = 140
 DEFAULT_KEYS = {"undo": "Ctrl+Z", "redo": "Ctrl+Y"}
 TOOL_TEXT = {TOOL_CROP: "Вырезать", TOOL_ELLIPSE: "Обвести", TOOL_LABEL: "Подпись"}
+TOOL_ICONS = {TOOL_CROP: "scissors", TOOL_ELLIPSE: "circle", TOOL_LABEL: "type"}
 TOOL_TIPS = {
     TOOL_CROP: "Ножницы: выделить область рамкой (она уйдёт в базу типов). Сдвиг при выбранном инструменте — Shift+мышь",
     TOOL_ELLIPSE: "Обвести дефект эллипсом: растяните рамку. Сдвиг при выбранном инструменте — Shift+мышь",
@@ -27,27 +29,6 @@ TOOL_TIPS = {
 LABEL_DIALOG_TITLE = "Подпись"
 LABEL_DIALOG_TEXT = "Текст подписи:"
 TEXT_NO_PHOTO = "Откройте фото, чтобы разметить его"
-
-
-def _tool_icon(tool, color, size=16):
-    """Значки рисуются кодом, как в макете (ножницы и круг); у подписи — «Аа» текстом самой кнопки."""
-    ratio = 2
-    pixmap = QPixmap(size * ratio, size * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setPen(QPen(color, 1.6))
-    painter.setBrush(Qt.NoBrush)
-    if tool == TOOL_ELLIPSE:
-        painter.drawEllipse(QRectF(1.5, 3.5, size - 3, size - 7))
-    elif tool == TOOL_CROP:
-        painter.drawEllipse(QRectF(2, 2, 4, 4))
-        painter.drawEllipse(QRectF(2, size - 6, 4, 4))
-        painter.drawLine(QPointF(size - 2, 2.5), QPointF(5.5, size - 5.5))
-        painter.drawLine(QPointF(size - 2, size - 2.5), QPointF(7.5, 7.5))
-    painter.end()
-    return QIcon(pixmap)
 
 
 class AnnotateToolsFeature(Feature):
@@ -74,23 +55,20 @@ class AnnotateToolsFeature(Feature):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
         self.tool_buttons = {}
-        icon_color = tokens.qcolor("text")
         for tool in (TOOL_CROP, TOOL_ELLIPSE, TOOL_LABEL):
             button = QPushButton(TOOL_TEXT[tool])
             button.setCheckable(True)
             button.setFocusPolicy(Qt.NoFocus)  # стрелки и пробел принадлежат экрану сравнения
             button.setToolTip(TOOL_TIPS[tool])
-            if tool == TOOL_LABEL:
-                button.setText("Аа  " + TOOL_TEXT[tool])
-            else:
-                button.setIcon(_tool_icon(tool, icon_color))
-                button.setIconSize(QSize(16, 16))
+            set_icon(button, TOOL_ICONS[tool], "text", on="text")
             button.clicked.connect(lambda checked, t=tool: self.select_tool(t if checked else None))
             self.tool_buttons[tool] = button
             row.addWidget(button)
         keys = self._keys()
         self.undo_button = self._action_button("Отменить", "Отменить последнее действие на этом фото ({})".format(keys["undo"]), self.undo)
+        set_icon(self.undo_button, "undo-2")
         self.redo_button = self._action_button("Вернуть", "Вернуть отменённое ({})".format(keys["redo"]), self.redo)
+        set_icon(self.redo_button, "redo-2")
         row.addWidget(self.undo_button)
         row.addWidget(self.redo_button)
         self._shortcuts = []

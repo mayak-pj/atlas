@@ -14,6 +14,7 @@ from atlas.features.type_db import logic
 from atlas.shared.viewer.levels import L1
 from atlas.shared.widgets import StampAnimation
 from atlas.shared.widgets import stamp as stamp_math
+from atlas.shared.widgets.icons import set_icon
 
 MAX_CARDS = 60  # больше виджетов сразу не строим: поиск уточняют, а не листают сотни карточек
 CARD_MIN_WIDTH = 250
@@ -175,6 +176,7 @@ class TypeCard(QFrame):
             body.addWidget(note)
         self.archive_button = QPushButton(TEXT_FROM_ARCHIVE if entry.archived else TEXT_TO_ARCHIVE)
         self.archive_button.setProperty("role", "restore" if entry.archived else "archive")
+        set_icon(self.archive_button, "archive-restore" if entry.archived else "archive", "ok" if entry.archived else "defect")
         self.archive_button.setFocusPolicy(Qt.NoFocus)
         self.archive_button.clicked.connect(lambda _=False: self.archive_clicked.emit(self.entry.id))
         body.addWidget(self.archive_button)

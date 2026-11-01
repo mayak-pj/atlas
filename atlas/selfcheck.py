@@ -97,6 +97,20 @@ def _check_formats(check):
         check.result("формат изображений {}".format(name), name in formats)
 
 
+def _check_icons(check):
+    """Значки кнопок (Lucide, SVG): файлы лежат в сборке и рисуются модулем QtSvg."""
+    from atlas.shared.widgets import icons
+
+    names = icons.names()
+    check.result("значки кнопок: файлы", len(names) >= 25 and (icons.ICON_DIR / "LICENSE.txt").is_file(), "{} шт.".format(len(names)))
+    empty = []
+    for name in names:
+        image = icons.pixmap(name, "#FFFFFF").toImage()
+        if not any(image.pixelColor(x, y).alpha() for x in range(0, image.width(), 2) for y in range(0, image.height(), 2)):
+            empty.append(name)
+    check.result("значки кнопок: рисуются", not empty, ", ".join(empty))
+
+
 def _wait_for_image(app, cache, photo, level):
     """Запрос через настоящую очередь и сигнал. Возвращает мс; None — картинка не пришла."""
     from PyQt5.QtCore import QEventLoop, QTimer
@@ -208,6 +222,7 @@ def _walk(check, paths, work):
     check.result("тема", bool(app.styleSheet()))
     check.info("Шрифты: основной «{}», моноширинный «{}»".format(theme.ui_family, theme.mono_family))
     _check_formats(check)
+    _check_icons(check)
     _check_image_levels(app, check, work)
 
     ctx = build_core(_make_work_root(paths, work))

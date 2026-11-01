@@ -116,7 +116,7 @@ class CompareFeature(Feature):
     def _read(self, folder):
         part = self.ctx.services.get("parts").get(folder.part_id)
         photos = [
-            logic.PhotoItem(photo.id, logic.photo_path(folder.path, photo.rel_path))
+            logic.PhotoItem(photo.id, logic.photo_path(folder.path, photo.rel_path), photo.mark)
             for photo in self.ctx.services.get("folders").photos(folder.id)
         ]
         return folder, part, photos

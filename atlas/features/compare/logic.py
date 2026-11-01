@@ -8,12 +8,15 @@ from typing import List, Optional, Tuple
 MAX_WINDOWS = 4
 MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эталон
 DEFAULT_HOTKEYS = {"prev": "Left", "next": "Right", "flicker": "Space"}
+NEIGHBORS_AHEAD = 2  # по ходу листания; при удержании стрелки чтение успевает за показом (замер --viewbench)
+NEIGHBORS_BEHIND = 1
 
 
 @dataclass(frozen=True)
 class PhotoItem:
     id: Optional[int]
     path: str
+    mark: Optional[str] = None
 
     @property
     def name(self):
@@ -37,6 +40,24 @@ def grid_cells(count, portrait) -> List[Tuple[int, int, int, int]]:
     return [(0, 0, 1, 1), (0, 1, 1, 1), (1, 0, 1, 1), (1, 1, 1, 1)]
 
 
+def mark_token(mark):
+    """Токен цвета точки на миниатюре, как в макете; None — отметки нет."""
+    if not mark:
+        return None
+    if mark == "type:1":
+        return "ok"
+    if mark.startswith("type:"):
+        return "type2"
+    return {"defect": "defect", "remark": "remark"}.get(mark)
+
+
+def neighbor_indexes(index, total, direction):
+    """Какие фото подготовить, сначала самое важное. direction — знак последнего шага (1 или -1)."""
+    ahead = [index + direction * step for step in range(1, NEIGHBORS_AHEAD + 1)]
+    behind = [index - direction * step for step in range(1, NEIGHBORS_BEHIND + 1)]
+    return [number for number in ahead + behind if 0 <= number < total]
+
+
 def position_text(index, total):
     return "{} / {}".format(index + 1, total)
 
@@ -49,6 +70,7 @@ class CompareModel:
         self.reference = None  # PhotoItem
         self.count = 1
         self.active = 0
+        self.direction = 1  # знак последнего шага: что предзагружать
         self._indexes = [0] * MAX_CURRENTS
 
     @property
@@ -60,6 +82,7 @@ class CompareModel:
         self.photos = list(photos)
         self.reference = self.photos[0] if self.photos else None
         self.active = 0
+        self.direction = 1
         self._indexes = [0] * MAX_CURRENTS
         self._spread_from(0)
 
@@ -85,12 +108,21 @@ class CompareModel:
         """PhotoItem текущего окна или None, если папка пуста."""
         return self.photos[self._indexes[window]] if self.photos else None
 
+    @property
+    def active_index(self):
+        return self._indexes[self.active]
+
     def flip(self, step):
         """Листает активное окно, по краям папки останавливается. True — фото сменилось."""
+        return self.go(self.active_index + step)
+
+    def go(self, index):
+        """Перейти в активном окне к фото с этим номером. True — фото сменилось."""
         if not self.photos:
             return False
-        index = min(max(self._indexes[self.active] + step, 0), len(self.photos) - 1)
-        changed = index != self._indexes[self.active]
+        index = min(max(index, 0), len(self.photos) - 1)
+        changed = index != self.active_index
+        self.direction = 1 if index >= self.active_index else -1
         self._indexes[self.active] = index
         return changed
 

@@ -4,13 +4,15 @@ import shutil
 from pathlib import Path
 
 import pytest
-from PyQt5.QtCore import QEvent, Qt
+from PyQt5.QtCore import QEvent, QPoint, Qt
 from PyQt5.QtGui import QColor, QImage, QKeyEvent
 from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QLabel
 
 from atlas.app import build_core, build_window, start_features
 from atlas.core.config import AppPaths
+from atlas.shared.viewer.filmstrip import GAP
+from atlas.shared.viewer.levels import L1
 
 REPO = Path(__file__).resolve().parent.parent
 COLORS = ["#CC2020", "#20CC20", "#2020CC", "#CCCC20", "#20CCCC", "#CC20CC"]
@@ -397,3 +399,118 @@ def test_stale_answer_is_ignored(app, tmp_path):
     result = app.feature._read(second)
     app.feature._on_loaded(app.feature._request - 1, result)
     assert app.feature.folder.id == app.folder.id
+
+
+# --- лента и предзагрузка ---------------------------------------------------
+def _click_cell(strip, index):
+    first, _ = strip.visible()
+    x = (index - first) * (strip._cell_width + GAP) + 5
+    QTest.mouseClick(strip, Qt.LeftButton, pos=QPoint(x, 10))
+
+
+def test_click_on_strip_goes_to_photo_and_publishes(app):
+    app.wait_open()
+    _click_cell(app.screen.strip, 3)
+    assert app.active_name() == "фото 004.jpg"
+    assert app.screen.strip.current == 3
+    assert [p["index"] for n, p in app.events if n == "photo.changed"] == [3]
+    assert app.screen.hasFocus() or not app.window.isActiveWindow()  # стрелки продолжают работать после клика
+    app.press(Qt.Key_Right)
+    assert app.active_name() == "фото 005.jpg"
+
+
+def test_click_in_gap_between_cells_does_nothing(app):
+    app.wait_open()
+    strip = app.screen.strip
+    QTest.mouseClick(strip, Qt.LeftButton, pos=QPoint(strip._cell_width + GAP // 2, 10))
+    assert app.active_name() == "фото 001.jpg"
+
+
+def test_strip_follows_active_window_not_reference(app):
+    app.wait_open()
+    app.screen.set_layout(3)
+    app.wait_shown()
+    assert app.screen.strip.current == 0
+    QTest.mouseClick(app.screen.views[2], Qt.LeftButton)
+    assert app.screen.strip.current == 1
+    _click_cell(app.screen.strip, 4)
+    assert Path(app.screen.views[2].path).name == "фото 005.jpg"
+    assert Path(app.screen.views[1].path).name == "фото 001.jpg"
+    assert Path(app.screen.views[0].path).name == "фото 001.jpg"
+
+
+def test_strip_click_ignored_during_flicker(app):
+    app.wait_open()
+    _space(app.screen, QTest.Press)
+    _click_cell(app.screen.strip, 3)
+    _space(app.screen, QTest.Release)
+    assert app.active_name() == "фото 001.jpg"
+
+
+def test_arrow_buttons_flip_and_disable_at_edges(app):
+    app.wait_open()
+    screen = app.screen
+    assert not screen.prev_button.isEnabled() and screen.next_button.isEnabled()
+    screen.next_button.click()
+    assert app.active_name() == "фото 002.jpg"
+    assert screen.prev_button.isEnabled()
+    screen.go(5)
+    assert not screen.next_button.isEnabled()
+    assert screen.prev_button.focusPolicy() == Qt.NoFocus
+
+
+def test_thumbnails_appear_and_only_visible_are_kept(app):
+    app.wait_open()
+    strip = app.screen.strip
+    first, last = strip.visible()
+    app.qtbot.waitUntil(lambda: len(strip._thumbs) == last - first, timeout=5000)
+    assert last - first == 6
+
+
+def test_marks_come_from_database(app):
+    app.wait_open()  # первое чтение папки идёт в фоне: отметки ставим после него и открываем заново
+    folders = app.ctx.services.get("folders")
+    stored = folders.photos(app.folder.id)
+    folders.mark_photo(stored[1].id, "type:2")
+    folders.mark_photo(stored[2].id, "defect", "S1")
+    app.feature.open_folder(app.folder.id)
+    strip = app.screen.strip
+    app.qtbot.waitUntil(lambda: strip._items[1].mark_color is not None, timeout=5000)
+    assert strip._items[0].mark_color is None
+    assert strip._items[1].mark_color.name() == "#f2a93b"
+    assert strip._items[2].mark_color.name() == "#ff5a5f"
+
+
+def test_neighbors_reach_memory_ahead_of_flipping(app):
+    app.wait_open()
+    cache = app.ctx.services.get("image_cache")
+    app.screen.go(2)
+    in_memory = lambda number: cache._memory.best(str(app.path / "фото {:03d}.jpg".format(number)), L1)
+    app.qtbot.waitUntil(lambda: all(in_memory(n) and in_memory(n).level >= L1 for n in (4, 5, 2)), timeout=5000)
+
+
+def test_folder_is_warmed_on_disk_on_open(app):
+    app.wait_open()
+    cache = app.ctx.services.get("image_cache")
+    app.qtbot.waitUntil(lambda: cache.wait_idle(0.01), timeout=5000)
+    assert len(list((app.path.parent.parent / "кэш").rglob("*.*"))) >= 2 * 6  # L0 и L1 всех фото
+
+
+def test_held_arrow_requests_no_thumbnails_until_stop(app, monkeypatch):
+    app.wait_open()
+    calls = []
+    monkeypatch.setattr(app.screen.strip, "request_visible", lambda: calls.append(1))
+    for _ in range(4):
+        _key(app.screen, QEvent.KeyPress, Qt.Key_Right, auto=True)
+    assert not calls
+    app.qtbot.waitUntil(lambda: bool(calls), timeout=2000)
+    assert len(calls) == 1
+
+
+def test_strip_hidden_for_empty_folder(tmp_path, qtbot):
+    app = App(tmp_path, qtbot, count=0)
+    try:
+        app.qtbot.waitUntil(lambda: app.feature.folder is not None, timeout=5000)
+        assert not app.screen.strip_panel.isVisible()
+    finally:
+        app.stop()

@@ -193,6 +193,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
 - `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`, `shown_image_size`. Свойство Qt `active` — подсветка активного окна.
+- `Filmstrip(cache, colors)`: `set_items([FilmItem(path, mark_color)])`, `set_current(index)`, `set_mark(index, color)`, `set_portrait(bool)`, `request_visible()`, `visible()`; сигнал `clicked(index)`. Рисует только то, что помещается. `set_current` ничего не запрашивает: миниатюры просит владелец после остановки листания.
 - `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `set_state(zoom, cx, cy)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `touch(view)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
 
 ## Как добавить / изменить / удалить функцию

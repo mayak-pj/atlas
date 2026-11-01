@@ -1,11 +1,13 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон, остальные — текущие; раскладка только показывает нужные."""
 from __future__ import annotations
 
-from PyQt5.QtCore import QEvent, Qt, pyqtSignal
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtCore import QEvent, QPointF, QSize, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QIcon, QKeySequence, QPainter, QPixmap, QPolygonF
 from PyQt5.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from atlas.features.compare.logic import MAX_WINDOWS, CompareModel, grid_cells, position_text
+from atlas.core import theme
+from atlas.features.compare.logic import MAX_WINDOWS, CompareModel, grid_cells, mark_token, neighbor_indexes, position_text
+from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.photo_view import PhotoView
 from atlas.shared.viewer.sync_group import SyncGroup
@@ -14,6 +16,7 @@ BUTTON_ZOOM = 1.4  # как в макете
 LEFT_WIDTH = (240, 280)
 RIGHT_WIDTH = (280, 320)
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
+STRIP_SETTLE_MS = 150  # миниатюры — после остановки: при удержании стрелки чтение нужно текущему фото
 TEXT_NO_FOLDER = "Папка не открыта"
 TEXT_NO_PHOTOS = "В папке нет фото"
 TAG_REFERENCE = "ЭТАЛОН"
@@ -38,6 +41,22 @@ class SlotColumn(QVBoxLayout):
     def removeWidget(self, widget):
         super().removeWidget(widget)
         self._holder.setVisible(self.count() > 0)
+
+
+def _arrow_icon(color, step, size=14):
+    """Стрелка рисуется кодом: символы вроде треугольника на Windows 7 могут оказаться без шрифта."""
+    ratio = 2
+    pixmap = QPixmap(size * ratio, size * ratio)
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(color)
+    tip, back = (size - 3, 3) if step > 0 else (3, size - 3)
+    painter.drawPolygon(QPolygonF([QPointF(back, 2), QPointF(tip, size / 2), QPointF(back, size - 2)]))
+    painter.end()
+    return QIcon(pixmap)
 
 
 def _key(text):
@@ -67,6 +86,19 @@ class CompareScreen(QWidget):
             view.installEventFilter(self)
             view.photo_shown.connect(lambda _path, source=view: self._learn_orientation(source))
         self._layout_buttons = {}
+        tokens = theme.current()
+        self.strip = Filmstrip(cache, {
+            "border": tokens.qcolor("border"),
+            "active": tokens.qcolor("accent"),
+            "empty": tokens.qcolor("photo_bg"),
+            "text": tokens.qcolor("text"),
+            "text_bg": tokens.qcolor("bg"),
+        })
+        self.strip.clicked.connect(self.go)
+        self._strip_timer = QTimer(self)
+        self._strip_timer.setSingleShot(True)
+        self._strip_timer.setInterval(STRIP_SETTLE_MS)
+        self._strip_timer.timeout.connect(self._on_strip_settled)
 
         self.left = QWidget()
         self.left.setMinimumWidth(LEFT_WIDTH[0])
@@ -91,6 +123,7 @@ class CompareScreen(QWidget):
         middle.addWidget(self._build_toolbar())
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
+        middle.addWidget(self._build_strip_panel())
         middle.addWidget(hint)
 
         root = QHBoxLayout(self)
@@ -136,6 +169,28 @@ class CompareScreen(QWidget):
         row.addStretch(1)
         return bar
 
+    def _build_strip_panel(self):
+        self.strip_panel = QFrame()
+        self.strip_panel.setProperty("role", "panel")
+        row = QHBoxLayout(self.strip_panel)
+        row.setContentsMargins(10, 10, 10, 10)
+        row.setSpacing(10)
+        color = theme.current().qcolor("text")
+        self.prev_button = self._arrow_button(color, -1, "Предыдущее фото")
+        self.next_button = self._arrow_button(color, 1, "Следующее фото")
+        row.addWidget(self.prev_button)
+        row.addWidget(self.strip, 1)
+        row.addWidget(self.next_button)
+        return self.strip_panel
+
+    def _arrow_button(self, color, step, tip):
+        button = self._button("", lambda: self.flip(step))
+        button.setProperty("role", "square")
+        button.setIcon(_arrow_icon(color, step))
+        button.setIconSize(QSize(14, 14))
+        button.setToolTip(tip)
+        return button
+
     def _button(self, text, action, checkable=False):
         button = QPushButton(text)
         button.setFocusPolicy(Qt.NoFocus)
@@ -155,12 +210,14 @@ class CompareScreen(QWidget):
         self.model.set_photos(photos)
         self._orientation_known = False
         self.message.setText(TEXT_NO_PHOTOS)
-        self._warm_reference()
+        self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in self.model.photos])
         self._apply_layout()
+        self._cache.prefetch([photo.path for photo in self.model.photos])
 
     def show_failure(self, text):
         self._end_flicker()
         self.model.set_photos([])
+        self.strip.set_items([])
         self.message.setText(text)
         self._apply_layout()
 
@@ -168,7 +225,6 @@ class CompareScreen(QWidget):
         """Заменить эталон. На текущие окна и их индексы это не влияет."""
         self._end_flicker()
         self.model.reference = photo
-        self._warm_reference()
         self._apply_layout()
 
     def set_layout(self, count):
@@ -178,6 +234,10 @@ class CompareScreen(QWidget):
             button.setChecked(number == count)
         self.sync_button.setEnabled(count > 1)
         self._apply_layout()
+
+    def _mark_color(self, mark):
+        token = mark_token(mark)
+        return theme.current().qcolor(token) if token else None
 
     def fit(self):
         self.group.fit()
@@ -204,6 +264,7 @@ class CompareScreen(QWidget):
     def _apply_layout(self):
         has_photos = bool(self.model.photos)
         self.message.setVisible(not has_photos)
+        self.strip_panel.setVisible(has_photos)
         visible = self._visible_views() if has_photos else []
         for view in self.views:
             self.grid.removeWidget(view)
@@ -220,6 +281,30 @@ class CompareScreen(QWidget):
             view.show()
             self._show_in(view)
         self._mark_active()
+        self._sync_strip()
+
+    def _sync_strip(self):
+        self.strip.set_current(self.model.active_index)
+        self.prev_button.setEnabled(self.model.active_index > 0)
+        self.next_button.setEnabled(self.model.active_index < len(self.model.photos) - 1)
+
+    def _after_show(self):
+        """show_photo отменил очередь: соседей просим сразу, миниатюры — когда листание остановится."""
+        self._request_neighbors()
+        self._strip_timer.start()
+
+    def _on_strip_settled(self):
+        self.strip.request_visible()
+        self._request_neighbors()  # последними: в очереди новые идут первыми, соседи важнее миниатюр
+
+    def _request_neighbors(self):
+        """Самое важное — последним, в очереди новые идут первыми. Эталон — для «мигалки», при 1 фото его нет на экране."""
+        model = self.model
+        wanted = [model.photos[number] for number in neighbor_indexes(model.active_index, len(model.photos), model.direction)]
+        if model.reference is not None:
+            wanted.append(model.reference)
+        for photo in reversed(wanted):
+            self._cache.get(photo.path, L1, NEIGHBOR)
 
     def _place(self, visible):
         for line in range(MAX_WINDOWS):
@@ -235,6 +320,7 @@ class CompareScreen(QWidget):
             photo = self.model.reference
             self.group.show_photo(view, photo.path)
             view.set_caption(TAG_REFERENCE, photo.name, reference=True)
+            self._after_show()
             return
         window = self.views.index(view) - 1
         photo = self.model.current(window)
@@ -242,6 +328,7 @@ class CompareScreen(QWidget):
         tag = TAG_SINGLE if self.model.count == 1 else TAG_CURRENT
         position = position_text(self.model.index(window), len(self.model.photos))
         view.set_caption(tag, "{}  {}".format(position, photo.name))
+        self._after_show()
 
     def _mark_active(self):
         for view in self.views:
@@ -252,11 +339,6 @@ class CompareScreen(QWidget):
                 view.style().polish(view)
                 view.update()
 
-    def _warm_reference(self):
-        """При одном фото эталона на экране нет, а «мигалка» должна сработать сразу."""
-        if self.model.reference is not None:
-            self._cache.get(self.model.reference.path, L1, NEIGHBOR)
-
     def _learn_orientation(self, view):
         """Один раз на папку: при листании сетка не должна прыгать, даже если попалось фото другой ориентации."""
         if self._orientation_known or view is self.views[0]:
@@ -266,6 +348,7 @@ class CompareScreen(QWidget):
             return
         self._orientation_known = True
         portrait = size[1] >= size[0]
+        self.strip.set_portrait(portrait)
         if portrait != self._portrait:
             self._portrait = portrait
             visible = self._visible_views()
@@ -275,9 +358,14 @@ class CompareScreen(QWidget):
 
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):
-        if self._flicker is not None or not self.model.flip(step):
+        self.go(self.model.active_index + step)
+
+    def go(self, index):
+        """Перейти в активном окне к фото с этим номером: стрелки, кнопки, клик по ленте."""
+        if self._flicker is not None or not self.model.go(index):
             return
         self._show_in(self.active_view())
+        self._sync_strip()
         window = self.model.active
         self.photo_changed.emit(self.model.current(window), self.model.index(window))
 
@@ -332,6 +420,8 @@ class CompareScreen(QWidget):
             return  # эталон не листается: активным остаётся прежнее окно
         self.model.set_active(self.views.index(view) - 1)
         self._mark_active()
+        self._sync_strip()
+        self._after_show()
 
     def showEvent(self, event):
         super().showEvent(event)

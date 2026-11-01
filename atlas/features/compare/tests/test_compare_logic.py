@@ -1,6 +1,9 @@
 import pytest
 
-from atlas.features.compare.logic import CompareModel, PhotoItem, grid_cells, photo_path, position_text
+from atlas.features.compare.logic import (
+    CompareModel, PhotoItem, grid_cells, mark_token, neighbor_indexes, photo_path, position_text,
+)
+from atlas.shared.viewer.filmstrip import visible_range
 
 
 def _model(total=10, count=1):
@@ -84,3 +87,38 @@ def test_reference_window_cannot_be_active():
 def test_photo_path_and_position():
     assert photo_path("/сеть/Папка", "Тип 1/001.jpg").endswith("Тип 1/001.jpg")
     assert position_text(2, 486) == "3 / 486"
+
+
+def test_neighbors_follow_direction_and_stay_inside_folder():
+    assert neighbor_indexes(5, 10, 1) == [6, 7, 4]
+    assert neighbor_indexes(5, 10, -1) == [4, 3, 6]
+    assert neighbor_indexes(9, 10, 1) == [8]
+    assert neighbor_indexes(0, 1, 1) == []
+
+
+def test_go_remembers_direction_and_clamps():
+    model = _model()
+    assert model.go(5)
+    assert model.direction == 1
+    assert model.go(2)
+    assert model.direction == -1
+    assert model.go(99)
+    assert model.active_index == 9
+    assert not model.go(9)
+
+
+def test_mark_tokens():
+    assert mark_token(None) is None
+    assert mark_token("type:1") == "ok"
+    assert mark_token("type:2") == mark_token("type:7") == "type2"
+    assert mark_token("defect") == "defect"
+    assert mark_token("remark") == "remark"
+    assert mark_token("странное") is None
+
+
+def test_visible_range_centres_and_stops_at_edges():
+    assert visible_range(50, 486, 9) == (46, 55)
+    assert visible_range(0, 486, 9) == (0, 9)
+    assert visible_range(485, 486, 9) == (477, 486)
+    assert visible_range(1, 3, 9) == (0, 3)
+    assert visible_range(0, 3, 0) == (0, 1)

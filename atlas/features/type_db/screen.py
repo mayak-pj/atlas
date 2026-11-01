@@ -228,6 +228,7 @@ class DetailPanel(QFrame):
         self.empty.setProperty("role", "muted")
         layout.addWidget(self.empty)
         self.body = QWidget()
+        self.body.setProperty("role", "plain")  # без этого QSS красит обёртку в цвет фона, и она видна прямоугольником на панели
         body = QVBoxLayout(self.body)
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(10)

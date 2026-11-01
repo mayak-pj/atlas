@@ -421,6 +421,7 @@ class CompareScreen(QWidget):
             self.mark_buttons[mark] = button
             row.addWidget(button)
         self.defect_box = QWidget()
+        self.defect_box.setProperty("role", "plain")
         box = QHBoxLayout(self.defect_box)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)

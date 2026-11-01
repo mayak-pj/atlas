@@ -1,0 +1,13 @@
+{
+  "users": ["Иванова", "Петров", "Кузнецова", "Соколов", "Морозова"],
+  "folders": [
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "SSD XS-2280 512GB", "article": "512-XS-B", "days_ago": 0, "photos": 486, "variant": "ssd", "status": "new", "by": "Петров"},
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "Матплата MB-15 rev.B", "article": "MB15-B-02", "days_ago": 0, "photos": 212, "variant": "board", "status": "new", "by": "Петров"},
+    {"kind": "СТ", "project": "Вега", "device": "В7", "part": "Плата питания PWR-7", "article": "PWR7-A", "days_ago": 1, "photos": 120, "variant": "power", "status": "in_work", "by": "Кузнецова"},
+    {"kind": "СТ", "project": "Вега", "device": "В7", "part": "Шлейф FPC-40", "article": null, "days_ago": 0, "photos": 64, "variant": "flex", "status": "new", "by": "Петров"},
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "Wi-Fi модуль AX-210", "article": null, "days_ago": 0, "photos": 98, "variant": "board", "status": "new", "by": "Петров"},
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "Матплата MB-15 rev.B", "article": "MB15-B-02", "days_ago": 1, "photos": 40, "variant": "board", "status": "done", "by": "Иванова", "marks": {"type:1": 2, "type:2": 2}},
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "Дисплей LCD-156", "article": null, "days_ago": 1, "photos": 30, "variant": "flex", "status": "done", "by": "Петров", "marks": {"defect": 1}},
+    {"kind": "КК", "project": "Орион-24", "device": "N15", "part": "SSD XS-2280 512GB", "article": "512-XS-B", "days_ago": 3, "photos": 50, "variant": "ssd", "status": "done", "by": "Иванова"}
+  ]
+}

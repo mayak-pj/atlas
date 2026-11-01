@@ -109,7 +109,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 |---|---|---|---|
 | `hello` | тестовая: проверка вкладки, сервиса, миграции | Привет | — |
 | `login` | вход по фамилии, теги | — (диалог при старте) | `shell.user` |
-| `presence` | кто сейчас работает и над какой папкой | — | `shell.online`, `compare.left` |
+| `presence` | кто сейчас работает и над какой папкой | — | `shell.online` |
 | `compare` | просмотр 1…N фото, синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
 | `folders` | панель истории копирования (данные — сервис ядра `folders`) | — | `compare.left` |
 | `annotate_tools` | ножницы, обводка, подпись | — | `compare.toolbar` |
@@ -132,7 +132,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | Слот | Владелец | Что кладут |
 |---|---|---|
 | `shell.user` | оболочка | тег пользователя (`login`) |
-| `shell.online` | оболочка | «кто онлайн» (`presence`, шаг 1.2) |
+| `shell.online` | оболочка | «кто онлайн» (`presence`) |
 | `login.summary` | login | «С вашего последнего входа» (правила, комментарии, папки) — только на время диалога |
 | `login.aside` | login | «Сейчас в работе», последние папки — только на время диалога |
 
@@ -144,6 +144,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 |---|---|---|
 | `feature.failed` | ядро (registry) | `{id, stage, error}` |
 | `user.logged_in` | login | `{user}` — `atlas.core.app_context.User(id, name, color)` |
+| `presence.changed` | presence | `{online}` — список `OnlineUser(user_id, name, color, folder_id, folder_text)` |
 | `folder.copied` | import_mail | `{folder_id, part_id}` |
 | `folder.opened` | compare | `{folder_id, part_id}` |
 | `folder.done` | report | `{folder_id}` |
@@ -160,6 +161,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 |---|---|---|
 | `hello` | hello (тестовая) | `greet(name)` |
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
+| `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
 | `image_cache` | shared/viewer (ядро) | `get(path, level)`, `prefetch(paths)` |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |

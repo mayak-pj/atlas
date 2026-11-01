@@ -8,6 +8,14 @@
     {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Wi-Fi модуль AX-210", "article": null, "days_ago": 0, "photos": 98, "variant": "board", "status": "new", "by": "Петров"},
     {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Матплата MB-15 rev.B", "article": "MB15-B-02", "days_ago": 1, "photos": 40, "variant": "board", "status": "done", "by": "Иванова", "marks": {"type:1": 2, "type:2": 2}},
     {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Дисплей LCD-156", "article": null, "days_ago": 1, "photos": 30, "variant": "flex", "status": "done", "by": "Петров", "marks": {"defect": 1}},
-    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "SSD XS-2280 512GB", "article": "512-XS-B", "days_ago": 3, "photos": 50, "variant": "ssd", "status": "done", "by": "Иванова"}
+    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "SSD XS-2280 512GB", "article": "512-XS-B", "days_ago": 3, "photos": 50, "variant": "ssd", "status": "done", "by": "Иванова"},
+    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Плата один ракурс", "article": "100100", "days_ago": 4, "variant": "board", "status": "new", "by": "Петров",
+     "names": ["100100_1_AB0001.jpg", "100100_1_AB0002.jpg", "100100_1_AB0003.jpg"]},
+    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Плата две стороны", "article": "200200", "days_ago": 4, "variant": "power", "status": "new", "by": "Петров",
+     "names": ["200200_1_CD0001.jpg", "200200_2_CD0001.jpg", "200200_1_CD0002.jpg", "200200_2_CD0003.jpg", "200200_1_CD0004_old.jpg", "200200_2_CD0004.jpg"]},
+    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Плата три стороны и чужие имена", "article": "300300", "days_ago": 4, "variant": "ssd", "status": "new", "by": "Петров",
+     "names": ["300300_1_EF0001.jpg", "300300_2_EF0001.jpg", "300300_3_EF0001.jpg", "300300_1_EF0002.jpg", "300300_1_EF0002_x.jpg", "300300_3_EF0002.jpg", "IMG_0042.jpg", "скан платы.jpg"]},
+    {"kind": "A", "project": "Орион-24", "device": "N15", "part": "Плата пять ракурсов", "article": "400400", "days_ago": 4, "variant": "flex", "status": "new", "by": "Петров",
+     "names": ["400400_1_GH0001.jpg", "400400_2_GH0001.jpg", "400400_3_GH0001.jpg", "400400_4_GH0001.jpg", "400400_5_GH0001.jpg", "400400_1_GH0002.jpg", "400400_4_GH0002.jpg"]}
   ]
 }

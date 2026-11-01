@@ -109,12 +109,12 @@ def test_opens_latest_folder_sets_context_and_publishes(app):
 def test_one_window_flips_and_keeps_zoom_and_place(app):
     app.wait_open()
     view = app.screen.active_view()
-    app.screen.group.set_state(8.0, 0.3, 0.6)
+    app.screen.group.set_state(8.0, 0.35, 0.6)
     app.press(Qt.Key_Right)
     app.press(Qt.Key_Right)
     app.wait_shown()
     assert app.active_name() == "фото 003.jpg"
-    assert view.state() == pytest.approx((8.0, 0.3, 0.6))
+    assert view.state() == pytest.approx((8.0, 0.35, 0.6))
     app.press(Qt.Key_Left)
     assert app.active_name() == "фото 002.jpg"
     changes = [payload for name, payload in app.events if name == "photo.changed"]

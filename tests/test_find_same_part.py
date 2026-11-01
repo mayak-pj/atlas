@@ -182,12 +182,12 @@ def test_strip_follows_the_active_window(app):
     strip = app.screen.strip
     assert len(app.screen.model.photos) == 4
     _click(app.screen.views[0])
-    assert app.screen._strip_of_reference and not app.screen.prev_button.isEnabled()
+    assert app.screen._strip_source == "reference" and not app.screen.prev_button.isEnabled()
     assert app.screen.next_button.isEnabled()
     app.press(Qt.Key_Right)
     assert not app.screen.next_button.isEnabled() and app.screen.prev_button.isEnabled()
     _click(app.screen.views[1])
-    assert not app.screen._strip_of_reference and strip is app.screen.strip
+    assert app.screen._strip_source == "folder" and strip is app.screen.strip
 
 
 def test_single_reference_still_cannot_be_flipped(app):

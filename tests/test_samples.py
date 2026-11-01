@@ -7,6 +7,8 @@ from PyQt5.QtGui import QImageReader
 from atlas.core.domain.folders import FoldersService
 from atlas.core.domain.parts import PartsService
 from atlas.core.domain.users import UsersService
+from atlas.features.compare.angles import build_plan
+from atlas.features.compare.logic import PhotoItem
 from samples import photos
 from samples.seed import _pick_marks, seed
 
@@ -25,10 +27,10 @@ def test_seed_matches_mockup_and_is_repeatable(qapp, tmp_path):
     assert len(UsersService(db).all()) == 5
     assert {part.kind for part in PartsService(db).all()} == {"A", "B"}
     recent = folders.recent()
-    assert len(recent) == 8
-    assert len(folders.recent(status="new")) == 4
+    assert len(recent) == 12
+    assert len(folders.recent(status="new")) == 8
     assert len(folders.recent(status="done")) == 3
-    assert all(len(folders.photos(f.id)) == 4 for f in recent)
+    assert sorted(len(folders.photos(f.id)) for f in recent) == [3, 4, 4, 4, 4, 4, 4, 4, 4, 6, 7, 8]  # 3, 6, 7, 8 — «Ракурсы»
     assert all((out / "photos") in Path(f.path).parents for f in recent)
     for folder in recent:
         for photo in folders.photos(folder.id):
@@ -39,6 +41,23 @@ def test_seed_matches_mockup_and_is_repeatable(qapp, tmp_path):
     counts = folders.counts([f.id for f in done])
     assert sorted(item.get("defect", 0) for item in counts.values()) == [0, 0, 1]
     assert sorted(item.get("type:2", 0) for item in counts.values()) == [0, 0, 2]
+
+
+def test_seed_has_angle_folders(qapp, tmp_path):
+    """Набор для «Ракурсов»: 1, 2, 3 и больше 4 ракурсов, пропуски, чужие имена, повтор."""
+    db = _seed(tmp_path / "out")
+    folders = FoldersService(db)
+    plans = {}
+    for folder in folders.recent():
+        items = [PhotoItem(photo.id, photo.rel_path) for photo in folders.photos(folder.id)]
+        plans[PartsService(db).get(folder.part_id).name] = build_plan(items)
+    assert plans["Плата один ракурс"].views == [1]
+    two = plans["Плата две стороны"]
+    assert two.views == [1, 2] and [sorted(item.photos) for item in two.sets] == [[1, 2], [1], [2], [1, 2]]  # по SN, с пропусками
+    three = plans["Плата три стороны и чужие имена"]
+    assert three.views == [1, 2, 3] and three.unparsed == 2 and three.repeats == [["300300_1_EF0002.jpg", "300300_1_EF0002_x.jpg"]]
+    many = plans["Плата пять ракурсов"]
+    assert many.views == [1, 2, 3, 4] and many.hidden == 1
 
 
 def test_pick_marks_stops_at_folder_size():

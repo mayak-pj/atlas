@@ -296,3 +296,27 @@ def test_demo_sync_button_toggles(demo, qtbot):
     assert demo.views[0].state()[0] == 1.0
     qtbot.mouseClick(demo.sync_button, Qt.LeftButton)
     assert demo.views[0].state()[0] == pytest.approx(2)
+
+
+def test_show_photos_one_cancel_many_views(make_view, cache):
+    first, second = make_view("a.jpg"), make_view("b.jpg")
+    group = SyncGroup(cache)
+    group.add(first)
+    group.add(second)
+    before = cache.cancelled
+    group.show_photos([(first, "c.jpg"), (second, "d.jpg")])
+    assert cache.cancelled == before + 1
+    assert first.path == "c.jpg" and second.path == "d.jpg"
+    assert ("c.jpg", L1) in cache.pending and ("d.jpg", L1) in cache.pending
+
+
+def test_show_missing_clears_and_keeps_zoom(make_view, cache):
+    view = make_view("a.jpg")
+    cache.deliver("a.jpg")
+    view.zoom_by(2.0)
+    state = view.state()
+    view.show_missing("Нет ракурса 2")
+    assert view.path is None and not view.is_current_shown
+    assert view._message.text() == "Нет ракурса 2" and view.state() == state
+    view.set_photo("b.jpg")
+    assert view._message.text() == ""

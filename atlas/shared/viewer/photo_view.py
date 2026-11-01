@@ -149,6 +149,11 @@ class PhotoView(QWidget):
         self._show_message("")
         self.update()
 
+    def show_missing(self, text):
+        """Фото нет и не будет (например, у SN нет этого ракурса): пустое окно с подписью. Зум и место сохраняются."""
+        self.clear()
+        self._show_message(text)
+
     def request_again(self):
         """Очередь кэша отменена: повторить запросы этого окна, иначе «Загрузка…» осталась бы навсегда."""
         if self._path is None or self._failed:

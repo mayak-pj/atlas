@@ -142,7 +142,9 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `login.aside` | login | «Сейчас в работе», последние папки — только на время диалога |
 | `compare.left` | compare | панель папок (`folders`). Колонка 240–280 px, пустая не занимает места |
 | `compare.right` | compare | сводка по детали (`findings`), правила (`rules`). Колонка 280–320 px, пустая не занимает места |
-| `compare.toolbar` | compare | кнопки в панели инструментов (`annotate_tools`, `type_db`). Кнопкам — `setFocusPolicy(Qt.NoFocus)`, иначе стрелки и пробел достанутся им |
+| `compare.toolbar` | compare | кнопки во втором ряду панели инструментов (`annotate_tools`, `type_db`). Кнопкам — `setFocusPolicy(Qt.NoFocus)`, иначе стрелки и пробел достанутся им |
+
+Режим «Ракурсы» (`compare`): чистая логика — `features/compare/angles.py`, новых событий и сервисов нет. При листании `photo.changed` публикуется для фото активного окна; у SN нет этого ракурса — не публикуется. `compare.set_reference*` возвращает в режим «Сравнение»: эталона в «Ракурсах» нет.
 
 Настройки `compare` в `config/app.json`: `compare.neighbor_search_year_only` (true — соседние проекты за текущий календарный год), `compare.neighbor_search_days` (если год выключен и число больше 0 — последние N суток; иначе без ограничения). «Соседние проекты» — проекты того же вида (`projects.kind`), кроме своего.
 
@@ -201,9 +203,9 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 - Лимит памяти (`image_cache` в `config/app.json`), по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
-- `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`, `shown_image_size`. Свойство Qt `active` — подсветка активного окна.
+- `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`, `shown_image_size`, `show_missing(текст)` — пустое окно с подписью, зум и место сохраняются. Свойство Qt `active` — подсветка активного окна.
 - `Filmstrip(cache, colors)`: `set_items([FilmItem(path, mark_color)])`, `set_current(index)`, `set_mark(index, color)`, `set_portrait(bool)`, `request_visible()`, `visible()`; сигнал `clicked(index)`. Рисует только то, что помещается. `set_current` ничего не запрашивает: миниатюры просит владелец после остановки листания.
-- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `set_state(zoom, cx, cy)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `touch(view)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
+- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `set_state(zoom, cx, cy)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `show_photos([(view, path)])` — несколько окон за одну отмену очереди (листание «Ракурсов»), `touch(view)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
 
 ## Как добавить / изменить / удалить функцию
 - **Добавить:** `/new-feature id: описание` — шаблон папки, `FEATURE`, миграция, тест, строка в `features.json`, строки в таблицах выше.

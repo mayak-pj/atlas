@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 
 from atlas.core import theme
 from atlas.core.domain.photo_names import parse_photo_name
+from atlas.features.compare.angles import AnglesModel, notes as angle_notes, set_mark as angle_set_mark
 from atlas.features.compare.logic import (
     DEFAULT_MARK_KEYS, MAX_WINDOWS, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
     neighbor_indexes, position_text, reference_angles, toggle_mark,
@@ -22,6 +23,7 @@ BUTTON_ZOOM = 1.4  # как в макете
 LEFT_WIDTH = (240, 280)
 RIGHT_WIDTH = (280, 320)
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
+HINT_ANGLES = "Колесо — зум окна · перетаскивание — сдвиг · двойной клик — вписать · стрелки — следующий SN · клик — активное окно"
 STRIP_SETTLE_MS = 150  # миниатюры — после остановки: при удержании стрелки чтение нужно текущему фото
 TEXT_NO_FOLDER = "Папка не открыта"
 TEXT_NO_PHOTOS = "В папке нет фото"
@@ -31,6 +33,10 @@ TAG_CURRENT = "НОВОЕ"
 TEXT_KIND_NONE = "Вид не выбран"
 TEXT_REFERENCE_MARKS = "Эталон из другой папки — отметки недоступны"
 TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
+TAG_ANGLE = "РАКУРС {}"
+TEXT_NO_ANGLE = "Нет ракурса {}"
+TEXT_NO_ANGLES = "Ни одно имя фото не разобрано: ракурсы показать нельзя. Фото видны в «Сравнении»"
+FIT_STATE = (1.0, 0.5, 0.5)
 
 
 class SlotColumn(QVBoxLayout):
@@ -87,7 +93,12 @@ class CompareScreen(QWidget):
         self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
         self._index_by_id = {}
         self._panel_photo = None  # фото, для которого сейчас заполнена панель отметок
-        self._strip_of_reference = False  # лента сейчас показывает папку эталона
+        self._strip_source = None  # что сейчас на ленте: folder, reference, angles
+        self._angles_on = False
+        self.angles = AnglesModel()
+        self._angle_states = {}  # окно → (зум, x, y) в «Ракурсах»; у каждого окна своё
+        self._compare_states = {}  # то же в «Сравнении»: при выключенной синхронности окна тоже стоят по-разному
+        self._compare_group_state = FIT_STATE
         self._reference_note = ""  # подпись найденной папки: проект, дата
         self._reference_tag = TAG_REFERENCE
         self.setFocusPolicy(Qt.StrongFocus)  # стрелки и пробел приходят сюда, кнопки фокус не берут
@@ -134,18 +145,19 @@ class CompareScreen(QWidget):
         self.message = QLabel(TEXT_NO_FOLDER)
         self.message.setProperty("role", "muted")
         self.message.setAlignment(Qt.AlignCenter)
-        hint = QLabel(HINT)
-        hint.setProperty("role", "muted")
+        self.hint = QLabel(HINT)
+        self.hint.setProperty("role", "muted")
 
         middle = QVBoxLayout()
         middle.setSpacing(10)
         middle.addWidget(self._build_toolbar())
         middle.addWidget(self._build_reference_bar())
+        middle.addWidget(self._build_angles_bar())
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
         middle.addWidget(self._build_strip_panel())
         middle.addWidget(self._build_marks_panel())
-        middle.addWidget(hint)
+        middle.addWidget(self.hint)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -161,14 +173,31 @@ class CompareScreen(QWidget):
     def _build_toolbar(self):
         bar = QFrame()
         bar.setProperty("role", "panel")
-        row = QHBoxLayout(bar)
-        row.setContentsMargins(8, 8, 8, 8)
+        rows = QVBoxLayout(bar)
+        rows.setContentsMargins(8, 8, 8, 8)
+        rows.setSpacing(6)
+        row = QHBoxLayout()  # первый ряд — как смотреть, второй — действия: вместе в окно шириной 1024 они не помещаются
         row.setSpacing(6)
-        for count in range(1, MAX_WINDOWS + 1):
-            button = self._button("{} фото".format(count), lambda _=False, n=count: self.set_layout(n), checkable=True)
-            self._layout_buttons[count] = button
-            row.addWidget(button)
+        rows.addLayout(row)
+        self.compare_mode_button = self._button("Сравнение", lambda _=False: self.set_angles_mode(False), checkable=True)
+        self.compare_mode_button.setChecked(True)
+        row.addWidget(self.compare_mode_button)
+        self.angles_mode_button = self._button("Ракурсы", lambda _=False: self.set_angles_mode(True), checkable=True)
+        self.angles_mode_button.setToolTip("Все стороны одного SN: листаются вместе, зум у каждого окна свой")
+        row.addWidget(self.angles_mode_button)
         row.addWidget(self._separator())
+        self._compare_only = []  # в «Ракурсах» этого нет: окон столько, сколько ракурсов, эталона нет
+        for count in range(1, MAX_WINDOWS + 1):
+            # Цифры, а не «1 фото»: с панелью папок ряд иначе не помещается в окно шириной 1024
+            button = self._button(str(count), lambda _=False, n=count: self.set_layout(n), checkable=True)
+            button.setProperty("role", "square")
+            button.setToolTip("{} фото".format(count))
+            self._layout_buttons[count] = button
+            self._compare_only.append(button)
+            row.addWidget(button)
+        separator = self._separator()
+        self._compare_only.append(separator)
+        row.addWidget(separator)
         minus = self._button("−", lambda: self.group.zoom_by(1 / BUTTON_ZOOM))
         minus.setProperty("role", "square")
         row.addWidget(minus)
@@ -184,11 +213,16 @@ class CompareScreen(QWidget):
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
         row.addWidget(self.sync_button)
-        row.addWidget(self._separator())
+        self._compare_only.append(self.sync_button)
+        row.addStretch(1)
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        rows.addLayout(row)
         self.find_button = self._button("Найти такую же деталь", self.find_requested.emit)
         self.find_button.setToolTip("Открыть эталоном последнюю проверку такой же детали")
         self.find_button.setEnabled(False)
         row.addWidget(self.find_button)
+        self._compare_only.append(self.find_button)
         self.toolbar_layout = QHBoxLayout()  # слот compare.toolbar
         self.toolbar_layout.setSpacing(6)
         row.addLayout(self.toolbar_layout)
@@ -212,6 +246,19 @@ class CompareScreen(QWidget):
         self._angle_buttons = {}
         self.reference_bar.hide()
         return self.reference_bar
+
+    def _build_angles_bar(self):
+        """Строка «Ракурсов»: лишние ракурсы, неразобранные имена, ошибки в именах. Нечего сказать — скрыта."""
+        self.angles_bar = QFrame()
+        self.angles_bar.setProperty("role", "panel")
+        row = QHBoxLayout(self.angles_bar)
+        row.setContentsMargins(10, 6, 10, 6)
+        self.angles_label = QLabel("")
+        self.angles_label.setProperty("role", "warn")
+        self.angles_label.setWordWrap(True)
+        row.addWidget(self.angles_label, 1)
+        self.angles_bar.hide()
+        return self.angles_bar
 
     def _build_strip_panel(self):
         self.strip_panel = QFrame()
@@ -297,12 +344,12 @@ class CompareScreen(QWidget):
         """Новая папка: раскладка, зум и режим синхронности сохраняются."""
         self._end_flicker()
         self.model.set_photos(photos)
+        self.angles.set_photos(self.model.photos, self._name_pattern)
         self._orientation_known = False
         self.message.setText(TEXT_NO_PHOTOS)
-        self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in self.model.photos])
         self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
         self.marks_status.setText("")
-        self._strip_of_reference = False
+        self._strip_source = None
         self._fill_reference_bar()
         self.find_button.setEnabled(bool(self.model.photos))
         self._apply_layout()
@@ -311,19 +358,19 @@ class CompareScreen(QWidget):
     def show_failure(self, text):
         self._end_flicker()
         self.model.set_photos([])
+        self.angles.set_photos([])
         self._index_by_id = {}
-        self.strip.set_items([])
-        self._strip_of_reference = False
+        self._strip_source = None
         self._fill_reference_bar()
         self.find_button.setEnabled(False)
         self.message.setText(text)
         self._apply_layout()
 
     def set_reference(self, photo):
-        """Заменить эталон. На текущие окна и их индексы это не влияет."""
+        """Заменить эталон. На текущие окна и их индексы это не влияет. Эталон есть только в «Сравнении»."""
+        self.set_angles_mode(False)
         self._end_flicker()
         self.model.set_reference(photo)
-        self._strip_of_reference = False
         self._fill_reference_bar()
         self._apply_layout()
 
@@ -331,11 +378,14 @@ class CompareScreen(QWidget):
         """Эталон — фото другой папки (первое), листается стрелками, когда его окно активно.
 
         При одном окне раскладка становится «2 фото»: эталону нужно место. Текущая папка остаётся открытой.
+        Эталон есть только в «Сравнении»: его попросили показать, поэтому режим переключается.
         """
+        self.set_angles_mode(False)
         self._end_flicker()
         if self.model.count == 1:
             self.set_layout(2)
         self.model.set_reference_folder(photos)
+        self._strip_source = None
         self._reference_note = note
         self._reference_tag = TAG_OTHER_PROJECT if other_project else TAG_REFERENCE
         self._fill_reference_bar()
@@ -391,6 +441,45 @@ class CompareScreen(QWidget):
         self.sync_button.setEnabled(count > 1)
         self._apply_layout()
 
+    def set_angles_mode(self, on):
+        """Переключить режим. Человек продолжает смотреть то же фото; зум и место у каждого режима свои."""
+        on = bool(on)
+        self.compare_mode_button.setChecked(not on)
+        self.angles_mode_button.setChecked(on)
+        if on == self._angles_on:
+            return
+        self._end_flicker()
+        states = {view: view.state() for view in self.views}
+        if on:
+            self._compare_states = states
+            self._compare_group_state = self.group.state
+            self.model.set_reference_active(False)
+            if self.model.photos:
+                self.angles.show_photo(self.model.active_index)
+        else:
+            self._angle_states = states
+            number = self.angles.active_photo()
+            if number is not None:
+                self.model.go(number)
+        self._angles_on = on
+        for widget in self._compare_only:
+            widget.setVisible(not on)
+        self.hint.setText(HINT_ANGLES if on else HINT)
+        self.group.set_enabled(not on and self.sync_button.isChecked())
+        if not on:
+            self.group.set_state(*self._compare_group_state)
+        self._apply_layout()
+        if on or not self.group.enabled:
+            saved = self._angle_states if on else self._compare_states
+            for view in self.views:
+                view.set_state(*saved.get(view, FIT_STATE))
+        self.group.touch(self.active_view())
+        self._show_zoom(self.active_view().state()[0])
+
+    @property
+    def angles_mode(self):
+        return self._angles_on
+
     def _mark_color(self, mark):
         token = mark_token(mark)
         return theme.current().qcolor(token) if token else None
@@ -406,7 +495,9 @@ class CompareScreen(QWidget):
         self.group.set_enabled(checked)
 
     def _visible_views(self):
-        """Окна раскладки: при одном фото только первое текущее, эталона нет."""
+        """Окна раскладки: при одном фото только первое текущее, эталона нет. В «Ракурсах» окно N — всегда ракурс N."""
+        if self._angles_on:
+            return self.views[:len(self.angles.plan.views)]
         if self.model.count == 1:
             return [self.views[1]]
         return self.views[:self.model.count]
@@ -415,15 +506,24 @@ class CompareScreen(QWidget):
         return self.views[window + 1]
 
     def active_view(self):
+        if self._angles_on:
+            return self.views[self.angles.active]
         return self.views[0] if self.model.reference_active else self._view_of(self.model.active)
 
     def _apply_layout(self):
         has_photos = bool(self.model.photos)
-        self.reference_bar.setVisible(has_photos and self.model.has_reference_folder and self.model.count > 1)
-        self.message.setVisible(not has_photos)
-        self.strip_panel.setVisible(has_photos)
-        self.marks_panel.setVisible(has_photos)
-        visible = self._visible_views() if has_photos else []
+        angles = self._angles_on
+        has_content = bool(self.angles.plan.sets) if angles else has_photos
+        self.reference_bar.setVisible(not angles and has_photos and self.model.has_reference_folder and self.model.count > 1)
+        texts = angle_notes(self.angles.plan) if angles else []
+        self.angles_label.setText(" · ".join(texts))
+        self.angles_bar.setVisible(bool(texts))
+        if angles and has_photos and not has_content:
+            self.message.setText(TEXT_NO_ANGLES)
+        self.message.setVisible(not has_content)
+        self.strip_panel.setVisible(has_content)
+        self.marks_panel.setVisible(has_content)
+        visible = self._visible_views() if has_content else []
         for view in self.views:
             self.grid.removeWidget(view)
             if view not in visible:
@@ -433,23 +533,46 @@ class CompareScreen(QWidget):
         for view in visible:
             if view not in self.group.views:
                 self.group.add(view)
-        self.group.set_reference(self.views[0] if has_photos and self.model.count > 1 else None)
+        self.group.set_reference(self.views[0] if not angles and has_photos and self.model.count > 1 else None)
         self._place(visible)
         for view in visible:
             view.show()
-            self._show_in(view)
+            if not angles:
+                self._show_in(view)
+        if angles and visible:
+            self._show_angles()
         self._mark_active()
         self._sync_strip()
 
+    def _position(self):
+        """(номер, всего) в том, что листается: SN в «Ракурсах», иначе фото активного окна."""
+        if self._angles_on:
+            return self.angles.index, self.angles.total
+        return self.model.shown_index, len(self.model.shown_photos)
+
     def _sync_strip(self):
         model = self.model
-        if model.reference_active != self._strip_of_reference:  # лента показывает то, что листает активное окно
-            self._strip_of_reference = model.reference_active
-            self.strip.set_items([FilmItem(photo.path, self._mark_color(photo.mark)) for photo in model.shown_photos])
+        source = "angles" if self._angles_on else ("reference" if model.reference_active else "folder")
+        if source != self._strip_source:  # лента показывает то, что листается
+            self._strip_source = source
+            self.strip.set_items(self._angle_film_items() if self._angles_on else [
+                FilmItem(photo.path, self._mark_color(photo.mark)) for photo in model.shown_photos
+            ])
         self._update_marks()
-        self.strip.set_current(model.shown_index)
-        self.prev_button.setEnabled(model.shown_index > 0)
-        self.next_button.setEnabled(model.shown_index < len(model.shown_photos) - 1)
+        index, total = self._position()
+        self.strip.set_current(index)
+        self.prev_button.setEnabled(index > 0)
+        self.next_button.setEnabled(index < total - 1)
+
+    def _angle_film_items(self):
+        """В «Ракурсах» одна миниатюра на SN: листание идёт по SN."""
+        photos = self.model.photos
+        return [
+            FilmItem(photos[item.first_photo].path, self._angle_set_color(item)) for item in self.angles.plan.sets
+        ]
+
+    def _angle_set_color(self, angle_set):
+        return self._mark_color(angle_set_mark(angle_set, self.model.photos, self.angles.plan.views))
 
     def _after_show(self):
         """show_photo отменил очередь: соседей просим сразу, миниатюры — когда листание остановится."""
@@ -463,6 +586,10 @@ class CompareScreen(QWidget):
     def _request_neighbors(self):
         """Самое важное — последним, в очереди новые идут первыми. Эталон — для «мигалки», при 1 фото его нет на экране."""
         model = self.model
+        if self._angles_on:
+            for number in reversed(self.angles.neighbor_photos()):
+                self._cache.get(model.photos[number].path, L1, NEIGHBOR)
+            return
         shown = model.shown_photos
         wanted = [shown[number] for number in neighbor_indexes(model.shown_index, len(shown), model.direction)]
         if model.reference is not None and not model.reference_active:
@@ -494,6 +621,25 @@ class CompareScreen(QWidget):
         view.set_caption(tag, "{}  {}".format(position, photo.name))
         self._after_show()
 
+    def _show_angles(self):
+        """Текущий SN во всех окнах сразу: за одну отмену очереди. Нет ракурса — пустое окно с подписью."""
+        angles = self.angles
+        current = angles.current
+        position = position_text(angles.index, angles.total)
+        shown = []
+        for window, number in enumerate(angles.plan.views):
+            view = self.views[window]
+            index = angles.photo_in(window)
+            if index is None:
+                view.show_missing(TEXT_NO_ANGLE.format(number))
+                view.set_caption(TAG_ANGLE.format(number), "{}  {}".format(position, current.sn))
+                continue
+            photo = self.model.photos[index]
+            shown.append((view, photo.path))
+            view.set_caption(TAG_ANGLE.format(number), "{}  {}".format(position, photo.name))
+        self.group.show_photos(shown)
+        self._after_show()
+
     def _reference_text(self, photo):
         model = self.model
         if not model.has_reference_folder:
@@ -502,7 +648,7 @@ class CompareScreen(QWidget):
 
     def _mark_active(self):
         for view in self.views:
-            active = self.model.count > 1 and view is self.active_view()
+            active = len(self._visible_views()) > 1 and view is self.active_view()
             if view.property("active") != active:
                 view.setProperty("active", active)
                 view.style().unpolish(view)
@@ -516,7 +662,7 @@ class CompareScreen(QWidget):
 
     def _learn_orientation(self, view):
         """Один раз на папку: при листании сетка не должна прыгать, даже если попалось фото другой ориентации."""
-        if self._orientation_known or view is self.views[0]:
+        if self._orientation_known or (view is self.views[0] and not self._angles_on):
             return
         size = view.shown_image_size
         if size is None:
@@ -538,7 +684,14 @@ class CompareScreen(QWidget):
         model = self.model
         if not model.photos or self._flicker is not None or model.reference_active:
             return False
-        return model.photos[model.active_index].id is not None and self.active_view().is_current_shown
+        number = self._marked_number()
+        if number is None:
+            return False
+        return model.photos[number].id is not None and self.active_view().is_current_shown
+
+    def _marked_number(self):
+        """Номер фото активного окна в папке; None — в окне нет фото (у SN нет этого ракурса)."""
+        return self.angles.active_photo() if self._angles_on else self.model.active_index
 
     def request_mark(self, mark):
         """Кнопка или клавиша: отметить фото активного окна (то же ещё раз — снять). Запись — в `mark_requested`.
@@ -546,7 +699,7 @@ class CompareScreen(QWidget):
         Пока запись не подтверждена, кнопки показывают старую отметку: сбой не оставляет их в неверном положении.
         """
         if self.can_mark:
-            photo = self.model.photos[self.model.active_index]
+            photo = self.model.photos[self._marked_number()]
             new = toggle_mark(photo.mark, mark)
             if new == "defect":
                 self.mark_requested.emit(photo, new, default_sn(photo, self._name_pattern), photo.defect_kind)
@@ -569,7 +722,12 @@ class CompareScreen(QWidget):
         if index is None:
             return  # папку успели сменить
         self.model.set_mark(index, mark, sn, defect_kind)
-        self.strip.set_mark(index, self._mark_color(mark))
+        if self._angles_on:
+            place = self.angles.set_of_photo(index)
+            if place is not None:
+                self.strip.set_mark(place, self._angle_set_color(self.angles.plan.sets[place]))
+        else:
+            self.strip.set_mark(index, self._mark_color(mark))
         self.marks_status.setText("")
         self._update_marks()
 
@@ -582,18 +740,21 @@ class CompareScreen(QWidget):
         if not model.photos:
             self._panel_photo = None
             return
-        photo = model.photos[model.active_index]
-        same = self._panel_photo is not None and self._panel_photo.id == photo.id
+        number = self._marked_number()
+        photo = model.photos[number] if number is not None else None
+        same = photo is not None and self._panel_photo is not None and self._panel_photo.id == photo.id
         self._panel_photo = photo
         enabled = self.can_mark
         if model.reference_active:  # чужая папка: отметки не ставятся
             self.marks_title.setText(TEXT_REFERENCE_MARKS)
+        elif self._angles_on:
+            self.marks_title.setText(self._angles_marks_title())
         else:
             self.marks_title.setText("Фото {} —".format(position_text(model.active_index, len(model.photos))))
         for mark, button in self.mark_buttons.items():
             button.setEnabled(enabled)
-            button.setChecked(photo.mark == mark)
-        is_defect = photo.mark == "defect" and not model.reference_active
+            button.setChecked(photo is not None and photo.mark == mark)
+        is_defect = photo is not None and photo.mark == "defect" and not model.reference_active
         self.defect_box.setVisible(is_defect)
         if is_defect and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
             self.sn_edit.setText(default_sn(photo, self._name_pattern))
@@ -601,12 +762,22 @@ class CompareScreen(QWidget):
         self.defect_box.setEnabled(enabled)
         self.counts_label.setText(counts_text(model.photos, self._mark_keys))
 
+    def _angles_marks_title(self):
+        angles = self.angles
+        current = angles.current
+        if current is None:
+            return ""
+        return "SN {}, ракурс {} —".format(current.sn, angles.active_view_number)
+
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):
-        self.go(self.model.shown_index + step)
+        self.go(self._position()[0] + step)
 
     def go(self, index):
-        """Перейти в активном окне к фото с этим номером: стрелки, кнопки, клик по ленте."""
+        """Перейти в активном окне к фото с этим номером: стрелки, кнопки, клик по ленте. В «Ракурсах» — все окна к SN."""
+        if self._angles_on:
+            self._go_angles(index)
+            return
         if self._flicker is not None or not self.model.go(index):
             return
         self._show_in(self.active_view())
@@ -617,7 +788,18 @@ class CompareScreen(QWidget):
         window = self.model.active
         self.photo_changed.emit(self.model.current(window), self.model.index(window))
 
+    def _go_angles(self, index):
+        if not self.angles.go(index):
+            return
+        self._show_angles()
+        self._sync_strip()
+        number = self.angles.active_photo()
+        if number is not None:  # у SN нет ракурса активного окна: сообщать не о чем
+            self.photo_changed.emit(self.model.photos[number], number)
+
     def _begin_flicker(self):
+        if self._angles_on:
+            return  # эталона здесь нет
         if self._flicker is not None or self.model.reference is None or self.model.reference_active:
             return
         view = self.active_view()
@@ -671,7 +853,10 @@ class CompareScreen(QWidget):
         self.group.touch(view)
         if self._flicker is not None:
             return
-        if view is self.views[0]:
+        if self._angles_on:
+            self.angles.set_active(self.views.index(view))
+            self._show_zoom(view.state()[0])
+        elif view is self.views[0]:
             if not self.model.has_reference_folder or self.model.count == 1:
                 return  # одиночный эталон не листается: активным остаётся прежнее окно
             self.model.set_reference_active(True)

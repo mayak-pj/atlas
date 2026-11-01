@@ -65,14 +65,15 @@ def seed(out, limit=DEFAULT_PHOTOS, full=False, width=photo_files.WIDTH, height=
         user = people[item["by"]]
         path = out / "photos" / _kind(parts, item["kind"]) / item["project"] / item["device"] / item["part"] / day.isoformat()
         folder = folders.add(part.id, str(path), day.isoformat(), user.id)
-        count = item["photos"] if full else min(limit, item["photos"])
+        given = item.get("names")  # имена настоящего формата, для «Ракурсов»: важен весь набор, limit не действует
+        count = len(given) if given else (item["photos"] if full else min(limit, item["photos"]))
         marks = _pick_marks(item.get("marks"), count)
         by_index = dict((index, mark) for mark, index in marks)
         names = []
         for index in range(count):
-            name = "{:04d}.jpg".format(index + 1)
+            name = given[index] if given else "{:04d}.jpg".format(index + 1)
             type_number = 2 if by_index.get(index) == "type:2" else 1
-            label = "{} · SN{:06d}".format(item["part"], index + 1)
+            label = name if given else "{} · SN{:06d}".format(item["part"], index + 1)
             seed_value = "{}/{}".format(path, name)
             if not photo_files.save_photo(path / name, item["variant"], type_number, label, seed_value, width, height):
                 raise OSError("Не удалось записать {}".format(path / name))

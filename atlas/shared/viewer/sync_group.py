@@ -120,12 +120,17 @@ class SyncGroup(QObject):
         return currents[-1] if currents else None
 
     def show_photo(self, view, path):
-        """Листание: новое фото в одном окне, остальные не меняются.
+        """Листание: новое фото в одном окне, остальные не меняются."""
+        self.show_photos([(view, path)])
 
-        Отмена очереди — здесь, а не в окнах: кэш общий. Она снимает и запросы других окон, поэтому их просим повторить.
+    def show_photos(self, shown):
+        """Новые фото сразу в нескольких окнах, [(окно, путь)], за одну отмену очереди.
+
+        Отмена — здесь, а не в окнах: кэш общий. Она снимает и запросы других окон, поэтому их просим повторить.
         """
         self._cache.cancel_pending()
-        view.set_photo(path)
+        for view, path in shown:
+            view.set_photo(path)
         for item in self._views:
             item.request_again()
 

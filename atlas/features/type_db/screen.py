@@ -1,8 +1,10 @@
 """Вкладка «База типов»: поиск, фильтры, сетка карточек, карточка типа справа. Данные приходят готовыми (`set_entries`)."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PyQt5.QtCore import QEvent, QRectF, Qt, pyqtSignal
-from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
@@ -10,6 +12,8 @@ from PyQt5.QtWidgets import (
 from atlas.core import theme
 from atlas.features.type_db import logic
 from atlas.shared.viewer.levels import L1
+from atlas.shared.widgets import StampAnimation
+from atlas.shared.widgets import stamp as stamp_math
 
 MAX_CARDS = 60  # больше виджетов сразу не строим: поиск уточняют, а не листают сотни карточек
 CARD_MIN_WIDTH = 250
@@ -27,6 +31,8 @@ TEXT_NO_FILE = "Нет фото"
 TEXT_LOAD_FAILED = "Не удалось прочитать базу типов: показаны прежние данные"
 TEXT_ARCHIVED = "В архиве"
 TEXT_ACTIVE = "Действует"
+TEXT_TO_ARCHIVE = "В архив"
+TEXT_FROM_ARCHIVE = "Вернуть из архива"
 
 
 def _found_text(count, shown):
@@ -45,8 +51,20 @@ class ThumbView(QWidget):
         self._path = None
         self._image = None
         self._failed = False
+        self._frame = stamp_math.COLOR  # серый вид и печать архива
+        self._gray = None
+        self._gray_key = None
         cache.ready.connect(self._on_ready)
         cache.failed.connect(self._on_failed)
+
+    def show_frame(self, frame):
+        """Серость и печать архива: итоговый вид (`stamp.final_frame`) или кадр анимации."""
+        self._frame = frame
+        self.update()
+
+    @property
+    def frame(self):
+        return self._frame
 
     def set_path(self, path):
         path = str(path) if path else None
@@ -90,11 +108,29 @@ class ThumbView(QWidget):
         area = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         scale = min(area.width() / self._image.width(), area.height() / self._image.height())
         width, height = self._image.width() * scale, self._image.height() * scale
-        painter.drawImage(QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height), self._image)
+        target = QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
+        painter.drawImage(target, self._image)
+        frame = self._frame
+        if frame.gray > 0:
+            painter.setOpacity(frame.gray)
+            painter.drawImage(target, self._gray_image())
+            painter.setOpacity(frame.gray * stamp_math.DIM)
+            painter.fillRect(target, theme.current().qcolor("photo_bg"))
+            painter.setOpacity(1.0)
+        stamp_math.paint_stamp(painter, QRectF(self.rect()), frame, theme.current().qcolor("defect"))
+
+    def _gray_image(self):
+        key = self._image.cacheKey()
+        if self._gray_key != key:
+            self._gray_key = key
+            self._gray = self._image.convertToFormat(QImage.Format_Grayscale8).convertToFormat(QImage.Format_RGB32)
+        return self._gray
 
 
 class TypeCard(QFrame):
     clicked = pyqtSignal(int)
+    archive_clicked = pyqtSignal(int)
+    animation_done = pyqtSignal(int)
 
     def __init__(self, entry, cache, root, selected, parent=None):
         super().__init__(parent)
@@ -108,7 +144,10 @@ class TypeCard(QFrame):
         layout.setSpacing(0)
         self.thumb = ThumbView(cache, THUMB_HEIGHT)
         self.thumb.set_path(root / entry.photo_rel)
+        self.thumb.show_frame(stamp_math.final_frame(entry.archived))
         layout.addWidget(self.thumb)
+        self._layout = layout
+        self._animation = StampAnimation(self, self._on_frame, lambda: self.animation_done.emit(self.entry.id))
         body = QVBoxLayout()
         body.setContentsMargins(12, 10, 12, 10)
         body.setSpacing(6)
@@ -134,6 +173,11 @@ class TypeCard(QFrame):
             note = QLabel(TEXT_ARCHIVED)
             note.setProperty("role", "caption")
             body.addWidget(note)
+        self.archive_button = QPushButton(TEXT_FROM_ARCHIVE if entry.archived else TEXT_TO_ARCHIVE)
+        self.archive_button.setProperty("role", "restore" if entry.archived else "archive")
+        self.archive_button.setFocusPolicy(Qt.NoFocus)
+        self.archive_button.clicked.connect(lambda _=False: self.archive_clicked.emit(self.entry.id))
+        body.addWidget(self.archive_button)
         layout.addLayout(body)
         self.setToolTip("{} › {} › {}".format(entry.project, entry.device, entry.part_name))
 
@@ -141,6 +185,22 @@ class TypeCard(QFrame):
         self.setProperty("on", bool(selected))
         self.style().unpolish(self)
         self.style().polish(self)
+
+    @property
+    def animating(self):
+        return self._animation.running
+
+    def play(self, restoring):
+        """Анимация «в архив» (серость, печать, «удар») или обратно; в конце — animation_done."""
+        self.archive_button.setEnabled(False)
+        self._animation.start(restoring)
+
+    def stop_animation(self):
+        self._animation.stop()
+
+    def _on_frame(self, frame):
+        self.thumb.show_frame(frame)
+        self._layout.setContentsMargins(0, int(round(frame.thud)), 0, 0)  # «удар»: содержимое чуть сдвигается вниз
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -225,6 +285,7 @@ class DetailPanel(QFrame):
         self.empty.hide()
         self.body.show()
         self.photo.set_path(self._root / entry.photo_rel)
+        self.photo.show_frame(stamp_math.final_frame(entry.archived))
         self.crop.set_path(self._root / entry.crop_rel if entry.crop_rel else None)
         self.crop.setVisible(bool(entry.crop_rel))
         self.crop_caption.setVisible(bool(entry.crop_rel))
@@ -256,9 +317,13 @@ def _escape(text):
 
 class TypeDbScreen(QWidget):
     shown = pyqtSignal()  # вкладку открыли: данные могли измениться у коллег
+    archive_toggled = pyqtSignal(int, bool)  # запись, True — в архив / False — вернуть: записать в базу
 
-    def __init__(self, cache, root, kinds, parent=None):
+    def __init__(self, cache, root, kinds, animations=True, parent=None):
         super().__init__(parent)
+        self._animations = animations
+        self._pending = None  # свежие данные, пришедшие во время анимации: сетка перестроится после неё
+        self._animating = set()
         self._cache = cache
         self._root = root
         self._entries = []
@@ -331,16 +396,68 @@ class TypeDbScreen(QWidget):
     # --- данные -----------------------------------------------------------------
     def set_entries(self, entries):
         entries = list(entries)
+        if self._animating:
+            self._pending = entries  # карточка играет анимацию: перестройка её оборвала бы
+            return
         if self._loaded and entries == self._entries:
             return  # ничего не изменилось: не перестраиваем сетку и не мигаем при каждом открытии вкладки
         self._entries = entries
         self._loaded = True
-        for card in self._cards.values():  # записи могли измениться: карточки строим заново
+        self._drop_cards()  # записи могли измениться: карточки строим заново
+        if self._selected is not None and self._entry(self._selected) is None:
+            self._selected = None
+        self._refilter()
+
+    def _drop_cards(self):
+        for card in self._cards.values():
+            card.stop_animation()
             card.setParent(None)
             card.deleteLater()
         self._cards = {}
-        if self._selected is not None and self._entry(self._selected) is None:
-            self._selected = None
+
+    # --- архив ----------------------------------------------------------------------
+    def apply_archive(self, entry_id, archived, archived_at):
+        """База подтвердила: запись в архиве (archived_at — время из базы) или возвращена. Играет анимацию карточки."""
+        entry = self._entry(entry_id)
+        if entry is None:
+            return
+        self._entries = [replace(item, archived_at=archived_at if archived else None) if item.id == entry_id else item
+                         for item in self._entries]
+        if self._selected == entry_id:
+            self.detail.show_entry(self._entry(entry_id), self._entries)
+        card = self._cards.get(entry_id)
+        if card is None or not self._animations or not card.isVisible():
+            self._reorder()
+            return
+        self._animating.add(entry_id)
+        card.play(restoring=not archived)
+
+    def archive_failed(self, entry_id):
+        card = self._cards.get(entry_id)
+        if card is not None:
+            card.archive_button.setEnabled(True)
+
+    def _on_archive_clicked(self, entry_id):
+        entry = self._entry(entry_id)
+        card = self._cards.get(entry_id)
+        if entry is None or card is None or entry_id in self._animating:
+            return
+        card.archive_button.setEnabled(False)  # пока база отвечает, второй раз нажать нельзя
+        self.archive_toggled.emit(entry_id, not entry.archived)
+
+    def _on_animation_done(self, entry_id):
+        self._animating.discard(entry_id)
+        if not self._animating:
+            self._reorder()
+
+    def _reorder(self):
+        """Карточки заново: архивная уходит вниз, у остальных обновляются кнопки и пометки."""
+        pending, self._pending = self._pending, None
+        self._drop_cards()
+        if pending is not None:
+            self._entries = pending
+            if self._selected is not None and self._entry(self._selected) is None:
+                self._selected = None
         self._refilter()
 
     def show_failure(self):
@@ -416,6 +533,8 @@ class TypeDbScreen(QWidget):
             if card is None:
                 card = TypeCard(entry, self._cache, self._root, entry.id == self._selected, self.grid_holder)
                 card.clicked.connect(self.select)
+                card.archive_clicked.connect(self._on_archive_clicked)
+                card.animation_done.connect(self._on_animation_done)
                 self._cards[entry.id] = card
         self._place(shown)
         if not self._entries:

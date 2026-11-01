@@ -6,7 +6,8 @@
   },
   "project_kinds": ["A", "B"],
   "ui": {
-    "show_project_kind": true
+    "show_project_kind": true,
+    "animations": true
   },
   "image_cache": {
     "disk_dir": "",

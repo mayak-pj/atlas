@@ -24,6 +24,11 @@ QFrame[role="type-card"][on="true"] { border-color: $accent; }
 QFrame[role="type-card"][archived="true"] QLabel { color: $muted; }
 QFrame[role="type-card"] QLabel { background: transparent; }
 QLabel[role="pill"][tone="muted"] { background: $panel_2; color: $text_dim; }
+QPushButton[role="archive"] { border-color: $defect; color: $defect; background: transparent; }
+QPushButton[role="archive"]:hover { background: $defect_soft; }
+QPushButton[role="restore"] { border-color: $ok; color: $ok; background: transparent; }
+QPushButton[role="restore"]:hover { background: $ok_soft; }
+QPushButton[role="archive"]:disabled, QPushButton[role="restore"]:disabled { border-color: $border; color: $disabled; }
 QPushButton[role="chip"] { border-radius: 16px; min-height: 32px; padding: 0 12px; background: $panel; border: 1px solid $border_strong; color: $text_dim; }
 QPushButton[role="chip"]:hover { border-color: $accent; color: $text; }
 QPushButton[role="chip"]:checked { background: $accent_soft; border-color: $accent; color: $text; }

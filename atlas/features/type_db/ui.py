@@ -21,6 +21,8 @@ log = logging.getLogger("atlas.type_db")
 SLOT_TOOLBAR = "compare.toolbar"
 PANEL_KEY = "type_db"
 EVENT_TYPE_ADDED = "type.added"
+EVENT_TYPE_ARCHIVED = "type.archived"
+EVENT_TYPE_RESTORED = "type.restored"
 MESSAGE_MS = 15000
 STOP_WAIT_S = 5.0  # запись картинок на сетевой диск; дольше закрытие программы не держим
 DEFAULT_DIR = "var/type_db"  # TODO(OPEN_ITEMS №12): настоящая папка на сетевом диске
@@ -32,10 +34,15 @@ TEXT_FOREIGN = "Это фото из другой папки: откройте �
 TEXT_BUSY = "Предыдущая карточка ещё сохраняется"
 TEXT_FAILED = "Не удалось подготовить карточку: база недоступна"
 TEXT_SAVED = "Добавлено в базу типов: {}"
+TEXT_ARCHIVE_FAILED = "Не удалось изменить архив: база недоступна, попробуйте ещё раз"
+TEXT_ARCHIVED = "В архиве: {}"
+TEXT_RESTORED = "Возвращено из архива: {}"
 
 
 class _Signals(QObject):
     loaded = pyqtSignal(object)  # [Entry] или None, если база недоступна
+    archived = pyqtSignal(int, bool, object, int)  # запись, в архиве ли, время из базы, деталь
+    archive_failed = pyqtSignal(int)
     prepared = pyqtSignal(object)  # _Draft
     saved = pyqtSignal(int, object, object)  # id записи, Part, CardData
     failed = pyqtSignal(str)
@@ -54,7 +61,8 @@ class TypeDbFeature(Feature):
     """Кнопка «+ В базу типов» (4.2), вкладка «База типов» с поиском (4.3).
 
     Сервис «type_db» (из любого потока, кроме GUI: ходит в базу): `types_for_part(part_id, include_archived=False)` →
-    [TypeRecord], `search(query="")` → [Entry] в порядке выдачи: живые, потом архив; новые первыми.
+    [TypeRecord] (архивные не отдаёт: архив эталоном не служит), `search(query="", include_archived=True)` → [Entry] в порядке
+    выдачи: живые, потом архив; новые первыми, `archive(type_id)` / `restore(type_id)` → (part_id, время) или None.
     """
 
     def on_start(self):
@@ -66,6 +74,8 @@ class TypeDbFeature(Feature):
         self._threads = []
         self.signals = _Signals()
         self.signals.loaded.connect(self._on_loaded)
+        self.signals.archived.connect(self._on_archived)
+        self.signals.archive_failed.connect(self._on_archive_failed)
         self.signals.prepared.connect(self._on_prepared)
         self.signals.saved.connect(self._on_saved)
         self.signals.failed.connect(self._on_failed)
@@ -95,8 +105,9 @@ class TypeDbFeature(Feature):
     def create_tab(self):
         cache = self.ctx.services.get("image_cache")
         kinds = self.ctx.services.get("parts").kinds
-        self.screen = TypeDbScreen(cache, self._root, kinds)
+        self.screen = TypeDbScreen(cache, self._root, kinds, animations=bool(self.ctx.config.get("ui.animations", True)))
         self.screen.shown.connect(self.refresh)
+        self.screen.archive_toggled.connect(self._on_archive_toggled)
         self.refresh()
         return self.screen
 
@@ -114,8 +125,52 @@ class TypeDbFeature(Feature):
     def types_for_part(self, part_id, include_archived=False):
         return self.repo.for_part(part_id, include_archived)
 
-    def search(self, query=""):
-        return logic.select(self._read(), query)
+    def search(self, query="", include_archived=True):
+        found = logic.select(self._read(), query)
+        return found if include_archived else [item for item in found if not item.archived]
+
+    def archive(self, type_id):
+        """В архив: запись остаётся, но внизу выдачи и эталоном не служит. Не из GUI-потока."""
+        return self.repo.set_archived(type_id, True, self._user_id())
+
+    def restore(self, type_id):
+        return self.repo.set_archived(type_id, False, self._user_id())
+
+    # --- архив с экрана ---------------------------------------------------------
+    def _on_archive_toggled(self, type_id, archived):
+        self._run_archive(type_id, archived)
+
+    def _run_archive(self, type_id, archived):
+        self._threads = [thread for thread in self._threads if thread.is_alive()]
+        thread = threading.Thread(target=self._archive_work, args=(type_id, archived), daemon=True)
+        self._threads.append(thread)
+        thread.start()
+
+    def _archive_work(self, type_id, archived):
+        try:
+            result = self.archive(type_id) if archived else self.restore(type_id)
+        except Exception:  # база занята, обрыв сети
+            log.exception("Архив не изменён")
+            result = None
+        if result is None:
+            self.signals.archive_failed.emit(type_id)
+        else:
+            self.signals.archived.emit(type_id, archived, result[1], result[0])
+
+    def _on_archived(self, type_id, archived, stamp, part_id):
+        if self.screen is not None:
+            self.screen.apply_archive(type_id, archived, stamp)
+        self.ctx.bus.publish(EVENT_TYPE_ARCHIVED if archived else EVENT_TYPE_RESTORED, {"type_id": type_id, "part_id": part_id})
+        self.refresh()
+
+    def _on_archive_failed(self, type_id):
+        if self.screen is not None:
+            self.screen.archive_failed(type_id)
+        self._say(TEXT_ARCHIVE_FAILED)
+
+    def _user_id(self):
+        user = self.ctx.user
+        return user.id if user is not None else None
 
     # --- чтение для вкладки: в фоне, по одному запросу ------------------------------
     def refresh(self):
@@ -197,8 +252,7 @@ class TypeDbFeature(Feature):
             self.busy = False
             return
         path, rotation, shapes, sn = draft.base
-        user = self.ctx.user
-        request = SaveRequest(draft.part, card, path, rotation, shapes, sn, user.id if user is not None else None)
+        request = SaveRequest(draft.part, card, path, rotation, shapes, sn, self._user_id())
         self._run(self._save, request)
 
     def ask_card(self, draft):

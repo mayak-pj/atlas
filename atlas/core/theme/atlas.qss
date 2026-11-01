@@ -83,6 +83,9 @@ QPushButton[role="icon"]:hover { border-color: $border_strong; background: $pane
 QLineEdit { background: $panel; border: 1px solid $border_strong; border-radius: ${radius_sm}px; padding: 0 10px; min-height: ${control_h}px;
             selection-background-color: $accent_soft; }
 QLineEdit:focus { border-color: $accent; }
+QPlainTextEdit, QSpinBox { background: $panel; border: 1px solid $border_strong; border-radius: ${radius_sm}px; padding: 2px 6px;
+                           selection-background-color: $accent_soft; }
+QPlainTextEdit:focus, QSpinBox:focus { border-color: $accent; }
 QDialog { background: $bg; }
 QMessageBox, QInputDialog { background: $panel; }
 QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }

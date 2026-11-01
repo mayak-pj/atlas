@@ -247,3 +247,13 @@ def test_works_without_compare(tmp_path, qtbot):
 def test_button_added_to_features_config():
     names = [item["id"] for item in json.loads((REPO / "config" / "features.json").read_text(encoding="utf-8"))["features"]]
     assert "add_folder" in names
+
+
+def test_error_message_is_in_warning_role_and_hint_is_not(qtbot):
+    dialog = make_dialog(qtbot, scan=lambda path: ([], "Папка недоступна"))
+    assert dialog.status.property("role") == "muted"
+    dialog.set_path(PATH)
+    qtbot.waitUntil(lambda: dialog.status.text() == "Папка недоступна", timeout=3000)
+    assert dialog.status.property("role") == "warn"
+    dialog.set_path("")
+    assert dialog.status.property("role") == "muted"

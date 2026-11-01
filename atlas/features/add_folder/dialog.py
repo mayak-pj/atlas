@@ -210,11 +210,13 @@ class AddFolderDialog(QDialog):
         )
 
     def _refresh(self, *_args):
+        warn = False  # сообщение об ошибке — заметным цветом, обычная подсказка — серым
         text = logic.clean_path(self.path.text())
         if not text:
             message, ready = TEXT_NO_PATH, False
         elif self._error:
             message, ready = self._error, False
+            warn = True
         elif self._photos is None or text != self._scanned_path:
             message, ready = TEXT_SCANNING, False
         else:
@@ -223,5 +225,9 @@ class AddFolderDialog(QDialog):
             message = "Фото в папке: {}".format(len(self._photos)) if ready else str(result)
             if not ready and self._photos:
                 message = "Фото в папке: {}. {}".format(len(self._photos), result)
+            warn = not ready
+        self.status.setProperty("role", "warn" if warn else "muted")
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
         self.status.setText(message)
         self.add_button.setEnabled(ready)

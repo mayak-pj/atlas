@@ -9,6 +9,11 @@
       "enabled": true
     },
     {
+      "id": "compare",
+      "enabled": true,
+      "tab_order": 5
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

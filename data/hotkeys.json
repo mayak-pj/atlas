@@ -1,0 +1,7 @@
+{
+  "compare": {
+    "prev": "Left",
+    "next": "Right",
+    "flicker": "Space"
+  }
+}

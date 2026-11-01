@@ -1,9 +1,32 @@
 """Строка контекста: [КК/СТ] › Проект › Устройство › Деталь · путь к папке."""
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy
 
 SEPARATOR = "›"  # ›
+
+
+class _PathLabel(QLabel):
+    """Длинный путь сокращается в середине, полный — в подсказке: строка не должна раздвигать окно."""
+
+    def __init__(self):
+        super().__init__()
+        self.full_text = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+    def set_path(self, text):
+        self.full_text = text
+        self.setToolTip(text)
+        self._elide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self):
+        self.setText(self.fontMetrics().elidedText(self.full_text, Qt.ElideMiddle, self.width()))
 
 
 class ContextBar(QFrame):
@@ -18,12 +41,11 @@ class ContextBar(QFrame):
         self._kind.setObjectName("KindBadge")
         self._chain = QLabel()
         self._chain.setObjectName("ContextCurrent")
-        self._path = QLabel()
+        self._path = _PathLabel()
         self._path.setObjectName("ContextPath")
         layout.addWidget(self._kind)
         layout.addWidget(self._chain)
-        layout.addStretch(1)
-        layout.addWidget(self._path)
+        layout.addWidget(self._path, 1)
         self.clear()
 
     def set_context(self, kind=None, project=None, device=None, part=None, path=None):
@@ -33,7 +55,7 @@ class ContextBar(QFrame):
         chain = " {} ".format(SEPARATOR).join(p for p in (project, device, part) if p)
         self._chain.setText(chain)
         self._chain.setVisible(bool(chain))
-        self._path.setText(str(path) if path else "")
+        self._path.set_path(str(path) if path else "")
         self._path.setVisible(bool(path))
         self.setVisible(bool(kind or chain or path))
 

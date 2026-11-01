@@ -107,6 +107,11 @@ class SyncGroup(QObject):
         if target is not None:
             target.zoom_by(factor)
 
+    def touch(self, view):
+        """Пользователь выбрал окно кликом: кнопки −/+ теперь действуют на него."""
+        if view in self._views:
+            self._leader = view
+
     def active_current(self):
         """Окно, которое листается: текущее, которого касались последним, иначе последнее текущее. Эталон не листается."""
         if self._leader is not None and self._leader is not self._reference:

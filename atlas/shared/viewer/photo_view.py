@@ -102,6 +102,11 @@ class PhotoView(QWidget):
         return self._level if self.is_current_shown else None
 
     @property
+    def shown_image_size(self):
+        """(ширина, высота) картинки текущего фото с учётом EXIF, уровень любой; годится для ориентации. Иначе None."""
+        return (self._image.width(), self._image.height()) if self.is_current_shown else None
+
+    @property
     def is_current_shown(self):
         """False, пока на экране прежнее фото: отмечать сейчас нельзя, это проверит экран сравнения."""
         return self._image is not None and self._image_path == self._path
@@ -276,7 +281,8 @@ class PhotoView(QWidget):
         self.style().drawPrimitive(QStyle.PE_Widget, option, painter, self)  # фон и рамка из QSS
         if self._image is None:
             return
-        inner = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        frame = 2 if self.property("active") else 1  # толщина рамки из QSS: фото не должно её закрывать
+        inner = QRectF(self.rect()).adjusted(frame, frame, -frame, -frame)
         outline = QPainterPath()
         outline.addRoundedRect(inner, _INNER_RADIUS, _INNER_RADIUS)
         painter.setClipPath(outline)

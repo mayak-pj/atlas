@@ -136,8 +136,11 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `shell.online` | оболочка | «кто онлайн» (`presence`) |
 | `login.summary` | login | «С вашего последнего входа» (правила, комментарии, папки) — только на время диалога |
 | `login.aside` | login | «Сейчас в работе», последние папки — только на время диалога |
+| `compare.left` | compare | панель папок (`folders`). Колонка 240–280 px, пустая не занимает места |
+| `compare.right` | compare | сводка по детали (`findings`), правила (`rules`). Колонка 280–320 px, пустая не занимает места |
+| `compare.toolbar` | compare | кнопки в панели инструментов (`annotate_tools`, `type_db`). Кнопкам — `setFocusPolicy(Qt.NoFocus)`, иначе стрелки и пробел достанутся им |
 
-Слоты `compare.*`, `draft.actions` появятся вместе с их владельцами.
+Слот `draft.actions` появится вместе с владельцем.
 
 ## События (поддерживать актуальным)
 
@@ -164,6 +167,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
 | `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT, exact=False)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
+| `compare` | compare | `open_folder(folder_id)` — из GUI-потока, база читается в фоне; `set_reference(path)`; `current_folder()` → Folder или None |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
@@ -188,8 +192,8 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 - Лимит памяти (`image_cache` в `config/app.json`), по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
-- `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`.
-- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `set_state(zoom, cx, cy)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
+- `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`, `shown_image_size`. Свойство Qt `active` — подсветка активного окна.
+- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `set_state(zoom, cx, cy)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `touch(view)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
 
 ## Как добавить / изменить / удалить функцию
 - **Добавить:** `/new-feature id: описание` — шаблон папки, `FEATURE`, миграция, тест, строка в `features.json`, строки в таблицах выше.

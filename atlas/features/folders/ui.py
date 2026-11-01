@@ -129,6 +129,8 @@ class FoldersPanel(QFrame):
             pill = QLabel(str(count))
             pill.setProperty("role", "pill")
             pill.setProperty("tone", "type2")
+            pill.setMinimumWidth(30)
+            pill.setAlignment(Qt.AlignCenter)
             layout.addWidget(pill)
         self._add(row)
 

@@ -44,10 +44,12 @@ def settings_icon(color, size=18):
 
 class ShellWindow(QMainWindow):
     settings_requested = pyqtSignal()
+    theme_chosen = pyqtSignal(str)  # "dark" | "light": выбор из меню настроек; применяет тот, кто владеет запуском
 
     def __init__(self, ctx=None, parent=None):
         super().__init__(parent)
         self.ctx = ctx
+        self.current_theme = theme.DEFAULT_THEME
         self.slots = SlotRegistry()
         self._items = []
         self.setWindowTitle("Atlas")
@@ -101,9 +103,27 @@ class ShellWindow(QMainWindow):
         self.settings_button.setIcon(settings_icon(theme.current().qcolor("text_dim")))
         self.settings_button.setIconSize(QSize(18, 18))
         self.settings_button.setCursor(Qt.PointingHandCursor)
-        self.settings_button.clicked.connect(self.settings_requested)
+        self.settings_button.clicked.connect(self._show_settings_menu)
         row.addWidget(self.settings_button)
         return bar
+
+    def _show_settings_menu(self):
+        from PyQt5.QtWidgets import QActionGroup, QMenu
+
+        self.settings_requested.emit()
+        menu = QMenu(self)
+        title = menu.addAction("Тема оформления")
+        title.setEnabled(False)
+        group = QActionGroup(menu)
+        current = self.current_theme
+        for name, text in theme.THEME_TITLES.items():
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(name == current)
+            action.setActionGroup(group)
+            action.triggered.connect(lambda _=False, n=name: self.theme_chosen.emit(n))
+        menu.exec_(self.settings_button.mapToGlobal(self.settings_button.rect().bottomLeft()))
+        menu.deleteLater()
 
     # --- вкладки --------------------------------------------------------------
     def set_tabs(self, items):

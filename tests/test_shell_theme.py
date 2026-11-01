@@ -129,3 +129,28 @@ def test_tab_is_wide_enough_for_its_bold_title(qtbot, qapp):
     bold.setWeight(QFont.DemiBold)
     needed = QFontMetrics(bold).horizontalAdvance("Привет") + 2 * 14  # 14 — padding вкладки в atlas.qss
     assert bar.tabRect(0).width() >= needed
+
+
+def test_light_theme_has_same_tokens_and_qss_renders():
+    from atlas.core import theme as theme_module
+
+    dark = json.loads(theme_module.tokens_file("dark").read_text(encoding="utf-8"))
+    light = json.loads(theme_module.tokens_file("light").read_text(encoding="utf-8"))
+    assert set(light["colors"]) == set(dark["colors"])
+    assert set(light["sizes"]) == set(dark["sizes"])
+    assert light["colors"] != dark["colors"]
+    assert theme_module.tokens_file("нет такой") == theme_module.tokens_file("dark")
+    assert theme_module.Theme.load(theme_module.tokens_file("light")).build_qss()
+
+
+def test_ui_state_saves_and_ignores_broken_file(tmp_path):
+    from atlas.core import ui_state
+    from atlas.core.config import AppPaths
+
+    paths = AppPaths(tmp_path / "Папка Атлас")
+    assert ui_state.load(paths) == {}
+    assert ui_state.save(paths, "theme", "light")
+    assert ui_state.save(paths, "x", 1)
+    assert ui_state.load(paths) == {"theme": "light", "x": 1}
+    ui_state.path_of(paths).write_text("не json", encoding="utf-8")
+    assert ui_state.load(paths) == {}

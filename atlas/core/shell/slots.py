@@ -35,6 +35,8 @@ class SlotRegistry:
         if key is None:
             self._counter += 1
             key = "#{}".format(self._counter)
+        if type(widget).__name__ == "QWidget" and widget.property("role") is None:
+            widget.setProperty("role", "plain")  # простая обёртка прозрачна: иначе QSS красит её в цвет фона и она видна «тенью» на панели
         panels = self._panels.setdefault(name, [])
         for item in list(panels):
             if item[1] == key:

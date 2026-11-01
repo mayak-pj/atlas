@@ -116,6 +116,27 @@ def _run_viewbench(args):
     return run(folder, Path(report), int(numbers["--photos"]), int(numbers["--flips"]), int(numbers["--workers"]) or None, label=_option(args, "--label"))
 
 
+def _connect_theme_choice(window, paths):
+    """Тема выбирается в меню настроек и сохраняется; применяется при следующем запуске (значки и снимки рисуются цветами темы)."""
+    from PyQt5.QtWidgets import QMessageBox
+
+    from atlas.core import theme, ui_state
+
+    chosen = ui_state.load(paths).get("theme")
+    window.current_theme = chosen if chosen in theme.THEMES else theme.DEFAULT_THEME
+
+    def on_chosen(name):
+        if name == window.current_theme:
+            return
+        if ui_state.save(paths, "theme", name):
+            window.current_theme = name
+            QMessageBox.information(window, "Atlas", "Тема «{}» включится после перезапуска программы.".format(theme.THEME_TITLES[name]))
+        else:
+            QMessageBox.warning(window, "Atlas", "Не удалось сохранить выбор темы: нет доступа к папке var рядом с программой.")
+
+    window.theme_chosen.connect(on_chosen)
+
+
 def main(argv=None):
     code = _run_check_command(list(argv if argv is not None else sys.argv)[1:])
     if code is not None:
@@ -129,7 +150,9 @@ def main(argv=None):
     app = QApplication(list(argv if argv is not None else sys.argv))
     from atlas.core.theme import apply_theme
 
-    apply_theme(app)
+    from atlas.core import ui_state
+
+    apply_theme(app, name=ui_state.load(paths).get("theme"))
     try:
         ctx = build_core(paths)
     except (ConfigError, OSError, DatabaseError, sqlite3.Error) as exc:
@@ -140,6 +163,7 @@ def main(argv=None):
     app.aboutToQuit.connect(registry.stop_all)
     app.aboutToQuit.connect(ctx.services.get("image_cache").stop)
     window = build_window(registry)
+    _connect_theme_choice(window, paths)
     try:
         proceed = run_login(ctx, window)
     except Exception as exc:  # база недоступна и т. п.

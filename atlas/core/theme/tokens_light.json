@@ -1,0 +1,60 @@
+{
+  "colors": {
+    "bg": "#F3F5F8",
+    "photo_bg": "#D5D9E0",
+    "panel": "#FFFFFF",
+    "panel_alt": "#F7F9FB",
+    "panel_2": "#EEF1F5",
+    "tag": "#E8ECF1",
+    "border": "#D9DEE5",
+    "border_strong": "#C3CAD4",
+    "text": "#1B1F24",
+    "text_dim": "#4B5563",
+    "muted": "#6B7280",
+    "disabled": "#A3ABB7",
+    "accent": "#1F6FEB",
+    "accent_hover": "#3B82F6",
+    "accent_soft": "#DCEAFE",
+    "on_accent": "#FFFFFF",
+    "link": "#1A5FD0",
+    "type2": "#B96A00",
+    "defect": "#D6293A",
+    "remark": "#7E3FCF",
+    "ok": "#11803F",
+    "ok_soft": "#D8F3E3",
+    "type2_soft": "#FCE9C8",
+    "defect_soft": "#FBDADC",
+    "remark_soft": "#EADFFB"
+  },
+  "fonts": {
+    "ui": [
+      "Segoe UI",
+      "SF Pro Text",
+      "Helvetica Neue",
+      "Noto Sans",
+      "DejaVu Sans",
+      "Tahoma",
+      "Arial"
+    ],
+    "mono": [
+      "Consolas",
+      "Menlo",
+      "DejaVu Sans Mono",
+      "Courier New"
+    ]
+  },
+  "sizes": {
+    "font_sm": 11,
+    "font_md": 13,
+    "font_lg": 15,
+    "font_xl": 28,
+    "radius_sm": 7,
+    "radius_md": 10,
+    "space_1": 4,
+    "space_2": 8,
+    "space_3": 12,
+    "space_4": 16,
+    "space_5": 24,
+    "control_h": 32
+  }
+}

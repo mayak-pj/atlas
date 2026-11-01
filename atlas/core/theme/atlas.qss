@@ -35,11 +35,11 @@ QPushButton[role="chip"]:checked { background: $accent_soft; border-color: $acce
 QLabel[role="folder-title"] { font-weight: 700; }
 QLabel[role="ok"] { color: $ok; font-size: ${font_sm}px; }
 QFrame[role="hsep"] { background: $border; border: none; min-height: 1px; max-height: 1px; }
-QLabel[role="pill"] { border: 1px solid transparent; border-radius: 7px; padding: 0 8px; font-size: ${font_sm}px; font-weight: 700; }
-QLabel[role="pill"][tone="ok"] { border: 1px solid transparent; border-radius: 7px; background: $ok_soft; color: $ok; }
-QLabel[role="pill"][tone="type2"] { border: 1px solid transparent; border-radius: 7px; background: $type2_soft; color: $type2; }
-QLabel[role="pill"][tone="defect"] { border: 1px solid transparent; border-radius: 7px; background: $defect_soft; color: $defect; }
-QLabel[role="pill"][tone="remark"] { border: 1px solid transparent; border-radius: 7px; background: $remark_soft; color: $remark; }
+QLabel[role="pill"] { border: 1px solid transparent; border-radius: 6px; padding: 1px 8px; min-height: 16px; font-size: ${font_sm}px; font-weight: 700; }
+QLabel[role="pill"][tone="ok"] { border: 1px solid transparent; border-radius: 6px; background: $ok_soft; color: $ok; }
+QLabel[role="pill"][tone="type2"] { border: 1px solid transparent; border-radius: 6px; background: $type2_soft; color: $type2; }
+QLabel[role="pill"][tone="defect"] { border: 1px solid transparent; border-radius: 6px; background: $defect_soft; color: $defect; }
+QLabel[role="pill"][tone="remark"] { border: 1px solid transparent; border-radius: 6px; background: $remark_soft; color: $remark; }
 QFrame[role="alert"] { background: $defect_soft; border: 1px solid $defect; border-radius: ${radius_md}px; }
 QFrame[role="alert"] QLabel { background: transparent; }
 QLabel[role="alert-title"] { color: $defect; font-weight: 700; }

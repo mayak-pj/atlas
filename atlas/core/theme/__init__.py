@@ -10,6 +10,14 @@ import string
 from pathlib import Path
 
 _DIR = Path(__file__).resolve().parent
+THEMES = {"dark": "tokens.json", "light": "tokens_light.json"}
+THEME_TITLES = {"dark": "Тёмная", "light": "Светлая"}
+DEFAULT_THEME = "dark"
+
+
+def tokens_file(name):
+    """Файл токенов темы; неизвестное имя — тёмная."""
+    return _DIR / THEMES.get(name, THEMES[DEFAULT_THEME])
 _current = None
 
 
@@ -87,12 +95,12 @@ class Theme:
         return palette
 
 
-def apply_theme(app, tokens_path=None):
-    """Нужен созданный QApplication. Шрифт — в пикселях: размер не зависит от системного масштаба."""
+def apply_theme(app, tokens_path=None, name=None):
+    """Нужен созданный QApplication. Шрифт — в пикселях: размер не зависит от системного масштаба. name — "dark" | "light"."""
     from PyQt5.QtGui import QFont, QFontDatabase
 
     global _current
-    theme = Theme.load(tokens_path)
+    theme = Theme.load(tokens_path or (tokens_file(name) if name else None))
     families = QFontDatabase().families()
     theme.ui_family = pick_font(families, theme.font_candidates["ui"])
     theme.mono_family = pick_font(families, theme.font_candidates["mono"])

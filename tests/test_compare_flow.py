@@ -772,9 +772,3 @@ def test_panel_choice_is_restored_and_bad_data_is_ignored(app):
     assert app.screen.panels_state() == {"left": True, "top": True, "bottom": False, "right": True}
     app.screen.restore_panels("не словарь")
     assert app.screen.panels_state()["bottom"] is False
-    from atlas.features.compare import logic
-    state = app.ctx.paths.root / "var" / "x.json"
-    state.parent.mkdir(exist_ok=True)
-    state.write_text("не json", encoding="utf-8")
-    assert logic.load_ui_state(state) == {}
-    assert logic.load_ui_state(state.parent / "нет.json") == {}

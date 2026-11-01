@@ -784,3 +784,35 @@ def test_second_marks_row_is_hidden_until_there_is_something_to_show(app):
     app.press(Qt.Key_D)  # повторное нажатие снимает отметку
     app.qtbot.waitUntil(lambda: not screen.defect_box.isVisibleTo(screen), timeout=5000)
     assert screen.extra_box.isHidden()
+
+
+def _write_state(tmp_path, panels):
+    var = tmp_path / "Атлас тест" / "var"
+    var.mkdir(parents=True)
+    (var / "ui_state.json").write_text(json.dumps({"compare_panels": panels}), encoding="utf-8")
+
+
+def test_saved_choice_is_restored_at_start(tmp_path, qtbot):
+    _write_state(tmp_path, {"left": False, "top": True, "bottom": False, "right": True})
+    app = App(tmp_path, qtbot, features=("compare", "folders", "findings"))
+    try:
+        screen = app.screen
+        assert screen.panels_state() == {"left": False, "top": True, "bottom": False, "right": True}
+        qtbot.waitUntil(lambda: screen.right_box.isVisibleTo(screen), timeout=5000)
+        assert not screen.left_box.isVisibleTo(screen) and not screen.bottom_box.isVisibleTo(screen)
+        assert screen.top_box.isVisibleTo(screen)
+        screen._panel_buttons["left"].click()  # одно нажатие — и панель на месте
+        qtbot.waitUntil(lambda: screen.left_box.isVisibleTo(screen), timeout=5000)
+    finally:
+        app.stop()
+
+
+def test_panels_marked_open_are_shown_at_start(tmp_path, qtbot):
+    _write_state(tmp_path, {"left": True, "top": True, "bottom": True, "right": True})
+    app = App(tmp_path, qtbot, features=("compare", "folders", "findings"))
+    try:
+        screen = app.screen
+        qtbot.waitUntil(lambda: screen.left_box.isVisibleTo(screen) and screen.right_box.isVisibleTo(screen), timeout=5000)
+        assert screen.left.isVisibleTo(screen) and screen.right.isVisibleTo(screen)
+    finally:
+        app.stop()

@@ -60,15 +60,20 @@ class SlotColumn(QVBoxLayout):
         self._holder = holder
         self.setContentsMargins(0, 0, 0, 0)
         self.setSpacing(10)
+        self.changed = None  # вызывается, когда колонка стала пустой или непустой: экран прячет или показывает свой контейнер
         holder.hide()
 
     def addWidget(self, widget, *args):
         super().addWidget(widget, *args)
         self._holder.show()
+        if self.changed is not None:
+            self.changed()
 
     def removeWidget(self, widget):
         super().removeWidget(widget)
         self._holder.setVisible(self.count() > 0)
+        if self.changed is not None:
+            self.changed()
 
 
 def _key(text):
@@ -157,8 +162,9 @@ class CompareScreen(QWidget):
         self.bottom_box = self._box(self._build_strip_panel(), self._build_marks_panel(), self.hint)
         self.left_box = self._box(self.left)
         self.right_box = self._box(self.right)
-        for side in (self.left, self.right):
-            side.installEventFilter(self)  # пустая колонка слота скрыта: контейнер тоже, иначе остаётся пустой промежуток
+        # пустая колонка слота скрыта, и контейнер тоже, иначе остаётся пустой промежуток; Show-событий до показа окна нет, поэтому через колонку
+        self.left_layout.changed = lambda: self._apply_side("left", self.left)
+        self.right_layout.changed = lambda: self._apply_side("right", self.right)
 
         middle = QVBoxLayout()
         middle.setSpacing(10)
@@ -177,6 +183,8 @@ class CompareScreen(QWidget):
 
         self.group.changed.connect(lambda zoom, cx, cy: self._show_zoom(zoom))
         self.set_layout(1)
+        self._apply_side("left", self.left)
+        self._apply_side("right", self.right)
 
     # --- сборка ---------------------------------------------------------------
     def _box(self, *widgets):
@@ -210,6 +218,8 @@ class CompareScreen(QWidget):
         return row
 
     def _apply_side(self, key, holder):
+        if not hasattr(self, "_panel_buttons"):
+            return
         wanted = self._panel_buttons[key].isChecked() and not holder.isHidden()
         self._panel_boxes[key].setVisible(wanted)
 
@@ -1057,10 +1067,6 @@ class CompareScreen(QWidget):
 
     # --- мышь и служебное -----------------------------------------------------
     def eventFilter(self, watched, event):
-        if event.type() in (QEvent.Show, QEvent.Hide) and watched in (self.left, self.right) and hasattr(self, "_panel_buttons"):
-            if not event.spontaneous():
-                key = "left" if watched is self.left else "right"
-                self._apply_side(key, watched)
         if event.type() == QEvent.MouseButtonPress and watched in self.views:
             self._on_view_clicked(watched)
         return False

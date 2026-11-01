@@ -24,6 +24,8 @@ TEXT_NO_FINDINGS = "Дефектов и замечаний раньше не б�
 TEXT_NEVER_CHECKED = "Раньше эта деталь не проверялась"
 TEXT_ARCHIVED = "в архиве"
 TEXT_LOAD_FAILED = "Не удалось прочитать данные: сводка может быть устаревшей"
+TEXT_PROBLEM = "Проблемная деталь — будьте внимательнее"
+NOTICE_MS = 15000
 PILL_DEFECT = "Дефект"
 PILL_REMARK = "Замечание"
 
@@ -89,6 +91,8 @@ class FindingsPanel(QFrame):
         self._add(_label(summary.name, "heading"))
         if summary.similar_names:
             self._add(_label("Учтены и похожие названия: " + ", ".join(summary.similar_names), "muted"))
+        if summary.problem is not None:
+            self._add(self._alert(summary))
         if stale:
             self._add(_label(TEXT_LOAD_FAILED, "warn"))
         if summary.types is not None:
@@ -106,8 +110,9 @@ class FindingsPanel(QFrame):
             self._add(self._finding_row(line))
         if summary.total > len(summary.findings):
             self._add(_label("Показано {} из {}".format(len(summary.findings), summary.total), "muted"))
-        self._separator()
-        self._add(_label(self.last_check_text(summary), "dim"))
+        if summary.problem is None:  # у проблемной детали «последняя проверка» уже в плашке
+            self._separator()
+            self._add(_label(self.last_check_text(summary), "dim"))
 
     def last_check_text(self, summary):
         if summary.last_check is None:
@@ -122,6 +127,18 @@ class FindingsPanel(QFrame):
         line = QFrame()
         line.setProperty("role", "hsep")
         self._add(line)
+
+    def _alert(self, summary):
+        """Красная плашка: что за дефекты и когда проверяли последний раз."""
+        frame = QFrame()
+        frame.setProperty("role", "alert")
+        column = QVBoxLayout(frame)
+        column.setContentsMargins(10, 10, 10, 10)
+        column.setSpacing(4)
+        column.addWidget(_label(TEXT_PROBLEM, "alert-title"))
+        column.addWidget(_label(logic.problem_text(summary.problem, self._today), "alert-text"))
+        column.addWidget(_label(self.last_check_text(summary), "alert-text"))
+        return frame
 
     def _type_row(self, line):
         row = QWidget()
@@ -167,6 +184,7 @@ class FindingsFeature(Feature):
         self._thread = None
         self._again = False
         self._stale = False
+        self._notify = False  # уведомление — один раз на открытие папки, а не на каждое обновление сводки
         self.signals = _Signals()
         self.signals.loaded.connect(self._on_loaded)
         self.panel = FindingsPanel()
@@ -202,6 +220,10 @@ class FindingsFeature(Feature):
         ids = [item.id for item in group]
         names = {user.id: user.name for user, _ in services.get("users").all()}
         marks = folders.problem_marks(ids, exclude_folder_id, logic.since_text(days))
+        problem_days = logic.positive_int(config.get("findings.problem_days"), logic.DEFAULT_PROBLEM_DAYS)
+        problem = logic.problem_of(
+            marks, problem_days, logic.positive_int(config.get("findings.problem_min_defects"), logic.DEFAULT_PROBLEM_MIN)
+        )
         limit = config.get("findings.list_limit", logic.DEFAULT_LIMIT)
         lines, total, defects, remarks = logic.build_findings(marks, names, limit)
         last = folders.last_done(ids)
@@ -215,6 +237,7 @@ class FindingsFeature(Feature):
             tuple(sorted({item.name for item in group[1:] if item.name != part.name})),
             types, lines, total, defects, remarks,
             logic.LastCheck(last.status_at, names.get(last.status_by, "")) if last is not None else None,
+            problem,
         )
 
     # --- панель -----------------------------------------------------------------
@@ -222,6 +245,7 @@ class FindingsFeature(Feature):
         self.part_id = payload.get("part_id")
         self.folder_id = payload.get("folder_id")
         self._stale = False
+        self._notify = True
         self.reload()
 
     def reload(self):
@@ -242,6 +266,14 @@ class FindingsFeature(Feature):
             summary = None
         self.signals.loaded.emit(part_id, summary)
 
+    def _announce(self, summary):
+        """Проблемная деталь: уведомление в строке состояния, один раз после открытия папки."""
+        if not self._notify:
+            return
+        self._notify = False
+        if summary.problem is not None and self.ctx.shell is not None:
+            self.ctx.shell.show_message(logic.notice_text(summary.name, summary.problem), NOTICE_MS)
+
     def _on_loaded(self, part_id, summary):
         self._thread = None
         if self._stopped:
@@ -250,6 +282,7 @@ class FindingsFeature(Feature):
             if summary is not None:
                 self._stale = False
                 self.panel.show_summary(summary)
+                self._announce(summary)
             else:
                 self._stale = True
                 if self.panel.summary is not None:

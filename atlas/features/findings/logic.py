@@ -14,6 +14,8 @@ from atlas.core.domain.text import TIME_FORMAT, normalize_name
 
 DEFAULT_MATCH = 0.85  # findings.name_match: 1 — только одинаковые названия
 DEFAULT_LIMIT = 10  # findings.list_limit: сколько дефектов и замечаний показывать
+DEFAULT_PROBLEM_DAYS = 30  # findings.problem_days: за сколько суток считать дефекты
+DEFAULT_PROBLEM_MIN = 1  # findings.problem_min_defects: сколько дефектов за это время делают деталь «проблемной»
 TYPE_KIND = "type"  # TypeRecord.kind: в «Типах» только типы, не примеры дефектов
 
 
@@ -90,6 +92,15 @@ class LastCheck:
 
 
 @dataclass(frozen=True)
+class Problem:
+    """Деталь «проблемная»: за последние `days` суток было `defects` дефектов, последний отмечен `last`."""
+
+    defects: int
+    days: int
+    last: str
+
+
+@dataclass(frozen=True)
 class Summary:
     part_id: int
     name: str
@@ -100,6 +111,7 @@ class Summary:
     defects: int
     remarks: int
     last_check: Optional[LastCheck]
+    problem: Optional[Problem] = None  # None — деталь не проблемная
 
 
 def build_types(records):
@@ -127,6 +139,49 @@ def build_findings(marks, names, limit=DEFAULT_LIMIT):
     )
     defects = sum(1 for item in marks if item.mark == MARK_DEFECT)
     return lines, len(marks), defects, len(marks) - defects
+
+
+def positive_int(value, default):
+    """Целое не меньше 1 из настройки; иначе значение по умолчанию."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number >= 1 else default
+
+
+def problem_of(marks, days, min_defects=DEFAULT_PROBLEM_MIN, now=None):
+    """Problem, если за `days` суток дефектов (замечания не считаются) не меньше `min_defects`; иначе None."""
+    since = since_text(days, now)
+    recent = [item.marked_at for item in marks if item.mark == MARK_DEFECT and item.marked_at >= since]
+    if len(recent) < max(1, min_defects):
+        return None
+    return Problem(len(recent), days, max(recent))
+
+
+def plural(number, forms):
+    """Склонение по числу: plural(2, ("дефект", "дефекта", "дефектов")) → «дефекта»."""
+    last_two, last = number % 100, number % 10
+    if 11 <= last_two <= 14:
+        return forms[2]
+    return forms[0] if last == 1 else forms[1] if 2 <= last <= 4 else forms[2]
+
+
+DEFECT_FORMS = ("дефект", "дефекта", "дефектов")
+DAY_FORMS = ("день", "дня", "дней")
+
+
+def problem_text(problem, today=None):
+    """«3 дефекта за 30 дней · последний 14.10»."""
+    return "{} {} за {} {} · последний {}".format(
+        problem.defects, plural(problem.defects, DEFECT_FORMS), problem.days, plural(problem.days, DAY_FORMS),
+        short_date(problem.last, today),
+    )
+
+
+def notice_text(name, problem, today=None):
+    """Уведомление при открытии папки: «SSD: проблемная деталь — 3 дефекта за 30 дней, последний 14.10. Будьте внимательнее.»"""
+    return "{}: проблемная деталь — {}. Будьте внимательнее.".format(name, problem_text(problem, today).replace(" · ", ", "))
 
 
 def since_text(days, now=None):

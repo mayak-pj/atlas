@@ -20,7 +20,9 @@
   },
   "findings": {
     "name_match": 0.85,
-    "list_limit": 10
+    "list_limit": 10,
+    "problem_days": 30,
+    "problem_min_defects": 1
   },
   "compare": {
     "neighbor_search_year_only": true,

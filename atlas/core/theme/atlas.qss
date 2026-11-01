@@ -40,6 +40,10 @@ QLabel[role="pill"][tone="ok"] { background: $ok_soft; color: $ok; }
 QLabel[role="pill"][tone="type2"] { background: $type2_soft; color: $type2; }
 QLabel[role="pill"][tone="defect"] { background: $defect_soft; color: $defect; }
 QLabel[role="pill"][tone="remark"] { background: $remark_soft; color: $remark; }
+QFrame[role="alert"] { background: $defect_soft; border: 1px solid $defect; border-radius: ${radius_md}px; }
+QFrame[role="alert"] QLabel { background: transparent; }
+QLabel[role="alert-title"] { color: $defect; font-weight: 700; }
+QLabel[role="alert-text"] { color: $text; }
 QFrame[role="panel-alt"] { background: $panel_alt; border: 1px solid $border; border-radius: ${radius_md}px; }
 QFrame[role="panel-alt"] QLabel { background: transparent; }
 

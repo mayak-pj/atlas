@@ -243,3 +243,114 @@ def test_old_texts_disappear_when_summary_replaced(qtbot):
     summary = logic.Summary(1, "Плата", (), (), (), 0, 0, 0, None)
     panel.show_summary(summary)
     assert TEXT_NO_FOLDER not in [label.text() for label in panel.findChildren(QLabel) if label.isVisibleTo(panel)]
+
+
+# --- «Проблемная деталь» (5.2) ----------------------------------------------------------------
+NOW = datetime(2026, 11, 1, 12, 0, 0)
+
+
+def test_problem_counts_only_defects_inside_window():
+    marks = [mark(4, "defect", "2026-10-30 10:00:00"), mark(3, "remark", "2026-10-29 10:00:00"),
+             mark(2, "defect", "2026-10-20 10:00:00"), mark(1, "defect", "2026-08-01 10:00:00")]
+    problem = logic.problem_of(marks, 30, 1, NOW)
+    assert (problem.defects, problem.days, problem.last) == (2, 30, "2026-10-30 10:00:00")
+
+
+def test_remarks_alone_do_not_make_part_problem():
+    assert logic.problem_of([mark(1, "remark", "2026-10-30 10:00:00")], 30, 1, NOW) is None
+    assert logic.problem_of([], 30, 1, NOW) is None
+
+
+def test_problem_respects_minimum_and_old_defects():
+    marks = [mark(2, "defect", "2026-10-30 10:00:00"), mark(1, "defect", "2026-08-01 10:00:00")]
+    assert logic.problem_of(marks, 30, 2, NOW) is None
+    assert logic.problem_of(marks, 120, 2, NOW).defects == 2
+    assert logic.problem_of(marks, 30, 0, NOW).defects == 1  # 0 в настройке считается как 1
+
+
+def test_settings_numbers_are_checked():
+    assert logic.positive_int("7", 30) == 7
+    assert logic.positive_int(0, 30) == 30 and logic.positive_int("x", 30) == 30 and logic.positive_int(None, 30) == 30
+
+
+@pytest.mark.parametrize("number, word", [(1, "дефект"), (2, "дефекта"), (5, "дефектов"), (11, "дефектов"), (21, "дефект"), (112, "дефектов")])
+def test_plural(number, word):
+    assert logic.plural(number, logic.DEFECT_FORMS) == word
+
+
+def test_texts():
+    problem = logic.Problem(3, 30, "2026-10-14 10:00:00")
+    assert logic.problem_text(problem, NOW) == "3 дефекта за 30 дней · последний 14.10"
+    assert logic.notice_text("SSD", problem, NOW) == "SSD: проблемная деталь — 3 дефекта за 30 дней, последний 14.10. Будьте внимательнее."
+
+
+def recent_stamp(days_ago):
+    from datetime import timedelta
+    return (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def alert_texts(panel):
+    from PyQt5.QtWidgets import QLabel
+    return [label.text() for label in panel.findChildren(QLabel) if label.property("role") in ("alert-title", "alert-text")
+            and label.isVisibleTo(panel)]
+
+
+def test_banner_and_notice_for_part_with_recent_defects(app):
+    old = app.folder("Плата MB-15", date="2026-10-01")
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(3))
+    app.mark(old, 1, "defect", "S2", None, recent_stamp(10))
+    messages = []
+    app.window.statusBar().messageChanged.connect(messages.append)
+    summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
+    assert summary.problem.defects == 2
+    texts = alert_texts(app.feature("findings").panel)
+    assert texts[0] == "Проблемная деталь — будьте внимательнее" and texts[1].startswith("2 дефекта за 30 дней")
+    app.qtbot.waitUntil(lambda: any("Будьте внимательнее" in text for text in messages), timeout=2000)
+
+
+def test_no_banner_without_recent_defects(app):
+    old = app.folder("Плата MB-15", date="2026-10-01")
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(90))
+    app.mark(old, 1, "remark", "S2", None, recent_stamp(1))
+    messages = []
+    app.window.statusBar().messageChanged.connect(messages.append)
+    summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
+    assert summary.problem is None and alert_texts(app.feature("findings").panel) == []
+    assert not any("Будьте внимательнее" in text for text in messages)
+
+
+def test_notice_once_per_opening_not_per_reload(app):
+    old = app.folder("Плата MB-15", date="2026-10-01")
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(2))
+    opened = app.folder("Плата MB-15", date="2026-10-30")
+    messages = []
+    app.window.statusBar().messageChanged.connect(messages.append)
+    app.open(opened)
+    feature = app.feature("findings")
+    app.ctx.bus.publish("folder.done", {"folder_id": old.id})
+    app.qtbot.waitUntil(lambda: feature._thread is None and not feature._again, timeout=3000)
+    app.qtbot.wait(100)
+    assert len([text for text in messages if "Будьте внимательнее" in text]) == 1
+
+
+def test_current_folder_defects_do_not_make_part_problem(app):
+    folder = app.folder("Плата MB-15")
+    app.mark(folder, 0, "defect", "S1", None, recent_stamp(0))
+    assert app.open(folder).problem is None
+
+
+def test_problem_window_from_config(app):
+    old = app.folder("Плата MB-15", date="2026-10-01")
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(45))
+    app.ctx.config.app.setdefault("findings", {})["problem_days"] = 60
+    assert app.open(app.folder("Плата MB-15", date="2026-10-30")).problem.days == 60
+
+
+def test_last_check_not_duplicated_under_banner(app):
+    from PyQt5.QtWidgets import QLabel
+    old = app.folder("Плата MB-15", date="2026-10-01")
+    app.mark(old, 0, "defect", "S1", None, recent_stamp(2))
+    app.finish(old, recent_stamp(1))
+    app.open(app.folder("Плата MB-15", date="2026-10-30"))
+    texts = [label.text() for label in app.feature("findings").panel.findChildren(QLabel) if label.isVisibleTo(app.feature("findings").panel)]
+    assert len([text for text in texts if text.startswith("Последняя проверка")]) == 1

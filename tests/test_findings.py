@@ -272,7 +272,9 @@ def test_banner_and_notice_for_part_with_recent_marks(app):
     app.window.statusBar().messageChanged.connect(messages.append)
     summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
     assert summary.problem.count == 2
-    texts = alert_texts(app.feature("findings").panel)
+    panel = app.feature("findings").panel
+    app.qtbot.waitUntil(lambda: len(alert_texts(panel)) == 2, timeout=3000)  # новые виджеты раскладка показывает позже
+    texts = alert_texts(panel)
     assert texts[0] == "Ранее были замечания — будьте внимательнее" and texts[1].startswith("2 замечания за 180 дней")
     app.qtbot.waitUntil(lambda: any("Будьте внимательнее" in text for text in messages), timeout=2000)
 
@@ -321,5 +323,12 @@ def test_last_check_not_duplicated_under_banner(app):
     app.mark(old, 0, "defect", "S1", None, recent_stamp(2))
     app.finish(old, recent_stamp(1))
     app.open(app.folder("Плата MB-15", date="2026-10-30"))
-    texts = [label.text() for label in app.feature("findings").panel.findChildren(QLabel) if label.isVisibleTo(app.feature("findings").panel)]
-    assert len([text for text in texts if text.startswith("Последняя проверка")]) == 1
+    panel = app.feature("findings").panel
+
+    def last_check_lines():
+        return [label.text() for label in panel.findChildren(QLabel)
+                if label.isVisibleTo(panel) and label.text().startswith("Последняя проверка")]
+
+    app.qtbot.waitUntil(lambda: len(last_check_lines()) >= 1, timeout=3000)
+    app.qtbot.wait(100)
+    assert len(last_check_lines()) == 1

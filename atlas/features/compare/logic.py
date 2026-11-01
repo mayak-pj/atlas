@@ -160,6 +160,21 @@ def reference_angles(photos, pattern=None):
     return dict(sorted(result.items()))
 
 
+def photo_of_angle(photos, index, view, pattern=None):
+    """Номер фото нужного ракурса вместо фото index: того же артикула и SN, иначе первое с этим ракурсом, иначе None."""
+    current = parse_photo_name(photos[index].name, pattern)
+    first = None
+    for number, photo in enumerate(photos):
+        parsed = parse_photo_name(photo.name, pattern)
+        if parsed is None or parsed.view != view:
+            continue
+        if current is not None and (parsed.article, parsed.sn) == (current.article, current.sn):
+            return number
+        if first is None:
+            first = number
+    return first
+
+
 def neighbor_indexes(index, total, direction):
     """Какие фото подготовить, сначала самое важное. direction — знак последнего шага (1 или -1)."""
     ahead = [index + direction * step for step in range(1, NEIGHBORS_AHEAD + 1)]
@@ -281,6 +296,16 @@ class CompareModel:
         changed = index != self.active_index
         self.direction = 1 if index >= self.active_index else -1
         self._indexes[self.active] = index
+        return changed
+
+    def show_angle(self, view, pattern=None):
+        """Текущие окна переходят на этот ракурс; нет его в папке — окна не меняются. Вернёт номера окон, где фото сменилось."""
+        changed = []
+        for window in range(self.currents_count):
+            number = photo_of_angle(self.photos, self._indexes[window], view, pattern) if self.photos else None
+            if number is not None and number != self._indexes[window]:
+                self._indexes[window] = number
+                changed.append(window)
         return changed
 
     def set_mark(self, index, mark, sn, defect_kind):

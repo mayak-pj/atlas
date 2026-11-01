@@ -270,3 +270,59 @@ def test_late_answer_for_previous_folder_is_ignored(app):
     app.feature.open_folder(app.folder.id)  # новая папка: ответ поиска прежней папки не нужен
     app.qtbot.wait(500)
     assert not app.screen.model.has_reference_folder
+
+
+CURRENT_ANGLES = ["1_1_A.jpg", "1_1_B.jpg", "1_2_A.jpg", "1_2_B.jpg", "1_3_C.jpg"]
+
+
+@pytest.fixture
+def angle_app(tmp_path, qtbot):
+    instance = App(tmp_path, qtbot, count=len(CURRENT_ANGLES), names=CURRENT_ANGLES)
+    instance.wait_open()
+    _add_folder(instance, "A", "Орион-24", "N15", THIS_YEAR, ANGLES)
+    _find(instance)
+    _wait_shown(instance)
+    yield instance
+    instance.stop()
+
+
+def test_angle_button_switches_reference_and_current_window(angle_app):
+    app = angle_app
+    app.press(Qt.Key_Right)  # справа SN B: ракурс 2 должен остаться этого же SN
+    app.events.clear()
+    app.screen._angle_buttons[2].click()
+    _wait_shown(app)
+    assert _windows(app) == [ANGLES[2], "1_2_B.jpg"]
+    assert app.screen.strip.current == 3
+    assert ("photo.changed", {"folder_id": app.folder.id, "photo_id": app.screen.model.photos[3].id, "index": 3}) in app.events
+    app.screen._angle_buttons[1].click()
+    _wait_shown(app)
+    assert _windows(app) == [ANGLES[0], "1_1_B.jpg"]
+
+
+def test_angle_button_uses_first_photo_when_sn_has_no_such_angle(angle_app):
+    app = angle_app
+    model = app.screen.model
+    model.go(4)  # 1_3_C: у этого SN нет ракурса 2
+    app.screen._show_in(app.screen.active_view())
+    app.screen._angle_buttons[2].click()
+    _wait_shown(app)
+    assert _windows(app)[1] == "1_2_A.jpg"
+
+
+def test_angle_button_warns_when_folder_has_no_such_angle(tmp_path, qtbot):
+    names = ["1_1_A.jpg", "1_1_B.jpg"]
+    app = App(tmp_path, qtbot, count=len(names), names=names)
+    try:
+        app.wait_open()
+        _add_folder(app, "A", "Орион-24", "N15", THIS_YEAR, ANGLES)
+        _find(app)
+        _wait_shown(app)
+        app.screen._angle_buttons[2].click()
+        _wait_shown(app)
+        assert _windows(app) == [ANGLES[2], "1_1_A.jpg"]
+        assert app.screen.marks_status.text() == "В текущей папке нет ракурса 2"
+        app.screen._angle_buttons[1].click()
+        assert app.screen.marks_status.text() == ""
+    finally:
+        app.stop()

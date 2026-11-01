@@ -37,6 +37,7 @@ TEXT_REFERENCE_MARKS = "Эталон из другой папки — отмет
 TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
+TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
 TEXT_NO_ANGLES = "Ни одно имя фото не разобрано: ракурсы показать нельзя. Фото видны в «Сравнении»"
 FIT_STATE = (1.0, 0.5, 0.5)
 
@@ -455,7 +456,7 @@ class CompareScreen(QWidget):
         if len(angles) < 2:
             return  # выбирать нечего
         for angle, index in angles.items():
-            button = self._button("Ракурс {}".format(angle), lambda _=False, i=index: self.go_reference(i), checkable=True)
+            button = self._button("Ракурс {}".format(angle), lambda _=False, a=angle: self.choose_angle(a), checkable=True)
             self._angle_buttons[angle] = button
             self._angle_row.addWidget(button)
         self._check_angle()
@@ -469,6 +470,24 @@ class CompareScreen(QWidget):
     def _angle_of(self, photo):
         parsed = parse_photo_name(photo.name, self._name_pattern) if photo else None
         return parsed.view if parsed else None
+
+    def choose_angle(self, angle):
+        """Кнопка ракурса: этот ракурс и в эталоне, и в текущих окнах: сравнивать нужно одну и ту же сторону."""
+        if self._flicker is not None or not self.model.has_reference_folder:
+            return
+        index = reference_angles(self.model.ref_photos, self._name_pattern).get(angle)
+        if index is None:
+            return
+        self.go_reference(index)
+        before = self.model.active_index
+        changed = self.model.show_angle(angle, self._name_pattern)
+        for window in changed:
+            self._show_in(self._view_of(window))
+        has_angle = any(self._angle_of(photo) == angle for photo in self.model.photos)
+        self.marks_status.setText("" if has_angle else TEXT_NO_CURRENT_ANGLE.format(angle))
+        self._sync_strip()
+        if self.model.active_index != before and not self.model.reference_active:
+            self.photo_changed.emit(self.model.photos[self.model.active_index], self.model.active_index)
 
     def go_reference(self, index):
         """Кнопка ракурса: показать это фото найденной папки эталоном. Активным окном остаётся прежнее."""

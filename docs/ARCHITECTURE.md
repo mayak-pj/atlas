@@ -162,7 +162,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `hello` | hello (тестовая) | `greet(name)` |
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
-| `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
+| `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT, exact=False)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
@@ -187,6 +187,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 - Лимит памяти (`image_cache` в `config/app.json`), по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
+- `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. `cancel_pending()` вызывает владелец окон перед листанием: кэш общий, отмена из одного окна сбросила бы запросы других.
 
 ## Как добавить / изменить / удалить функцию
 - **Добавить:** `/new-feature id: описание` — шаблон папки, `FEATURE`, миграция, тест, строка в `features.json`, строки в таблицах выше.

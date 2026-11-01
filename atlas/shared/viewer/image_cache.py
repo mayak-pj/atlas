@@ -63,14 +63,15 @@ class ImageCache(QObject):
         self._epoch = 0
         self._stopped = False
 
-    def get(self, path, level, priority=CURRENT):
+    def get(self, path, level, priority=CURRENT, exact=False):
         """Лучшее из памяти сразу: CachedImage(image, level) или None.
 
         Если уровень ниже запрошенного или картинки нет — запрос уходит в очередь, ответ придёт сигналом ready или failed.
+        exact=True — более высокий уровень тоже не подходит (при отдалении L3 давал бы рябь и лишнюю работу).
         """
         path = str(path)
         hit = self._memory.best(path, level)
-        if hit is None or hit.level < level:
+        if hit is None or hit.level < level or (exact and hit.level != level):
             self._enqueue(path, level, priority, True)
         return hit
 

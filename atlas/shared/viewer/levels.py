@@ -15,6 +15,21 @@ WARMUP = 2  # прогрев папки на локальный диск
 _DIVISORS = {L1: 4, L2: 2, L3: 1}
 
 
+def level_divisor(level):
+    """Во сколько раз уровень L1–L3 меньше исходника."""
+    return _DIVISORS[level]
+
+
+def level_for_scale(scale):
+    """Наименьший уровень, в котором на один пиксель экрана приходится не меньше одного пикселя картинки.
+
+    scale — пикселей экрана на пиксель исходника. L0 здесь нет: он для ленты миниатюр.
+    """
+    if scale <= 0.25:
+        return L1
+    return L2 if scale <= 0.5 else L3
+
+
 def scaled_size(width, height, level):
     """Размер декодирования для L1–L3.
 

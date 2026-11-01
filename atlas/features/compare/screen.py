@@ -66,7 +66,6 @@ def _key(text):
 
 class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
-    first_shown = pyqtSignal()  # вкладку показали в первый раз
 
     def __init__(self, cache, hotkeys, parent=None):
         super().__init__(parent)
@@ -79,7 +78,6 @@ class CompareScreen(QWidget):
         self._flicker = None  # (окно, его состояние), пока удерживается «мигалка»
         self._portrait = True  # фото Atlas обычно вертикальные; уточняется по первому показанному
         self._orientation_known = False
-        self._shown_once = False
         self.views = [PhotoView(cache, self) for _ in range(MAX_WINDOWS)]
         for view in self.views:
             view.hide()
@@ -426,9 +424,6 @@ class CompareScreen(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         self.setFocus()
-        if not self._shown_once:
-            self._shown_once = True
-            self.first_shown.emit()
 
     # Отпускание пробела сюда уже не придёт, а эталон нельзя оставлять на экране под видом текущего фото
     def hideEvent(self, event):

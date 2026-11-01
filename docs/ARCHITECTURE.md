@@ -112,7 +112,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `login` | вход по фамилии, теги | — (диалог при старте) | `shell.user` |
 | `presence` | кто сейчас работает и над какой папкой | — | `shell.online` |
 | `compare` | режимы «Сравнение» (1–4 фото) и «Ракурсы» (до 4 окон, листаются вместе, зум у каждого свой), синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
-| `folders` | панель истории копирования (данные — сервис ядра `folders`) | — | `compare.left` |
+| `folders` | панель папок: новые, проверено за неделю, кто над чем работает (данные — сервис ядра `folders`; открывает папку через сервис `compare`, «кто работает» берёт из `presence`, оба необязательны) | — | `compare.left` |
 | `annotate_tools` | ножницы, обводка, подпись | — | `compare.toolbar` |
 | `type_db` | база типов, поиск, архив | База типов | `compare.toolbar` (+ В базу) |
 | `findings` | дефекты/замечания, сводка по детали, «проблемная деталь» | — | `compare.right` |
@@ -140,6 +140,8 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `compare.right` | compare | сводка по детали (`findings`), правила (`rules`). Колонка 280–320 px, пустая не занимает места |
 | `compare.toolbar` | compare | кнопки в панели инструментов (`annotate_tools`, `type_db`). Кнопкам — `setFocusPolicy(Qt.NoFocus)`, иначе стрелки и пробел достанутся им |
 
+Настройки `folders` в `config/*.json`: `folders.refresh_s` (60), `folders.done_days` (7), `folders.limit` (50). События `folder.copied`, `folder.opened`, `folder.done`, `photo.marked` обновляют панель сразу, остальные изменения — по таймеру.
+
 Слот `draft.actions` появится вместе с владельцем.
 
 ## События (поддерживать актуальным)
@@ -150,7 +152,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `user.logged_in` | login | `{user}` — `atlas.core.app_context.User(id, name, color)` |
 | `presence.changed` | presence | `{online}` — список `OnlineUser(user_id, name, color, folder_id, folder_text)` |
 | `folder.copied` | import_mail | `{folder_id, part_id}` |
-| `folder.opened` | compare | `{folder_id, part_id}` |
+| `folder.opened` | compare | `{folder_id, part_id}` (подписчик `folders` подсвечивает карточку) |
 | `folder.done` | report | `{folder_id}` |
 | `photo.changed` | compare | `{folder_id, photo_id, index}` |
 | `photo.marked` | compare | `{photo_id, mark, sn}` |

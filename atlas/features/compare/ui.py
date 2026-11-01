@@ -44,7 +44,6 @@ class CompareFeature(Feature):
         cache = self.ctx.services.get("image_cache")
         self.screen = CompareScreen(cache, self._hotkeys())
         self.screen.photo_changed.connect(self._on_photo_changed)
-        self.screen.first_shown.connect(self._open_latest)
         shell = self.ctx.shell
         if shell is not None:
             shell.register_slot(SLOT_LEFT, self.screen.left_layout)
@@ -81,11 +80,6 @@ class CompareFeature(Feature):
         return self.folder
 
     # --- чтение базы в фоне ---------------------------------------------------
-    def _open_latest(self):
-        """TODO(3.3): пока нет панели папок, открываем самую свежую непроверенную, иначе просто самую свежую."""
-        if self.folder is None:
-            self._run(self._load_latest)
-
     def _run(self, work, *args):
         self._request += 1
         self._threads = [thread for thread in self._threads if thread.is_alive()]
@@ -101,11 +95,6 @@ class CompareFeature(Feature):
             self.signals.failed.emit(request)
             return
         self.signals.loaded.emit(request, result)
-
-    def _load_latest(self):
-        folders = self.ctx.services.get("folders")
-        latest = folders.recent(1, status="new") or folders.recent(1)
-        return self._read(latest[0]) if latest else None
 
     def _load(self, folder_id):
         folder = self.ctx.services.get("folders").get(folder_id)

@@ -60,6 +60,7 @@ class App:
         self.window.show()
 
     def wait_open(self):
+        self.feature.open_folder(self.folder.id)
         self.qtbot.waitUntil(lambda: self.feature.folder is not None, timeout=5000)
         self.wait_shown()
 
@@ -363,6 +364,7 @@ def test_portrait_photos_stand_in_a_row(app):
 def test_empty_folder_shows_message(tmp_path, qtbot):
     app = App(tmp_path, qtbot, count=0)
     try:
+        app.feature.open_folder(app.folder.id)
         app.qtbot.waitUntil(lambda: app.feature.folder is not None, timeout=5000)
         assert app.screen.message.isVisible()
         assert app.screen.message.text() == "В папке нет фото"
@@ -510,6 +512,7 @@ def test_held_arrow_requests_no_thumbnails_until_stop(app, monkeypatch):
 def test_strip_hidden_for_empty_folder(tmp_path, qtbot):
     app = App(tmp_path, qtbot, count=0)
     try:
+        app.feature.open_folder(app.folder.id)
         app.qtbot.waitUntil(lambda: app.feature.folder is not None, timeout=5000)
         assert not app.screen.strip_panel.isVisible()
     finally:

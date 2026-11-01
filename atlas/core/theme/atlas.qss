@@ -12,6 +12,19 @@ QLabel[role="warn"] { color: $type2; }
 QFrame[role="panel"] { background: $panel; border: 1px solid $border; border-radius: ${radius_md}px; }
 QFrame[role="panel"] QLabel { background: transparent; }
 QWidget[role="plain"] { background: transparent; }
+QScrollArea[role="plain"], QScrollArea[role="plain"] > QWidget > QWidget { background: transparent; }
+QFrame[role="folder"] { background: $panel_alt; border: 1px solid $border; border-radius: ${radius_md}px; }
+QFrame[role="folder"]:hover { border-color: $border_strong; }
+QFrame[role="folder"][on="true"] { border-color: $accent; background: $accent_soft; }
+QFrame[role="folder"] QLabel { background: transparent; }
+QLabel[role="folder-title"] { font-weight: 700; }
+QLabel[role="ok"] { color: $ok; font-size: ${font_sm}px; }
+QFrame[role="hsep"] { background: $border; border: none; min-height: 1px; max-height: 1px; }
+QLabel[role="pill"] { border-radius: 9px; padding: 1px 8px; font-size: ${font_sm}px; font-weight: 700; }
+QLabel[role="pill"][tone="ok"] { background: $ok_soft; color: $ok; }
+QLabel[role="pill"][tone="type2"] { background: $type2_soft; color: $type2; }
+QLabel[role="pill"][tone="defect"] { background: $defect_soft; color: $defect; }
+QLabel[role="pill"][tone="remark"] { background: $remark_soft; color: $remark; }
 QFrame[role="panel-alt"] { background: $panel_alt; border: 1px solid $border; border-radius: ${radius_md}px; }
 QFrame[role="panel-alt"] QLabel { background: transparent; }
 

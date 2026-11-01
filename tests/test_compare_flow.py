@@ -546,6 +546,7 @@ def named(tmp_path, qtbot):
 def test_mark_key_saves_and_updates_everything(app):
     app.wait_open()
     app.press(Qt.Key_Right)
+    app.wait_shown()  # отметить можно только фото, которое уже на экране; на медленной машине оно приходит позже
     app.press(Qt.Key_2)
     _wait_db(app, lambda photos: photos[1].mark == "type:2")
     screen = app.screen

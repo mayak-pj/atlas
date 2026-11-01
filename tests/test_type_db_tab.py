@@ -204,7 +204,8 @@ def test_photos_are_asked_from_the_cache_for_cards_and_detail(screen):
     _fill(screen)
     screen.select(1)
     asked = screen.detail.photo._cache.asked
-    assert any(path.endswith("x/1_photo.jpg") for path in asked) and any(path.endswith("x/3_photo.jpg") for path in asked)
+    tails = {Path(path).parts[-2:] for path in asked}  # разделитель зависит от ОС
+    assert ("x", "1_photo.jpg") in tails and ("x", "3_photo.jpg") in tails
 
 
 def test_failed_read_keeps_old_cards_and_says_so(screen):

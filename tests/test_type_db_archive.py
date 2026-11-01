@@ -249,7 +249,8 @@ def test_archive_button_writes_database_publishes_event_and_reorders(app):
     assert screen.visible_ids[0] == second  # новая первой
     _card(screen, second).archive_button.click()
     app.qtbot.waitUntil(lambda: _rows(app)[1]["archived_at"] is not None, timeout=5000)
-    assert [payload["type_id"] for name, payload in app.events if name == "type.archived"] == [second]
+    archived = lambda: [payload["type_id"] for name, payload in app.events if name == "type.archived"]  # noqa: E731
+    app.qtbot.waitUntil(lambda: archived() == [second], timeout=5000)  # событие приходит через очередь Qt, позже записи в базу
     app.qtbot.waitUntil(lambda: not screen._animating and screen.visible_ids == [first, second], timeout=5000)
     service = app.ctx.services.get("type_db")
     assert [r.id for r in service.types_for_part(app.part.id)] == [first]  # архивное эталоном не служит

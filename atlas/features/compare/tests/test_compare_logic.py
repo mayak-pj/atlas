@@ -89,7 +89,7 @@ def test_reference_window_cannot_be_active():
 
 
 def test_photo_path_and_position():
-    assert photo_path("/сеть/Папка", "Тип 1/001.jpg").endswith("Тип 1/001.jpg")
+    assert Path(photo_path("/сеть/Папка", "Тип 1/001.jpg")).parts[-2:] == ("Тип 1", "001.jpg")  # разделитель зависит от ОС
     assert position_text(2, 486) == "3 / 486"
 
 

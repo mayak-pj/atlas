@@ -18,6 +18,10 @@
       "enabled": true
     },
     {
+      "id": "sort_types",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

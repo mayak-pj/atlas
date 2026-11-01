@@ -166,6 +166,24 @@ class FoldersService:
 
         self.db.write(work)
 
+    def move_photos(self, moves):
+        """moves: [(photo_id, новый_rel_path)]. Одна транзакция: или все пути сменились, или ни один.
+
+        Файлы переносит вызывающий; сюда — только запись нового места. Занятое имя в той же папке — sqlite3.IntegrityError.
+        """
+        rows = []
+        for photo_id, rel_path in moves:
+            clean = clean_rel_path(rel_path)
+            rows.append((clean, clean.casefold(), photo_id))
+
+        def work(conn):
+            for row in rows:
+                cur = conn.execute("UPDATE photos SET rel_path = ?, rel_key = ? WHERE id = ?", row)
+                if cur.rowcount == 0:
+                    raise LookupError("Нет фото {}".format(row[2]))
+
+        self.db.write(work)
+
     def counts(self, folder_ids):
         """{folder_id: {"total": всего, "unmarked": без отметки, отметка: сколько}} одним чтением."""
         ids = list(folder_ids)

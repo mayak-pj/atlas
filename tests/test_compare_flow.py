@@ -31,14 +31,14 @@ def _photos(folder, count, size=(300, 450), names=None):
 
 
 class App:
-    def __init__(self, tmp_path, qtbot, count=6, size=(300, 450), data=True, names=None):
+    def __init__(self, tmp_path, qtbot, count=6, size=(300, 450), data=True, names=None, features=("compare",)):
         self.qtbot = qtbot
         root = tmp_path / "Атлас тест"
         (root / "config").mkdir(parents=True)
         shutil.copy(str(REPO / "config" / "app.json"), str(root / "config" / "app.json"))
         if data:
             shutil.copytree(str(REPO / "data"), str(root / "data"))
-        features = {"features": [{"id": "compare"}]}
+        features = {"features": [{"id": name} for name in features]}
         (root / "config" / "features.json").write_text(json.dumps(features), encoding="utf-8")
         local = {"image_cache": {"disk_dir": str(tmp_path / "кэш")}}
         (root / "config" / "local.json").write_text(json.dumps(local), encoding="utf-8")

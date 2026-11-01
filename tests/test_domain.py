@@ -195,6 +195,24 @@ def test_defect_kind_is_kept_only_for_defect(folders, part):
     assert (photo.mark, photo.defect_kind, photo.sn) == ("remark", None, "SN-2")
 
 
+def test_move_photos_is_all_or_nothing(folders, part):
+    import sqlite3
+    folder = folders.add(part.id, "f", "2026-10-31")
+    folders.add_photos(folder.id, ["a.jpg", "b.jpg", "Тип 1/b.jpg"])
+    a, b, taken = folders.photos(folder.id)
+    folders.mark_photo(a.id, "type:1")
+    folders.move_photos([(a.id, "Тип 2/a.jpg")])
+    moved = [p for p in folders.photos(folder.id) if p.id == a.id][0]
+    assert (moved.rel_path, moved.mark) == ("Тип 2/a.jpg", "type:1")  # отметка при переезде сохраняется
+    with pytest.raises(sqlite3.IntegrityError):  # имя занято: вторая пара не должна пройти, первая тоже откатывается
+        folders.move_photos([(a.id, "Тип 3/a.jpg"), (b.id, "Тип 1/B.JPG")])
+    assert sorted(p.rel_path for p in folders.photos(folder.id)) == sorted(["Тип 1/b.jpg", "Тип 2/a.jpg", "b.jpg"])
+    with pytest.raises(ValueError):
+        folders.move_photos([(a.id, "../x.jpg")])
+    with pytest.raises(LookupError):
+        folders.move_photos([(9999, "x.jpg")])
+
+
 @pytest.mark.parametrize("mark", ["тип", "type:", "type:x", "DEFECT"])
 def test_unknown_mark_is_rejected(folders, part, mark):
     folder = folders.add(part.id, "f", "2026-10-31")

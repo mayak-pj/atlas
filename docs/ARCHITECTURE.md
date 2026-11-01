@@ -29,7 +29,7 @@ atlas/
     annotate/                 # инструменты: выделение, эллипс, подпись, UndoStack
     widgets/                  # NameTag, ContextBar, SearchBox, StampAnimation, Toast
     outlook/                  # base.py, outlook_win.py, outlook_fake.py
-    fs/                       # сетевые пути, безопасное копирование, блокировки файлов
+    fs/                       # moves.py: безопасное перемещение (не перезаписывает, ошибки по файлам); дальше — копирование, блокировки
   features/
     <id>/
       __init__.py             # FEATURE = FeatureSpec(...)
@@ -114,6 +114,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `presence` | кто сейчас работает и над какой папкой | — | `shell.online` |
 | `compare` | режимы «Сравнение» (1–4 фото) и «Ракурсы» (до 4 окон, листаются вместе, зум у каждого свой), синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
 | `folders` | панель папок: новые, проверено за неделю, кто над чем работает (данные — сервис ядра `folders`; открывает папку через сервис `compare`, «кто работает» берёт из `presence`, оба необязательны) | — | `compare.left` |
+| `sort_types` | кнопки «Разложить по типам» / «Отменить раскладку»: фото с отметкой «Тип N» уходят в подпапку «Тип N» (имя — `data/type_folders.json`), с подтверждением, журналом в своих таблицах и отменой; `compare` необязателен | — | `compare.toolbar` |
 | `annotate_tools` | ножницы, обводка, подпись | — | `compare.toolbar` |
 | `type_db` | база типов, поиск, архив | База типов | `compare.toolbar` (+ В базу) |
 | `findings` | дефекты/замечания, сводка по детали, «проблемная деталь» | — | `compare.right` |
@@ -158,6 +159,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `folder.opened` | compare | `{folder_id, part_id}` (подписчик `folders` подсвечивает карточку) |
 | `folder.done` | report | `{folder_id}` |
 | `photo.changed` | compare | `{folder_id, photo_id, index}` |
+| `folder.sorted` | sort_types | `{folder_id, moved, kind}` — `kind`: `sort` или `undo`; `compare` после этого сам перечитывает папку |
 | `photo.marked` | compare | `{photo_id, mark, sn}` — после записи в базу; `mark` — `type:N`, `defect`, `remark` или `None` (сняли). Первая отметка переводит папку из `new` в `in_work` |
 | `finding.added` | findings | `{finding_id, part_id, kind, sn}` |
 | `type.added` / `type.archived` / `type.restored` | type_db | `{type_id, part_id}` |
@@ -178,7 +180,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
 | `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
 | `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
-| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `counts(folder_ids)` |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)` |
 
 ## Картинки 3456×5184, 5–15 МБ
 

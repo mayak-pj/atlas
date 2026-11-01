@@ -737,3 +737,23 @@ def test_mark_keys_come_from_hotkeys_file(tmp_path, qtbot):
         assert set(app.screen.mark_buttons) == {"type:1", "type:2", "type:3", "defect", "remark"}
     finally:
         app.stop()
+
+
+def test_panels_can_be_hidden_one_by_one_and_all_at_once(app):
+    app.wait_open()
+    screen = app.screen
+    screen.show()
+    boxes = screen._panel_boxes
+    app.qtbot.waitUntil(lambda: boxes["top"].isVisibleTo(screen) and boxes["bottom"].isVisibleTo(screen), timeout=5000)
+    screen._panel_buttons["bottom"].click()
+    assert not boxes["bottom"].isVisibleTo(screen)
+    assert boxes["top"].isVisibleTo(screen)
+    screen._panel_buttons["bottom"].click()
+    assert boxes["bottom"].isVisibleTo(screen)
+    app.press(Qt.Key_H)  # горячая клавиша — скрыть всё
+    assert not any(box.isVisibleTo(screen) for box in boxes.values())
+    assert screen.hide_all_button.text() == "Показать всё"
+    assert screen.views[0].isVisibleTo(screen) or screen.views[1].isVisibleTo(screen)
+    screen.hide_all_button.click()
+    assert all(box.isVisibleTo(screen) or box is screen.right_box or box is screen.left_box for box in boxes.values())
+    assert boxes["top"].isVisibleTo(screen)

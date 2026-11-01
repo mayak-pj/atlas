@@ -5,6 +5,7 @@
     "flicker": "Space",
     "rotate_left": "PgUp",
     "rotate_right": "PgDown",
+    "toggle_ui": "H",
     "marks": {
       "type:1": "1",
       "type:2": "2",

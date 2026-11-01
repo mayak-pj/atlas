@@ -24,6 +24,14 @@ from atlas.shared.viewer.sync_group import SyncGroup
 BUTTON_ZOOM = 1.4  # как в макете
 LEFT_WIDTH = (240, 280)
 RIGHT_WIDTH = (280, 320)
+PANEL_BUTTONS = (
+    ("left", "Папки", "Показать или скрыть список папок слева"),
+    ("top", "Инструменты", "Показать или скрыть панель кнопок над фото"),
+    ("bottom", "Лента", "Показать или скрыть ленту фото, отметки и подсказку внизу"),
+    ("right", "Сводка", "Показать или скрыть панель справа (сводка по детали)"),
+)
+TEXT_HIDE_UI = "Скрыть всё"
+TEXT_SHOW_UI = "Показать всё"
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
 HINT_ANGLES = "Колесо — зум окна · перетаскивание — сдвиг · двойной клик — вписать · стрелки — следующий SN · клик — активное окно"
 STRIP_SETTLE_MS = 150  # миниатюры — после остановки: при удержании стрелки чтение нужно текущему фото
@@ -140,6 +148,7 @@ class CompareScreen(QWidget):
         self._cache = cache
         self._keys = {_key(hotkeys["prev"]): -1, _key(hotkeys["next"]): 1}
         self._flicker_key = _key(hotkeys["flicker"])
+        self._toggle_ui_key = _key(hotkeys.get("toggle_ui", DEFAULT_HOTKEYS["toggle_ui"]))
         self._rotate_keys = {
             _key(hotkeys.get("rotate_left", DEFAULT_HOTKEYS["rotate_left"])): -ROTATE_STEP,
             _key(hotkeys.get("rotate_right", DEFAULT_HOTKEYS["rotate_right"])): ROTATE_STEP,
@@ -185,28 +194,81 @@ class CompareScreen(QWidget):
         self.hint = QLabel(HINT)
         self.hint.setProperty("role", "muted")
 
+        # Группы панелей лежат в своих контейнерах: прячется контейнер, а показ самих панелей (эталон, ракурсы, слоты) решает прежний код
+        self.top_box = self._box(self._build_toolbar(), self._build_reference_bar(), self._build_angles_bar())
+        self.bottom_box = self._box(self._build_strip_panel(), self._build_marks_panel(), self.hint)
+        self.left_box = self._box(self.left)
+        self.right_box = self._box(self.right)
+        for side in (self.left, self.right):
+            side.installEventFilter(self)  # пустая колонка слота скрыта: контейнер тоже, иначе остаётся пустой промежуток
+
         middle = QVBoxLayout()
         middle.setSpacing(10)
-        middle.addWidget(self._build_toolbar())
-        middle.addWidget(self._build_reference_bar())
-        middle.addWidget(self._build_angles_bar())
+        middle.addLayout(self._build_visibility_bar())
+        middle.addWidget(self.top_box)
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
-        middle.addWidget(self._build_strip_panel())
-        middle.addWidget(self._build_marks_panel())
-        middle.addWidget(self.hint)
+        middle.addWidget(self.bottom_box)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
-        root.addWidget(self.left)
+        root.addWidget(self.left_box)
         root.addLayout(middle, 1)
-        root.addWidget(self.right)
+        root.addWidget(self.right_box)
 
         self.group.changed.connect(lambda zoom, cx, cy: self._show_zoom(zoom))
         self.set_layout(1)
 
     # --- сборка ---------------------------------------------------------------
+    def _box(self, *widgets):
+        box = QWidget()
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(10)
+        for widget in widgets:
+            column.addWidget(widget)
+        return box
+
+    def _build_visibility_bar(self):
+        """Узкая строка над фото: какие панели видны. Для больших деталей панели прячутся, место отдаётся фото."""
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        self._panel_boxes = {"left": self.left_box, "top": self.top_box, "bottom": self.bottom_box, "right": self.right_box}
+        self._panel_buttons = {}
+        for key, text, tip in PANEL_BUTTONS:
+            button = self._button(text, lambda _=False, k=key: self.set_panel_visible(k, self._panel_buttons[k].isChecked()), checkable=True)
+            button.setProperty("role", "mini")
+            button.setChecked(True)
+            button.setToolTip(tip)
+            self._panel_buttons[key] = button
+            row.addWidget(button)
+        row.addStretch(1)
+        self.hide_all_button = self._button(TEXT_HIDE_UI, self.toggle_interface)
+        self.hide_all_button.setProperty("role", "mini")
+        row.addWidget(self.hide_all_button)
+        return row
+
+    def _apply_side(self, key, holder):
+        wanted = self._panel_buttons[key].isChecked() and not holder.isHidden()
+        self._panel_boxes[key].setVisible(wanted)
+
+    def set_panel_visible(self, key, visible):
+        self._panel_buttons[key].setChecked(bool(visible))
+        if key in ("left", "right"):
+            self._apply_side(key, self.left if key == "left" else self.right)
+        else:
+            self._panel_boxes[key].setVisible(bool(visible))
+        self._panel_buttons[key].setChecked(bool(visible))
+        shown = any(button.isChecked() for button in self._panel_buttons.values())
+        self.hide_all_button.setText(TEXT_HIDE_UI if shown else TEXT_SHOW_UI)
+
+    def toggle_interface(self):
+        """Скрыть все панели, оставив фото; повторно — вернуть все."""
+        show = not any(button.isChecked() for button in self._panel_buttons.values())
+        for key in self._panel_boxes:
+            self.set_panel_visible(key, show)
+
     def _build_toolbar(self):
         bar = QFrame()
         bar.setProperty("role", "panel")
@@ -983,6 +1045,9 @@ class CompareScreen(QWidget):
         elif key == self._flicker_key:
             if not event.isAutoRepeat():
                 self._begin_flicker()
+        elif key == self._toggle_ui_key:
+            if not event.isAutoRepeat():
+                self.toggle_interface()
         elif key in self._rotate_keys:
             if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
                 self.rotate(self._rotate_keys[key])
@@ -1001,6 +1066,10 @@ class CompareScreen(QWidget):
 
     # --- мышь и служебное -----------------------------------------------------
     def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Show, QEvent.Hide) and watched in (self.left, self.right) and hasattr(self, "_panel_buttons"):
+            if not event.spontaneous():
+                key = "left" if watched is self.left else "right"
+                self._apply_side(key, watched)
         if event.type() == QEvent.MouseButtonPress and watched in self.views:
             self._on_view_clicked(watched)
         return False

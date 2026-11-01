@@ -17,6 +17,7 @@ MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эт�
 DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "defect": "D", "remark": "R"}
 DEFAULT_HOTKEYS = {
     "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
+    "toggle_ui": "H",
     "marks": DEFAULT_MARK_KEYS,
 }
 ROTATE_STEP = 90

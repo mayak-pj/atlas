@@ -10,6 +10,7 @@ from atlas.app import _run_check_command
 from atlas.core import domain
 from atlas.core.config import AppPaths
 from atlas.core.db import Database
+from atlas.shared.fs.photos import photo_paths
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -43,7 +44,7 @@ def rows(paths):
 
 
 def test_photo_paths_are_jpeg_only_sorted_with_slashes(photos):
-    assert addfolder.photo_paths(photos) == ["a_1_S1.JPG", "b_1_S2.jpg", "sub/c_2_S3.jpeg"]
+    assert photo_paths(photos) == ["a_1_S1.JPG", "b_1_S2.jpg", "sub/c_2_S3.jpeg"]
 
 
 def test_add_folder_registers_part_folder_and_photos(paths, photos):

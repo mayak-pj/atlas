@@ -18,6 +18,10 @@
       "enabled": true
     },
     {
+      "id": "add_folder",
+      "enabled": true
+    },
+    {
       "id": "sort_types",
       "enabled": true
     },

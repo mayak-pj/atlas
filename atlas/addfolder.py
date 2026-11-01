@@ -14,17 +14,11 @@ from pathlib import Path
 from atlas.core import domain
 from atlas.core.config import Config
 from atlas.core.db import Database
+from atlas.shared.fs.photos import photo_paths
 
 log = logging.getLogger("atlas.addfolder")
 
-PHOTO_SUFFIXES = (".jpg", ".jpeg")
 OK, BAD_ARGS, FAILED = 0, 2, 3
-
-
-def photo_paths(folder):
-    """Пути фото внутри папки через «/», по алфавиту."""
-    found = [item for item in Path(folder).rglob("*") if item.is_file() and item.suffix.lower() in PHOTO_SUFFIXES]
-    return sorted(item.relative_to(folder).as_posix() for item in found)
 
 
 def add_folder(paths, folder, kind, project, device, part, folder_date=None, article=None):

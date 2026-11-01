@@ -10,6 +10,7 @@ atlas/
   selfcheck.py                # --selfcheck: вход и вкладки без человека, отчёт и снимки (CI, выезд)
   dbcheck.py                  # --dbcheck: SQLite на сетевом диске, обрыв сети, два ПК
   viewbench.py                # --viewbench: скорость просмотра фото, сетевой диск только читается
+  addfolder.py                # --addfolder: внести настоящую папку с фото в базу, пока нет импорта из письма (6.x)
   core/                       # ядро: ничего не знает о конкретных функциях
     app_context.py            # AppContext: config, db, bus, services, user, paths
     feature.py                # FeatureSpec, Feature (базовый класс)

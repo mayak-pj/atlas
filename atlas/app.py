@@ -96,6 +96,10 @@ def _run_check_command(args):
         return run_check(Path(folder), Path(report), int(seconds), _option(args, "--label"))
     if "--viewbench" in args:
         return _run_viewbench(args)
+    if "--addfolder" in args:
+        from atlas.addfolder import run as run_addfolder
+
+        return run_addfolder(AppPaths.discover(), args, _option)
     return None
 
 

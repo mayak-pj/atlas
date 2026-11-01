@@ -5,6 +5,7 @@ QLabel { background: transparent; }
 QLabel[role="muted"] { color: $muted; }
 QLabel[role="dim"] { color: $text_dim; }
 QLabel[role="caption"] { color: $muted; font-size: ${font_sm}px; font-weight: 600; }
+QLabel[role="heading"] { font-size: ${font_lg}px; font-weight: 700; }
 QLabel[role="title"] { font-size: ${font_xl}px; font-weight: 800; }
 QLabel[role="mono"] { font-family: $font_mono; color: $muted; }
 QLabel[role="warn"] { color: $type2; }
@@ -17,6 +18,15 @@ QFrame[role="folder"] { background: $panel_alt; border: 1px solid $border; borde
 QFrame[role="folder"]:hover { border-color: $border_strong; }
 QFrame[role="folder"][on="true"] { border-color: $accent; background: $accent_soft; }
 QFrame[role="folder"] QLabel { background: transparent; }
+QFrame[role="type-card"] { background: $panel; border: 1px solid $border; border-radius: ${radius_md}px; }
+QFrame[role="type-card"]:hover { border-color: $border_strong; }
+QFrame[role="type-card"][on="true"] { border-color: $accent; }
+QFrame[role="type-card"][archived="true"] QLabel { color: $muted; }
+QFrame[role="type-card"] QLabel { background: transparent; }
+QLabel[role="pill"][tone="muted"] { background: $panel_2; color: $text_dim; }
+QPushButton[role="chip"] { border-radius: 16px; min-height: 32px; padding: 0 12px; background: $panel; border: 1px solid $border_strong; color: $text_dim; }
+QPushButton[role="chip"]:hover { border-color: $accent; color: $text; }
+QPushButton[role="chip"]:checked { background: $accent_soft; border-color: $accent; color: $text; }
 QLabel[role="folder-title"] { font-weight: 700; }
 QLabel[role="ok"] { color: $ok; font-size: ${font_sm}px; }
 QFrame[role="hsep"] { background: $border; border: none; min-height: 1px; max-height: 1px; }

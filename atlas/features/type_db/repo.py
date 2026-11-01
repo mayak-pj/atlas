@@ -7,7 +7,8 @@ from typing import Optional
 from atlas.core.domain.text import now_text
 
 _COLUMNS = (
-    "id, part_id, kind, type_no, description, article, photo_rel, crop_rel, source_photo, source_sn, created_by, created_at"
+    "id, part_id, kind, type_no, description, article, photo_rel, crop_rel, source_photo, source_sn, created_by, created_at, "
+    "archived_at, archived_by"
 )
 
 
@@ -25,6 +26,8 @@ class TypeRecord:
     source_sn: Optional[str]
     created_by: Optional[int]
     created_at: str
+    archived_at: Optional[str] = None
+    archived_by: Optional[int] = None
 
 
 class Repo:
@@ -57,5 +60,23 @@ class Repo:
                 "SELECT type_no FROM types WHERE part_id = ? AND kind = 'type' AND type_no IS NOT NULL", (part_id,)
             ).fetchall()
             return [row[0] for row in rows]
+
+        return self.db.read(work)
+
+    def all(self):
+        """Все записи, новые первыми. Базу типов читаем целиком: записей сотни, поиск идёт в памяти."""
+        def work(conn):
+            rows = conn.execute("SELECT {} FROM types ORDER BY created_at DESC, id DESC".format(_COLUMNS)).fetchall()
+            return [TypeRecord(*row) for row in rows]
+
+        return self.db.read(work)
+
+    def for_part(self, part_id, include_archived=False):
+        def work(conn):
+            sql = "SELECT {} FROM types WHERE part_id = ?".format(_COLUMNS)
+            if not include_archived:
+                sql += " AND archived_at IS NULL"
+            rows = conn.execute(sql + " ORDER BY kind DESC, type_no, id", (part_id,)).fetchall()
+            return [TypeRecord(*row) for row in rows]
 
         return self.db.read(work)

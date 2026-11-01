@@ -6,10 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from atlas.core.domain.text import normalize_name
+
 KIND_TYPE = "type"
 KIND_DEFECT = "defect"
 KINDS = (KIND_TYPE, KIND_DEFECT)
 MAX_TYPE_NO = 99
+_TYPE_WORD = normalize_name("Тип")
 _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 _NAME_LIMIT = 60  # длина одного куска пути: полный путь на Windows 7 ограничен 260 знаками
 
@@ -85,3 +88,116 @@ def under_folder(photo_path, folder_path):
 
 def stamp(now=None):
     return now or datetime.now()
+
+
+# --- выдача: записи, поиск, порядок -------------------------------------------------
+@dataclass(frozen=True)
+class Entry:
+    """Запись базы типов вместе с тем, что про неё надо показать: деталь, устройство, автор."""
+
+    id: int
+    part_id: int
+    device_id: int
+    project_kind: str
+    project: str
+    device: str
+    part_name: str
+    kind: str
+    type_no: Optional[int]
+    description: str
+    article: str
+    photo_rel: str
+    crop_rel: Optional[str]
+    author: str
+    created_at: str
+    archived_at: Optional[str]
+
+    @property
+    def label(self):
+        return label(self.kind, self.type_no)
+
+    @property
+    def archived(self):
+        return self.archived_at is not None
+
+    @property
+    def pill(self):
+        return self.label.upper()
+
+    @property
+    def tone(self):
+        """Цвет «таблетки» как в макете: тип 1 — зелёный, остальные типы — янтарный, дефект — красный."""
+        if self.kind == KIND_DEFECT:
+            return "defect"
+        return "ok" if self.type_no == 1 else "type2"
+
+    @property
+    def date_text(self):
+        """ГГГГ-ММ-ДД ЧЧ:ММ:СС → ДД.ММ.ГГГГ."""
+        day = str(self.created_at)[:10].split("-")
+        return ".".join(reversed(day)) if len(day) == 3 else str(self.created_at)
+
+
+def entry_of(record, part, author):
+    """TypeRecord + Part ядра + имя автора → Entry."""
+    return Entry(
+        record.id, record.part_id, part.device_id, part.kind, part.project, part.device, part.name, record.kind,
+        record.type_no, record.description, record.article or part.article or "", record.photo_rel, record.crop_rel,
+        author or "", record.created_at, record.archived_at,
+    )
+
+
+def search_text(entry):
+    """Всё, по чему ищем: деталь, артикул, устройство, проект, описание и подпись «Тип 2»."""
+    return normalize_name(" ".join((entry.part_name, entry.article, entry.device, entry.project, entry.description, entry.label)))
+
+
+def _words(query):
+    """Слова запроса без разделителей; «тип 1» остаётся одним словом, иначе «1» нашлось бы в любом артикуле."""
+    words = [normalize_name(word) for word in str(query).split()]
+    words = [word for word in words if word]
+    merged = []
+    for word in words:
+        if merged and merged[-1] == _TYPE_WORD and word.isdigit():
+            merged[-1] += word
+        else:
+            merged.append(word)
+    return merged
+
+
+def matches(entry, query):
+    """Пустой запрос подходит всему. Регистр, «е/ё» и разделители не важны: «xs 2280» найдёт «XS-2280».
+
+    Подходит, если запрос целиком встречается подряд или каждое его слово встречается где-нибудь.
+    """
+    words = _words(query)
+    if not words:
+        return True
+    text = search_text(entry)
+    return "".join(words) in text or all(word in text for word in words)
+
+
+def select(entries, query="", project_kind=None, device_id=None):
+    """Отбор и порядок: сначала живые, потом архив; внутри — новые первыми."""
+    found = [
+        entry for entry in entries
+        if (project_kind is None or entry.project_kind == project_kind)
+        and (device_id is None or entry.device_id == device_id)
+        and matches(entry, query)
+    ]
+    found.sort(key=lambda entry: (entry.created_at, entry.id), reverse=True)
+    found.sort(key=lambda entry: entry.archived)  # устойчивая: порядок «новые первыми» внутри групп сохранится
+    return found
+
+
+def device_summary(entries, device_id):
+    """[(деталь, [(подпись, в архиве)])] — все типы устройства: «SSD XS-2280 — Тип 1, Тип 2, Тип 0 (архив)»."""
+    parts = {}
+    for entry in sorted((item for item in entries if item.device_id == device_id), key=lambda item: (item.part_name.casefold(), item.kind != KIND_TYPE, item.type_no or 0, item.id)):
+        parts.setdefault(entry.part_name, []).append((entry.label, entry.archived))
+    return list(parts.items())
+
+
+def short_text(text, limit=110):
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"

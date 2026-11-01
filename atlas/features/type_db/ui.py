@@ -13,6 +13,7 @@ from atlas.core.feature import Feature
 from atlas.features.type_db import logic, render
 from atlas.features.type_db.dialog import CardDialog
 from atlas.features.type_db.repo import Repo
+from atlas.features.type_db.screen import TypeDbScreen
 from atlas.features.type_db.store import SaveRequest, StoreError, TypeStore
 
 log = logging.getLogger("atlas.type_db")
@@ -34,6 +35,7 @@ TEXT_SAVED = "Добавлено в базу типов: {}"
 
 
 class _Signals(QObject):
+    loaded = pyqtSignal(object)  # [Entry] или None, если база недоступна
     prepared = pyqtSignal(object)  # _Draft
     saved = pyqtSignal(int, object, object)  # id записи, Part, CardData
     failed = pyqtSignal(str)
@@ -49,12 +51,21 @@ class _Draft:
 
 
 class TypeDbFeature(Feature):
-    """Сейчас только кнопка «+ В базу типов» и запись карточки; вкладка и поиск — шаг 4.3."""
+    """Кнопка «+ В базу типов» (4.2), вкладка «База типов» с поиском (4.3).
+
+    Сервис «type_db» (из любого потока, кроме GUI: ходит в базу): `types_for_part(part_id, include_archived=False)` →
+    [TypeRecord], `search(query="")` → [Entry] в порядке выдачи: живые, потом архив; новые первыми.
+    """
 
     def on_start(self):
         self.busy = False
+        self.screen = None
+        self._stopped = False
+        self._reader = None
+        self._reload_again = False
         self._threads = []
         self.signals = _Signals()
+        self.signals.loaded.connect(self._on_loaded)
         self.signals.prepared.connect(self._on_prepared)
         self.signals.saved.connect(self._on_saved)
         self.signals.failed.connect(self._on_failed)
@@ -75,12 +86,80 @@ class TypeDbFeature(Feature):
         self.add_button.setFocusPolicy(Qt.NoFocus)  # стрелки и пробел принадлежат экрану сравнения
         self.add_button.setToolTip(TEXT_TIP)
         self.add_button.clicked.connect(lambda _=False: self.start())
+        self._root = root
         if self.ctx.shell is not None:
             self.ctx.shell.add_panel(SLOT_TOOLBAR, self.add_button, key=PANEL_KEY, order=10)
+        self._unsubscribe = [self.ctx.bus.subscribe(EVENT_TYPE_ADDED, lambda _payload: self.refresh())]
+        self.ctx.services.register("type_db", self)
+
+    def create_tab(self):
+        cache = self.ctx.services.get("image_cache")
+        kinds = self.ctx.services.get("parts").kinds
+        self.screen = TypeDbScreen(cache, self._root, kinds)
+        self.screen.shown.connect(self.refresh)
+        self.refresh()
+        return self.screen
 
     def on_stop(self):
+        self._stopped = True
+        for unsubscribe in self._unsubscribe:
+            unsubscribe()
+        self.ctx.services.unregister("type_db")
+        if self._reader is not None:
+            self._reader.join(STOP_WAIT_S)
         for thread in self._threads:
             thread.join(STOP_WAIT_S)
+
+    # --- сервис -----------------------------------------------------------------
+    def types_for_part(self, part_id, include_archived=False):
+        return self.repo.for_part(part_id, include_archived)
+
+    def search(self, query=""):
+        return logic.select(self._read(), query)
+
+    # --- чтение для вкладки: в фоне, по одному запросу ------------------------------
+    def refresh(self):
+        if self._stopped or self.screen is None:
+            return
+        if self._reader is not None:
+            self._reload_again = True
+            return
+        self._reader = threading.Thread(target=self._read_for_screen, daemon=True)
+        self._reader.start()
+
+    def _read_for_screen(self):
+        try:
+            entries = self._read()
+        except Exception as exc:  # нет сети, база занята: остаётся прежний список
+            log.warning("Не удалось прочитать базу типов: %s", exc)
+            entries = None
+        self.signals.loaded.emit(entries)
+
+    def _read(self):
+        services = self.ctx.services
+        parts = services.get("parts")
+        names = {user.id: user.name for user, _ in services.get("users").all()}
+        known = {}
+        entries = []
+        for record in self.repo.all():
+            if record.part_id not in known:
+                known[record.part_id] = parts.get(record.part_id)
+            part = known[record.part_id]
+            if part is not None:
+                entries.append(logic.entry_of(record, part, names.get(record.created_by)))
+        return entries
+
+    def _on_loaded(self, entries):
+        self._reader = None
+        if self._stopped or self.screen is None:
+            return
+        if entries is None:
+            self.screen.show_failure()
+        else:
+            self.screen.set_entries(entries)
+        if self._reload_again:
+            self._reload_again = False
+            self.refresh()
 
     # --- нажатие кнопки ---------------------------------------------------------
     def start(self):

@@ -657,8 +657,10 @@ class CompareScreen(QWidget):
         """Самое важное — последним, в очереди новые идут первыми. Эталон — для «мигалки», при 1 фото его нет на экране."""
         model = self.model
         if self._angles_on:
-            for number in reversed(self.angles.neighbor_photos()):
+            numbers = self.angles.neighbor_photos()
+            for number in reversed(numbers):
                 self._cache.get(model.photos[number].path, L1, NEIGHBOR)
+            self._request_sharp_ahead([model.photos[number] for number in numbers[: len(self.group.views)]])
             return
         shown = model.shown_photos
         wanted = [shown[number] for number in neighbor_indexes(model.shown_index, len(shown), model.direction)]
@@ -666,6 +668,14 @@ class CompareScreen(QWidget):
             wanted.append(model.reference)
         for photo in reversed(wanted):
             self._cache.get(photo.path, L1, NEIGHBOR)
+        self._request_sharp_ahead(wanted[:1])
+
+    def _request_sharp_ahead(self, photos):
+        """При увеличении L1 размыт: следующее фото готовим сразу в нужном уровне, чтобы оно открылось чётким."""
+        level = max([view.needed_level for view in self.group.views] or [L1])
+        if level > L1:
+            for photo in photos:
+                self._cache.get(photo.path, level, NEIGHBOR, exact=True)
 
     def _place(self, visible):
         for line in range(MAX_WINDOWS):

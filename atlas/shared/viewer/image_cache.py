@@ -75,6 +75,10 @@ class ImageCache(QObject):
             self._enqueue(path, level, priority, True)
         return hit
 
+    def peek(self, path, level):
+        """Как get, но только смотрит в память и ничего не запрашивает. CachedImage или None."""
+        return self._memory.best(str(path), level)
+
     def prefetch(self, paths):
         """Подготовить L0 и L1 на локальном диске, в память не загружать. Ошибки не сообщаются: это только ускорение."""
         for path in paths:

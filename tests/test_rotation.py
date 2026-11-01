@@ -36,6 +36,9 @@ class FakeCache(QObject):
         super().__init__()
         self.memory = {}
 
+    def peek(self, path, level):
+        return self.memory.get((path, level))
+
     def get(self, path, level, priority=0, exact=False):
         return self.memory.get((path, level))
 

@@ -92,6 +92,9 @@ class FakeCache(QObject):
         super().__init__()
         self.asked = []
 
+    def peek(self, path, level):
+        return None
+
     def get(self, path, level, priority=0, exact=False):
         self.asked.append(path)
         return None

@@ -189,7 +189,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `hello` | hello (тестовая) | `greet(name)` |
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
-| `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT, exact=False)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
+| `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT, exact=False)` → `CachedImage(image, level)` или None, `peek(path, level)` — то же, но без запроса в очередь, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
 | `annotations` | annotate_tools | `shapes(path)` → кортеж `Crop`/`Ellipse`/`Label`, `crop(path)` → `Crop` или None; `store` — `AnnotationStore` (`changed(path)`). Координаты — доли неповёрнутого фото |
 | `compare` | compare | `views()` — все окна `PhotoView`, `active_view()`, `open_folder(folder_id)` — из GUI-потока, база читается в фоне; `set_reference(path)`; `set_reference_folder(folder_id)` — эталон из фото другой папки (листается, окно эталона становится активным по клику; раскладка 1 → 2); `find_same_part()` — то же для «Найти такую же деталь»; `current_folder()` → Folder или None |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
@@ -211,7 +211,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | L2 половина | 1/2 (~18 МБ) | там же | память, текущее ±1 |
 | L3 полное | ~72 МБ | полное декодирование | память, только текущее (±1 при сильном зуме) |
 
-- Листание: сразу L1, через 100–300 мс после остановки — L2/L3 для видимой области.
+- Листание: сразу L1, через 100–300 мс после остановки — L2/L3 для видимой области. Если окно увеличено (L1 размыт), следующее по ходу листания фото экран сравнения заранее готовит в нужном уровне (`PhotoView.needed_level`, приоритет «сосед»), а `set_photo` показывает готовый чёткий уровень сразу, минуя L1.
 - После копирования папки — фоновый «прогрев» L0/L1 на локальный диск (`%LOCALAPPDATA%\Atlas\cache`, ключ: путь+размер+mtime).
 - `get` отдаёт лучшее из памяти сразу (точный уровень, иначе выше, иначе ниже) и при необходимости ставит запрос в очередь: текущее > соседи > прогрев; внутри приоритета новые первыми; прогрев не занимает последний поток.
 - Лимит памяти (`image_cache` в `config/app.json`), по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.

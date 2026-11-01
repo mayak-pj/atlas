@@ -35,6 +35,9 @@ class FakeCache(QObject):
         self.memory = {}
         self.calls = []
 
+    def peek(self, path, level):
+        return self.memory.get((path, level))
+
     def get(self, path, level, priority=0, exact=False):
         self.calls.append((path, level, exact))
         return self.memory.get((path, level))
@@ -333,6 +336,23 @@ def test_flip_keeps_zoom_and_place(view, cache, qtbot):
     before = view.state()
     shown(view, cache, "b.jpg")
     assert view.path == "b.jpg" and view.state() == pytest.approx(before)
+
+
+def test_flip_shows_prepared_sharp_level_at_once(view, cache):
+    shown(view, cache, level=L3)
+    view.set_state(8, 0.5, 0.5)
+    assert view.needed_level == L3
+    cache.memory[("b.jpg", L3)] = CachedImage(picture(L3), L3)
+    view.set_photo("b.jpg")
+    assert view.shown_level == L3  # без размытого L1 на время ожидания
+
+
+def test_flip_without_prepared_sharp_level_starts_from_l1(view, cache):
+    shown(view, cache, level=L3)
+    view.set_state(8, 0.5, 0.5)
+    cache.memory[("b.jpg", L1)] = CachedImage(picture(L1), L1)
+    view.set_photo("b.jpg")
+    assert view.shown_level == L1
 
 
 def test_previous_photo_stays_until_new_one_arrives(view, cache):

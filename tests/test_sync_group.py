@@ -25,6 +25,9 @@ class FakeCache(QObject):
         self.cancelled = 0
         self.pending = set()
 
+    def peek(self, path, level):
+        return None
+
     def get(self, path, level, priority=0, exact=False):
         self.pending.add((path, level))
         return None

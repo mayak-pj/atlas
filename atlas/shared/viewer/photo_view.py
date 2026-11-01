@@ -194,15 +194,21 @@ class PhotoView(QWidget):
             if rotation != self._rotation:
                 self._apply_rotation(rotation)
             return
+        guess = self._needed_level()  # размеры фото в папке одинаковы: уровень нужен тот же, что у прежнего
         self._path = path
         self._rotation = rotation
         self._failed = False
         self._full_size = None
         self._wanted = L1
         self._show_message("")
-        hit = self._cache.get(path, L1, CURRENT)
-        if hit is not None:
+        # Чёткий уровень уже в памяти (его подготовили заранее) — показываем сразу, без размытого L1 на время SETTLE_MS
+        hit = self._cache.peek(path, guess) if guess > L1 else None
+        if hit is not None and hit.level >= guess:
             self._adopt(hit.image, hit.level)
+        else:
+            hit = self._cache.get(path, L1, CURRENT)
+            if hit is not None:
+                self._adopt(hit.image, hit.level)
         self._settle.start()
 
     def clear(self):
@@ -254,6 +260,11 @@ class PhotoView(QWidget):
         self.update()
         if self._path is not None:
             self._settle.start()
+
+    @property
+    def needed_level(self):
+        """Уровень, чёткий для текущего масштаба; соседям его готовят заранее."""
+        return self._needed_level()
 
     def _needed_level(self):
         if self._full_size is None:

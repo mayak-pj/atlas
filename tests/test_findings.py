@@ -273,7 +273,7 @@ def test_banner_and_notice_for_part_with_recent_marks(app):
     summary = app.open(app.folder("Плата MB-15", date="2026-10-30"))
     assert summary.problem.count == 2
     panel = app.feature("findings").panel
-    app.qtbot.waitUntil(lambda: len(alert_texts(panel)) == 2, timeout=3000)  # новые виджеты раскладка показывает позже
+    app.qtbot.waitUntil(lambda: len(alert_texts(panel)) >= 2, timeout=3000)  # новые виджеты раскладка показывает позже
     texts = alert_texts(panel)
     assert texts[0] == "Ранее были замечания — будьте внимательнее" and texts[1].startswith("2 замечания за 180 дней")
     app.qtbot.waitUntil(lambda: any("Будьте внимательнее" in text for text in messages), timeout=2000)

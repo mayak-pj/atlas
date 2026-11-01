@@ -100,20 +100,22 @@ class SyncGroup(QObject):
         if target is not None:
             target.zoom_by(factor)
 
-    def set_current_photos(self, paths):
-        """Листание: новые фото в текущие окна, эталон на месте. Лишние окна очищаются.
+    def active_current(self):
+        """Окно, которое листается: текущее, которого касались последним, иначе последнее текущее. Эталон не листается."""
+        if self._leader is not None and self._leader is not self._reference:
+            return self._leader
+        currents = self.currents
+        return currents[-1] if currents else None
 
-        Отмена очереди — здесь, а не в окнах: кэш общий. Она снимает и запросы окон, чьё фото не менялось, поэтому их просим повторить.
+    def show_photo(self, view, path):
+        """Листание: новое фото в одном окне, остальные не меняются.
+
+        Отмена очереди — здесь, а не в окнах: кэш общий. Она снимает и запросы других окон, поэтому их просим повторить.
         """
         self._cache.cancel_pending()
-        paths = [str(path) for path in paths]
-        currents = self.currents
-        for view, path in zip(currents, paths):
-            view.set_photo(path)
-        for view in currents[len(paths):]:
-            view.clear()
-        for view in self._views:
-            view.request_again()
+        view.set_photo(path)
+        for item in self._views:
+            item.request_again()
 
     def _on_view_changed(self, source, state):
         self._leader = source

@@ -1,4 +1,4 @@
-"""Демо просмотра: 1, 2, 4 окна, синхронный зум, листание стрелками.
+"""Демо просмотра: 1–4 окна, синхронный зум, стрелки листают одно окно.
 
     python tools/viewer_demo.py [папка с фото]        без папки создаются тестовые платы
     python tools/viewer_demo.py --shots ПАПКА         снимки без экрана и замеры (offscreen)
@@ -31,12 +31,12 @@ class ViewerDemo(QWidget):
         self.cache = cache
         self.group = SyncGroup(cache, self)
         self.views = [PhotoView(cache, self) for _ in range(4)]
-        self.index = 0
+        self.indexes = {view: number % len(self.photos) for number, view in enumerate(self.views)}
         self.count = 0
         self._layout_buttons = {}
 
         bar = QHBoxLayout()
-        for count in (1, 2, 4):
+        for count in (1, 2, 3, 4):
             button = self._button("{} фото".format(count), lambda _=False, n=count: self.set_layout(n), checkable=True)
             self._layout_buttons[count] = button
             bar.addWidget(button)
@@ -49,7 +49,7 @@ class ViewerDemo(QWidget):
         self.sync_button.setChecked(True)
         bar.addWidget(self.sync_button)
         bar.addStretch(1)
-        bar.addWidget(QLabel("Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать"))
+        bar.addWidget(QLabel("Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать последнее окно"))
 
         self.grid = QGridLayout()
         self.grid.setSpacing(10)
@@ -81,24 +81,25 @@ class ViewerDemo(QWidget):
             view.hide()
             view.clear()
         for number, view in enumerate(self.views[:count]):
-            self.grid.addWidget(view, number // 2, number % 2)
+            self.grid.addWidget(view, 0, number)  # в ряд: вертикальные фото так крупнее, чем в сетке 2×2
             view.show()
             self.group.add(view, reference=count > 1 and number == 0)
-        if count > 1:
-            self.views[0].set_caption("ЭТАЛОН", Path(self.photos[0]).name, reference=True)
-            self.views[0].set_photo(self.photos[0])
-        self._show_current()
+        for view in self.views[:count]:
+            self.group.show_photo(view, self.photos[self.indexes[view]])
+            self._caption(view)
 
     def flip(self, step):
-        self.index = (self.index + step) % len(self.photos)
-        self._show_current()
+        view = self.group.active_current()
+        self.indexes[view] = (self.indexes[view] + step) % len(self.photos)
+        self.group.show_photo(view, self.photos[self.indexes[view]])
+        self._caption(view)
 
-    def _show_current(self):
-        currents = self.group.currents
-        paths = [self.photos[(self.index + number) % len(self.photos)] for number in range(len(currents))]
-        self.group.set_current_photos(paths)
-        for view, path in zip(currents, paths):
-            view.set_caption("ТЕКУЩЕЕ", Path(path).name)
+    def _caption(self, view):
+        name = Path(self.photos[self.indexes[view]]).name
+        if view is self.group.reference:
+            view.set_caption("ЭТАЛОН", name, reference=True)
+        else:
+            view.set_caption("ТЕКУЩЕЕ", name)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Right:
@@ -134,7 +135,7 @@ def shoot(demo, app, out):
     """Снимки всех раскладок и время до чёткой картинки во всех окнах."""
     from PyQt5.QtTest import QTest
 
-    for count in (1, 2, 4):
+    for count in (1, 2, 3, 4):
         demo.set_layout(count)
         views = demo.group.views
         print("{} окна: первая картинка {:.3f} с".format(count, _wait(app, lambda: all(v.is_current_shown for v in views))))

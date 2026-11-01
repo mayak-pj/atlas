@@ -170,12 +170,25 @@ def test_removing_reference_and_leader_is_safe(pair):
     assert second.state()[0] == pytest.approx(4)
 
 
-def test_flip_changes_currents_only_and_cancels_once(pair, cache):
+def test_flip_changes_one_window_and_cancels_once(pair, cache):
     group, first, second = pair
     assert group.reference is first and group.currents == [second]
-    group.set_current_photos(["c.jpg"])
+    group.show_photo(second, "c.jpg")
     assert first.path == "a.jpg" and second.path == "c.jpg"
     assert cache.cancelled == 1
+
+
+def test_active_window_is_last_touched_current_and_never_reference(cache, make_view):
+    group = SyncGroup(cache)
+    reference, one, two = make_view("r.jpg"), make_view("a.jpg"), make_view("b.jpg")
+    group.add(reference, reference=True)
+    group.add(one)
+    group.add(two)
+    assert group.active_current() is two
+    one.zoom_by(2)
+    assert group.active_current() is one
+    reference.zoom_by(2)
+    assert group.active_current() is two
 
 
 def test_flip_keeps_place_across_other_proportions(cache, make_view):
@@ -187,9 +200,9 @@ def test_flip_keeps_place_across_other_proportions(cache, make_view):
     other.set_state(2, 0.5, 0.1)
     other._user_change(other._state.pan_by, 0, 0.0001)
     place = group.state
-    group.set_current_photos(["wide.jpg"])
+    group.show_photo(view, "wide.jpg")
     cache.deliver("wide.jpg", picture(1296, 864))
-    group.set_current_photos(["tall.jpg"])
+    group.show_photo(view, "tall.jpg")
     cache.deliver("tall.jpg")
     assert view.state() == pytest.approx(place)
 
@@ -202,20 +215,11 @@ def test_cancel_does_not_leave_unchanged_window_loading_forever(cache, make_view
     group.add(current)
     reference.set_photo("ref.jpg")
     assert ("ref.jpg", L1) in cache.pending
-    group.set_current_photos(["b.jpg"])
+    group.show_photo(current, "b.jpg")
     assert ("ref.jpg", L1) in cache.pending and ("b.jpg", L1) in cache.pending
     qtbot.waitUntil(lambda: reference._message.text() == TEXT_LOADING)
     cache.deliver("ref.jpg")
     assert reference.is_current_shown and reference._message.isHidden()
-
-
-def test_extra_windows_are_cleared_when_paths_are_fewer(cache, make_view):
-    group = SyncGroup(cache)
-    one, two = make_view("a.jpg"), make_view("b.jpg")
-    group.add(one)
-    group.add(two)
-    group.set_current_photos(["c.jpg"])
-    assert one.path == "c.jpg" and two.path is None
 
 
 def test_caption(make_view):
@@ -249,7 +253,7 @@ def demo(qtbot, qapp, tmp_path):
     cache.stop()
 
 
-@pytest.mark.parametrize("count", [1, 2, 4])
+@pytest.mark.parametrize("count", [1, 2, 3, 4])
 def test_demo_layouts_show_all_photos(demo, qtbot, count):
     demo.set_layout(count)
     assert len(demo.group.views) == count
@@ -266,10 +270,11 @@ def test_demo_sync_flip_and_sharp_levels_in_four_windows(demo, qtbot):
     demo.views[1].zoom_by(12)
     qtbot.waitUntil(lambda: all(view.shown_level == L3 for view in demo.group.views), timeout=15000)
     state = demo.views[0].state()
-    reference_path = demo.views[0].path
-    before = demo.views[1].path
+    others = [demo.views[0].path, demo.views[2].path, demo.views[3].path]
+    before = demo.views[1].path  # окна касались последним: зум выше
     qtbot.keyClick(demo, Qt.Key_Right)
-    assert demo.views[1].path != before and demo.views[0].path == reference_path
+    assert demo.views[1].path != before
+    assert [demo.views[0].path, demo.views[2].path, demo.views[3].path] == others  # листается только одно окно
     qtbot.waitUntil(lambda: all(view.shown_level == L3 for view in demo.group.views), timeout=15000)
     assert demo.views[3].state() == pytest.approx(state)
 

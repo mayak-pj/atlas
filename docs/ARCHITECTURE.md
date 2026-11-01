@@ -110,7 +110,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `hello` | тестовая: проверка вкладки, сервиса, миграции | Привет | — |
 | `login` | вход по фамилии, теги | — (диалог при старте) | `shell.user` |
 | `presence` | кто сейчас работает и над какой папкой | — | `shell.online` |
-| `compare` | просмотр 1…N фото, синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
+| `compare` | просмотр 1–4 фото, синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
 | `folders` | панель истории копирования (данные — сервис ядра `folders`) | — | `compare.left` |
 | `annotate_tools` | ножницы, обводка, подпись | — | `compare.toolbar` |
 | `type_db` | база типов, поиск, архив | База типов | `compare.toolbar` (+ В базу) |
@@ -188,7 +188,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
 - `PhotoView(cache)`: `set_photo(path)`, `clear()`, `fit()`, `zoom_by(factor)`, `state()` → (зум, cx, cy), `set_state(...)`, `is_current_shown`, `shown_level`; сигналы `view_changed` (только от пользователя), `photo_shown`, `photo_failed`. Обычный `QWidget`, без `QGraphicsView`. Также `set_caption(tag, text, reference)`, `request_again()`.
-- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `fit()`, `zoom_by(factor)`, `set_current_photos(paths)`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `set_current_photos`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
+- `SyncGroup(cache)`: `add(view, reference=False)`, `remove(view)`, `set_reference(view)`, `set_enabled(bool)`, `fit()`, `zoom_by(factor)`, `show_photo(view, path)`, `active_current()`, `views`, `currents`, `reference`, `state`; сигнал `changed(зум, cx, cy)`. `cancel_pending()` вызывает только группа в `show_photo`: кэш общий, отмена из одного окна сбросила бы запросы других, поэтому после неё все окна повторяют запросы. Демо: `python tools/viewer_demo.py [папка]`.
 
 ## Как добавить / изменить / удалить функцию
 - **Добавить:** `/new-feature id: описание` — шаблон папки, `FEATURE`, миграция, тест, строка в `features.json`, строки в таблицах выше.

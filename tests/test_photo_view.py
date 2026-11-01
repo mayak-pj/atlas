@@ -299,6 +299,33 @@ def test_lower_level_never_replaces_sharper_one(view, cache, qtbot):
     assert view.shown_level == L3
 
 
+def test_thin_lines_survive_strong_downscale(qtbot, qapp, cache):
+    """Окно в 4 раза ниже L1: линия в 1 пиксель (царапина) не должна пропадать с экрана."""
+    apply_theme(qapp)
+    image = QImage(864, 1296, QImage.Format_RGB32)
+    image.fill(QColor("#000000"))
+    painter = QPainter(image)
+    painter.setPen(QColor("#FFFFFF"))
+    rows = list(range(45, 1250, 37))
+    for row in rows:
+        painter.drawLine(0, row, 863, row)
+    painter.end()
+    widget = PhotoView(cache, settle_ms=10)
+    widget.resize(400, 300)
+    qtbot.addWidget(widget)
+    widget.show()
+    widget.set_photo("a.jpg")
+    cache.deliver("a.jpg", L1, image)
+    shot = widget.grab().toImage()
+    top = widget._state.target_rect()[1]
+    scale = widget._state.target_rect()[3] / 1296
+    x = shot.width() // 2
+    for row in rows:
+        y = int(top + row * scale)
+        brightest = max(shot.pixelColor(x, yy).red() for yy in (y - 1, y, y + 1))
+        assert brightest > 25, "линия {} пропала".format(row)
+
+
 # --- листание -----------------------------------------------------------------------------
 def test_flip_keeps_zoom_and_place(view, cache, qtbot):
     shown(view, cache)

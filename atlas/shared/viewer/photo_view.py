@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QPainter, QPainterPath
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
+from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
 from atlas.shared.viewer.levels import CURRENT, L0, L1, level_divisor, level_for_scale
 from atlas.shared.viewer.view_state import ViewState
@@ -16,6 +16,8 @@ SETTLE_MS = 150  # после остановки листания или зум�
 WHEEL_STEP = 1.2  # за один щелчок колеса, как в макете
 _WHEEL_NOTCH = 120.0
 _INNER_RADIUS = 7  # скругление QWidget#PhotoView минус рамка
+_CAPTION_MARGIN = 10
+_SMOOTH_FROM = 2.0  # во сколько раз картинка больше экрана
 TEXT_LOADING = "Загрузка…"
 TEXT_FAILED = "Не удалось открыть фото"
 
@@ -25,6 +27,33 @@ def _improves(level, shown, wanted):
     if shown < wanted:
         return level > shown
     return wanted <= level < shown
+
+
+class _Caption(QFrame):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("PhotoViewCaption")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._tag = QLabel()
+        self._tag.setObjectName("PhotoViewTag")
+        self._text = QLabel()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(6)
+        layout.addWidget(self._tag)
+        layout.addWidget(self._text)
+        self.move(_CAPTION_MARGIN, _CAPTION_MARGIN)
+        self.hide()
+
+    def set_content(self, tag, text, reference):
+        self._tag.setText(tag)
+        self._tag.setProperty("reference", bool(reference))
+        self._tag.style().unpolish(self._tag)
+        self._tag.style().polish(self._tag)
+        self._text.setText(text)
+        self._text.setVisible(bool(text))
+        self.adjustSize()
+        self.setVisible(bool(tag))
 
 
 class PhotoView(QWidget):
@@ -47,6 +76,8 @@ class PhotoView(QWidget):
         self._full_size = None  # (ширина, высота) исходника; по L0 не вычислить
         self._drag_from = None
         self._failed = False
+        self._smoothed = None
+        self._smoothed_key = None
         self._settle = QTimer(self)
         self._settle.setSingleShot(True)
         self._settle.setInterval(settle_ms)
@@ -57,6 +88,7 @@ class PhotoView(QWidget):
         self._message.hide()
         layout = QHBoxLayout(self)
         layout.addWidget(self._message, 0, Qt.AlignCenter)
+        self._caption = _Caption(self)
         cache.ready.connect(self._on_ready)
         cache.failed.connect(self._on_failed)
 
@@ -106,6 +138,20 @@ class PhotoView(QWidget):
         self._settle.stop()
         self._show_message("")
         self.update()
+
+    def request_again(self):
+        """Очередь кэша отменена: повторить запросы этого окна, иначе «Загрузка…» осталась бы навсегда."""
+        if self._path is None or self._failed:
+            return
+        if not self.is_current_shown:
+            hit = self._cache.get(self._path, L1, CURRENT)
+            if hit is not None:
+                self._adopt(hit.image, hit.level)
+        self._settle.start()
+
+    def set_caption(self, tag, text="", reference=False):
+        """Подпись в углу окна, как в макете: пилюля (ЭТАЛОН, ТЕКУЩЕЕ) и текст. Пустой tag — без подписи."""
+        self._caption.set_content(tag, text, reference)
 
     def fit(self):
         self._user_change(self._state.fit)
@@ -235,11 +281,28 @@ class PhotoView(QWidget):
         if visible.isEmpty():
             return
         # Только видимая часть: при зуме 12× весь прямоугольник в десятки тысяч пикселей не нужно передавать
-        scale_x = self._image.width() / target.width()
-        scale_y = self._image.height() / target.height()
+        image = self._paint_image(target)
+        scale_x = image.width() / target.width()
+        scale_y = image.height() / target.height()
         offset = visible.topLeft() - target.topLeft()
         source = QRectF(
             QPointF(offset.x() * scale_x, offset.y() * scale_y),
             QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
         )
-        painter.drawImage(visible, self._image, source)
+        painter.drawImage(visible, image, source)
+
+    def _paint_image(self, target):
+        """Билинейная отрисовка при уменьшении больше чем вдвое пропускает пиксели: тонкая царапина исчезла бы с экрана.
+
+        Поэтому маленьким окнам — заранее сглаженная копия. Только L0/L1: пересчёт L3 в GUI-потоке был бы заметен,
+        а большие уровни и так сменятся на L1 после остановки.
+        """
+        ratio = self.devicePixelRatioF()
+        width, height = max(1, round(target.width() * ratio)), max(1, round(target.height() * ratio))
+        if self._level > L1 or self._image.height() < height * _SMOOTH_FROM:
+            return self._image
+        key = (self._image.cacheKey(), width, height)
+        if self._smoothed_key != key:
+            self._smoothed_key = key
+            self._smoothed = self._image.scaled(width, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        return self._smoothed

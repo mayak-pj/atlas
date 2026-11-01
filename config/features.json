@@ -30,6 +30,10 @@
       "enabled": true
     },
     {
+      "id": "findings",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

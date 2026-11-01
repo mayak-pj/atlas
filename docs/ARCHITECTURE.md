@@ -117,7 +117,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `sort_types` | кнопки «Разложить по типам» / «Отменить раскладку»: фото с отметкой «Тип N» уходят в подпапку «Тип N» (имя — `data/type_folders.json`), с подтверждением, журналом в своих таблицах и отменой; `compare` необязателен | — | `compare.toolbar` |
 | `annotate_tools` | кнопки «Вырезать», «Обвести», «Подпись», «Отменить», «Вернуть»; фигуры живут в памяти (на диск и в базу — 4.2); `compare` необязателен | — | `compare.toolbar` |
 | `type_db` | карточка «+ В базу типов» (4.2): фото с обводкой и вырезка на диск, запись в таблицу `types`; вкладка с мгновенным поиском (4.3); архив с анимацией (4.4). `compare` и `annotate_tools` необязательны | База типов | `compare.toolbar` |
-| `findings` | дефекты/замечания, сводка по детали, «проблемная деталь» | — | `compare.right` |
+| `findings` | сводка по детали (5.1): типы, дефекты/замечания, последняя проверка; «проблемная деталь» — 5.2. `compare` и `type_db` необязательны | — | `compare.right` |
 | `import_mail` | письмо → план копирования → копирование | Импорт | — |
 | `rules` | правила проверки, непрочитанные | Правила | `compare.right` (правила к детали) |
 | `comments` | временные сообщения с фото | Комментарии | — |
@@ -162,6 +162,8 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 
 Архив (`type_db`, 4.4): кнопка на каждой карточке («В архив» / «Вернуть из архива»). Запись в базу идёт в фоне (`types.archived_at`, `archived_by`; повторное «в архив» время не меняет), и только после ответа базы карточка играет анимацию (`shared/widgets/stamp.py`, кадры считаются от времени без Qt): фото за 0,9 с становится серым и темнее, с 0,45 с печать «В АРХИВЕ» падает (масштаб 2,6 → 0,9 → 1, поворот −24° → −12° → −14°), на 1,0 с карточка «ударяет» вниз на 3 px; всего 1,25 с. Возврат — цвет за 0,9 с, печать тает. В конце сетка перестраивается: архивная уходит вниз. Данные, пришедшие во время анимации, применяются после неё. Анимацию можно выключить: `ui.animations` в `config/app.json` (тогда карточка сразу занимает место). События `type.archived` / `type.restored` — `{type_id, part_id}`. Архивное не служит эталоном: `types_for_part` по умолчанию его не отдаёт, номер архивного типа остаётся занятым (новый тип не получит тот же номер). Ограничений на то, кто может архивировать, нет.
 
+Сводка по детали (`findings`, 5.1): панель в `compare.right`, собирается при `folder.opened` и при `type.added/archived/restored`, `folder.done`; в фоне, устаревший ответ (открыли другую деталь) отбрасывается; не получилось прочитать — остаётся прежняя сводка с пометкой. Своих таблиц нет: дефекты и замечания — отметки фото из сервиса `folders` (`problem_marks`), типы — из сервиса `type_db` (нет его — блок «Типы» скрыт). Идущая проверка (папка, которую открыли) в сводку не входит. **«Та же деталь»:** кроме самой детали берутся детали других устройств и проектов с таким же или похожим названием — сходство строк не меньше `findings.name_match` (0,85; 1 — только одинаковые) **и** числа согласуются: у более короткого названия все числа есть в более длинном («512GB» и «512GB v2» — одна, «512GB» и «256GB» — разные). Типы одного номера у разных деталей сливаются в строку: название — самой свежей записи, дата — самой ранней. Показывается `findings.list_limit` (10) свежих дефектов и замечаний, остальные — «Показано N из M».
+
 Слот `draft.actions` появится вместе с владельцем.
 
 ## События (поддерживать актуальным)
@@ -177,7 +179,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `photo.changed` | compare | `{folder_id, photo_id, index}` |
 | `folder.sorted` | sort_types | `{folder_id, moved, kind}` — `kind`: `sort` или `undo`; `compare` после этого сам перечитывает папку |
 | `photo.marked` | compare | `{photo_id, mark, sn}` — после записи в базу; `mark` — `type:N`, `defect`, `remark` или `None` (сняли). Первая отметка переводит папку из `new` в `in_work` |
-| `finding.added` | findings | `{finding_id, part_id, kind, sn}` |
+| `finding.added` | findings | `{finding_id, part_id, kind, sn}` — **пока не публикуется**: своих записей у `findings` нет, дефекты — это отметки фото (`photo.marked`); появится вместе с историей (11.2) |
 | `type.added` / `type.archived` / `type.restored` | type_db | `{type_id, part_id}` |
 | `rule.published` | rules | `{rule_id, part_id?}` |
 | `comment.posted` | comments | `{comment_id, to_user?}` |
@@ -195,10 +197,10 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `type_db` | type_db | из любого потока, кроме GUI (ходит в базу): `types_for_part(part_id, include_archived=False)` → [TypeRecord] (архивные не отдаёт: архивное эталоном не служит), `search(query="", include_archived=True)` → [Entry] в порядке выдачи: живые, потом архив, новые первыми; `archive(type_id)` / `restore(type_id)` → (part_id, время архивации или None) или None, если записи нет |
-| `findings` | findings | `summary(part_id, days)`, `add(...)` |
+| `findings` | findings | из любого потока, кроме GUI: `summary(part_id, days=None, exclude_folder_id=None)` → `Summary` или None (нет детали) |
 | `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
 | `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
-| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `set_rotation(photo_ids, rotation)` — 0/90/180/270, одной транзакцией, отметку и статус папки не трогает, `latest_for_part(name, project_id, kind, exclude_project_id, exclude_folder_id, since)` — последняя папка детали с таким названием (с фото), `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)` |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `set_rotation(photo_ids, rotation)` — 0/90/180/270, одной транзакцией, отметку и статус папки не трогает, `latest_for_part(name, project_id, kind, exclude_project_id, exclude_folder_id, since)` — последняя папка детали с таким названием (с фото), `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)`, `problem_marks(part_ids, exclude_folder_id, since)` → [MarkedPhoto] — дефекты и замечания, свежие первыми, `last_done(part_ids)` — последняя завершённая проверка |
 
 ## Картинки 3456×5184, 5–15 МБ
 

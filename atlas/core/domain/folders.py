@@ -47,6 +47,22 @@ class Photo:
     rotation: int = 0  # градусы по часовой стрелке; файл на диске не меняется
 
 
+@dataclass(frozen=True)
+class MarkedPhoto:
+    """Фото с отметкой «дефект» или «замечание» и папка, в которой оно лежит."""
+
+    photo_id: int
+    folder_id: int
+    part_id: int
+    folder_date: str
+    rel_path: str
+    sn: Optional[str]
+    mark: str
+    defect_kind: Optional[str]
+    marked_by: Optional[int]
+    marked_at: str
+
+
 def path_key(path):
     """Один и тот же сетевой путь: регистр, вид косой черты и хвостовая черта не важны."""
     text = str(path).strip().replace("/", "\\").rstrip("\\")
@@ -224,6 +240,58 @@ class FoldersService:
                     raise LookupError("Нет фото {}".format(row[2]))
 
         self.db.write(work)
+
+    def problem_marks(self, part_ids, exclude_folder_id=None, since=None):
+        """Дефекты и замечания по этим деталям, свежие первыми: [MarkedPhoto].
+
+        exclude_folder_id — не считать эту папку (идущая проверка); since — «ГГГГ-ММ-ДД ЧЧ:ММ:СС», отмечено не раньше.
+        """
+        ids = list(part_ids)
+        extra, args = "", []
+        if exclude_folder_id is not None:
+            extra += " AND p.folder_id <> ?"
+            args.append(exclude_folder_id)
+        if since is not None:
+            extra += " AND p.marked_at >= ?"
+            args.append(since)
+        sql = (
+            "SELECT p.id, p.folder_id, f.part_id, f.folder_date, p.rel_path, p.sn, p.mark, p.defect_kind, "
+            "p.marked_by, p.marked_at FROM photos p JOIN folders f ON f.id = p.folder_id "
+            "WHERE f.part_id IN ({}) AND p.mark IN ('defect', 'remark') AND p.marked_at IS NOT NULL" + extra
+        )
+        found = []
+
+        def work(conn):
+            found.clear()  # при повторе после «database is locked» не дублировать
+            for start in range(0, len(ids), _SQL_VARIABLES_LIMIT - 2):
+                chunk = ids[start:start + _SQL_VARIABLES_LIMIT - 2]
+                found.extend(
+                    MarkedPhoto(*row) for row in conn.execute(sql.format(",".join("?" * len(chunk))), chunk + args)
+                )
+
+        self.db.read(work)
+        found.sort(key=lambda item: (item.marked_at, item.photo_id), reverse=True)
+        return found
+
+    def last_done(self, part_ids):
+        """Последняя завершённая проверка среди этих деталей: Folder или None."""
+        ids = list(part_ids)
+        best = []
+
+        def work(conn):
+            best.clear()
+            for start in range(0, len(ids), _SQL_VARIABLES_LIMIT):
+                chunk = ids[start:start + _SQL_VARIABLES_LIMIT]
+                sql = (
+                    "SELECT {} FROM folders WHERE status = 'done' AND status_at IS NOT NULL AND part_id IN ({}) "
+                    "ORDER BY status_at DESC, id DESC LIMIT 1"
+                ).format(_FOLDER_COLUMNS, ",".join("?" * len(chunk)))
+                row = conn.execute(sql, chunk).fetchone()
+                if row is not None:
+                    best.append(Folder(*row))
+
+        self.db.read(work)
+        return max(best, key=lambda item: (item.status_at, item.id)) if best else None
 
     def counts(self, folder_ids):
         """{folder_id: {"total": всего, "unmarked": без отметки, отметка: сколько}} одним чтением."""

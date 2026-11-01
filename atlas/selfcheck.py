@@ -33,6 +33,7 @@ HANG_TIMEOUT_S = 120
 STEP_DELAY_MS = 200
 TEST_USER = "Проверка"
 REQUIRED_IMAGE_FORMATS = ("jpeg", "svg")
+IMAGE_WAIT_MS = 30000
 
 log = logging.getLogger("atlas.selfcheck")
 
@@ -96,6 +97,78 @@ def _check_formats(check):
         check.result("формат изображений {}".format(name), name in formats)
 
 
+def _make_test_photo(path):
+    """JPEG настоящего размера с шумом: однотонный файл декодировался бы нереально быстро."""
+    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter
+
+    side = 1024
+    noise = QImage(os.urandom(side * side), side, side, side, QImage.Format_Grayscale8).copy()
+    image = QImage(3456, 5184, QImage.Format_RGB32)
+    image.fill(QColor("#1F3A5F"))
+    painter = QPainter(image)
+    painter.setOpacity(0.2)
+    painter.setCompositionMode(QPainter.CompositionMode_Overlay)
+    painter.fillRect(image.rect(), QBrush(noise))
+    painter.end()
+    return image.save(str(path), "JPEG", 95)
+
+
+def _wait_for_image(app, cache, photo, level):
+    """Запрос через настоящую очередь и сигнал. Возвращает мс; None — картинка не пришла."""
+    from PyQt5.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    outcome = []
+    cache.ready.connect(lambda path, got, image: (outcome.append(True), loop.quit()))
+    cache.failed.connect(lambda path, got, text: (outcome.append(False), loop.quit()))
+    QTimer.singleShot(IMAGE_WAIT_MS, loop.quit)
+    started = time.perf_counter()
+    cache.get(photo, level)
+    if not outcome:
+        loop.exec_()
+    elapsed = (time.perf_counter() - started) * 1000
+    cache.ready.disconnect()
+    cache.failed.disconnect()
+    return elapsed if outcome == [True] else None
+
+
+def _check_image_levels(app, check, work):
+    """Замеры qjpeg на фото 3456×5184 (TARGET_MACHINE: их ещё нет) и запись в рабочую папку кэша."""
+    from atlas.shared.viewer.decode import decode_file
+    from atlas.shared.viewer.disk_cache import DiskCache, default_cache_dir
+    from atlas.shared.viewer.image_cache import CacheSettings, ImageCache
+    from atlas.shared.viewer.levels import L0, L1, L2, L3
+
+    # Лимит 0 только у этой проверки записи: кэш здесь не наполняется
+    check.result("папка кэша фото", DiskCache(default_cache_dir(), 0).enabled, str(default_cache_dir()))
+    folder = work / "Фото проверка"
+    folder.mkdir()
+    photo = folder / "плата 1.jpg"
+    check.result("тестовое фото", _make_test_photo(photo), "{:.1f} МБ".format(photo.stat().st_size / 1024 / 1024))
+    for name, level, size in (("L1", L1, "864×1296"), ("L2", L2, "1728×2592"), ("L3", L3, "3456×5184")):
+        started = time.perf_counter()
+        image = decode_file(photo, level)
+        elapsed = (time.perf_counter() - started) * 1000
+        got = "{}×{}".format(image.width(), image.height())
+        check.result("чтение {}".format(name), got == size, "{}, {:.0f} мс".format(got, elapsed))
+
+    cache = ImageCache(CacheSettings(disk_dir=work / "кэш"))
+    try:
+        for name, level in (("L1 из файла", L1), ("L2 из файла", L2)):
+            elapsed = _wait_for_image(app, cache, photo, level)
+            detail = "нет ответа" if elapsed is None else "{:.0f} мс".format(elapsed)
+            check.result("кэш: {}".format(name), elapsed is not None, detail)
+    finally:
+        cache.stop()
+    cache = ImageCache(CacheSettings(disk_dir=work / "кэш"))  # новый: память пуста, L0 и L1 только на диске
+    try:
+        elapsed = _wait_for_image(app, cache, photo, L0)
+        detail = "нет ответа" if elapsed is None else "{:.0f} мс".format(elapsed)
+        check.result("кэш: L0 с локального диска", elapsed is not None, detail)
+    finally:
+        cache.stop()
+
+
 def _drive_login(app, check):
     """Нажимает кнопки модального диалога таймерами: exec_() занят своим циклом событий."""
     from PyQt5.QtCore import QTimer
@@ -150,6 +223,7 @@ def _walk(check, paths, work):
     check.result("тема", bool(app.styleSheet()))
     check.info("Шрифты: основной «{}», моноширинный «{}»".format(theme.ui_family, theme.mono_family))
     _check_formats(check)
+    _check_image_levels(app, check, work)
 
     ctx = build_core(_make_work_root(paths, work))
     check.result("ядро и база", True, str(ctx.db.path))

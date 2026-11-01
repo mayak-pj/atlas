@@ -34,6 +34,9 @@ def build_core(paths):
     domain.migrate(db)  # без таблиц ядра работать нельзя: ошибка здесь останавливает запуск
     ctx = AppContext(config, paths, db, EventBus(), ServiceRegistry())
     domain.register_services(db, ctx.services)
+    from atlas.shared.viewer.image_cache import create_image_cache
+
+    ctx.services.register("image_cache", create_image_cache(config, paths))  # потоки появятся при первом запросе
     from atlas.core.shell import ShellWindow
 
     ctx.shell = ShellWindow(ctx)  # до запуска функций: им нужны слоты оболочки
@@ -116,6 +119,7 @@ def main(argv=None):
         return 2
     registry = start_features(ctx)
     app.aboutToQuit.connect(registry.stop_all)
+    app.aboutToQuit.connect(ctx.services.get("image_cache").stop)
     window = build_window(registry)
     try:
         proceed = run_login(ctx, window)

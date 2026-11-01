@@ -162,7 +162,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `hello` | hello (тестовая) | `greet(name)` |
 | `login` | login | `run(parent)` → User или None, `current()`, `users()`, `sign_in(user)` |
 | `presence` | presence | `online()`, `working_on(folder_id)` — из памяти, можно в GUI-потоке |
-| `image_cache` | shared/viewer (ядро) | `get(path, level)`, `prefetch(paths)` |
+| `image_cache` | shared/viewer (ядро) | `get(path, level, priority=CURRENT)` → `CachedImage(image, level)` или None, `prefetch(paths)`, `cancel_pending()`, `forget(path)`; сигналы `ready(path, level, QImage)`, `failed(path, level, текст)`. Можно из GUI-потока: смотрит только в память |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
@@ -176,14 +176,15 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 
 | Уровень | Размер | Как получаем | Где храним |
 |---|---|---|---|
-| L0 миниатюра | ~160 px | `QImageReader.setScaledSize` | диск: локальный кэш |
+| L0 миниатюра | ~160 px | из L1, без второго чтения исходника | диск: локальный кэш + память |
 | L1 превью | 1/4 (864×1296, ~4,5 МБ) | JPEG DCT-масштабирование (быстро) | диск + память |
 | L2 половина | 1/2 (~18 МБ) | там же | память, текущее ±1 |
 | L3 полное | ~72 МБ | полное декодирование | память, только текущее (±1 при сильном зуме) |
 
 - Листание: сразу L1, через 100–300 мс после остановки — L2/L3 для видимой области.
 - После копирования папки — фоновый «прогрев» L0/L1 на локальный диск (`%LOCALAPPDATA%\Atlas\cache`, ключ: путь+размер+mtime).
-- Лимит памяти — в `config/app.json`, по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.
+- `get` отдаёт лучшее из памяти сразу (точный уровень, иначе выше, иначе ниже) и при необходимости ставит запрос в очередь: текущее > соседи > прогрев; внутри приоритета новые первыми; прогрев не занимает последний поток.
+- Лимит памяти (`image_cache` в `config/app.json`), по объёму RAM целевой машины (из `docs/TARGET_MACHINE.md`). Нужен 64-битный Python.
 - `setAutoTransform(True)` — учитывать EXIF-поворот.
 - Синхронизация — в **нормализованных** координатах (доли ширины/высоты), чтобы фото разного размера смотрели в одно место.
 

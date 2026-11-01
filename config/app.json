@@ -7,6 +7,15 @@
   "ui": {
     "show_project_kind": true
   },
+  "image_cache": {
+    "disk_dir": "",
+    "disk_limit_mb": 4096,
+    "memory_limit_mb": 2048,
+    "max_l2": 12,
+    "max_l3": 6,
+    "workers": 2,
+    "retry_after_s": 10
+  },
   "presence": {
     "heartbeat_s": 30,
     "offline_after_s": 90

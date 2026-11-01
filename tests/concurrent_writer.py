@@ -22,7 +22,7 @@ def main(db_path, signals, number, rounds):
     user = users.add("Проверка {}".format(number), lambda count: "#000000")
     users.add("Общий", lambda count: "#111111")
     for index in range(rounds):
-        part = parts.ensure("КК", "Орион-24", "N15", "SSD XS-{}".format(index % 3))
+        part = parts.ensure("A", "Орион-24", "N15", "SSD XS-{}".format(index % 3))
         folder = folders.add(part.id, r"\\srv\фото\p{}\r{}".format(number, index), "2026-10-31", user.id)
         shared = folders.add(part.id, r"\\srv\фото\общая", "2026-10-31", user.id)
         names = ["{}_{}_{}.jpg".format(number, index, i) for i in range(5)]

@@ -33,7 +33,7 @@ def build_core(paths):
 
     domain.migrate(db)  # без таблиц ядра работать нельзя: ошибка здесь останавливает запуск
     ctx = AppContext(config, paths, db, EventBus(), ServiceRegistry())
-    domain.register_services(db, ctx.services)
+    domain.register_services(db, ctx.services, config.get("project_kinds"))
     from atlas.shared.viewer.image_cache import create_image_cache
 
     ctx.services.register("image_cache", create_image_cache(config, paths))  # потоки появятся при первом запросе

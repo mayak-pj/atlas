@@ -12,7 +12,7 @@ CREATE TABLE users (
 
 CREATE TABLE projects (
     id INTEGER PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('КК', 'СТ')),
+    kind TEXT NOT NULL,  -- вид проекта: допустимые значения — настройка project_kinds, проверяет сервис parts
     name TEXT NOT NULL,
     name_key TEXT NOT NULL,
     UNIQUE (kind, name_key)

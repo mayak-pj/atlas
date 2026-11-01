@@ -37,7 +37,7 @@ def main():
         user = login.repo.add(name, login._colors())
     window = build_window(registry)
     login.sign_in(user)
-    window.set_context(kind="КК", project="Орион-24", device="SSD XS-2280", part="Плата", path="\\\\srv\\photo\\2026-10-31")
+    window.set_context(kind="A", project="Орион-24", device="SSD XS-2280", part="Плата", path="\\\\srv\\photo\\2026-10-31")
     window.resize(1280, 720)
     window.show()
     window.grab().save(str(out / "shell.png"))

@@ -34,7 +34,7 @@ def folders(db):
 
 @pytest.fixture
 def part(parts):
-    return parts.ensure("КК", "Орион-24", "N15", "SSD XS-2280")
+    return parts.ensure("A", "Орион-24", "N15", "SSD XS-2280")
 
 
 def test_tables_exist_and_migration_runs_once(db):
@@ -74,11 +74,11 @@ def test_users_add_is_idempotent_by_name_key(db):
 
 
 def test_parts_ensure_reuses_hierarchy_by_normalized_name(parts, part):
-    same = parts.ensure("КК", "орион 24", "n15", "ssd xs 2280")
+    same = parts.ensure("A", "орион 24", "n15", "ssd xs 2280")
     assert same == part  # имя при показе остаётся первым
-    assert same.name == "SSD XS-2280" and same.kind == "КК" and same.project == "Орион-24" and same.device == "N15"
-    assert parts.ensure("СТ", "Орион-24", "N15", "SSD XS-2280").id != part.id
-    assert parts.ensure("КК", "Орион-24", "N16", "SSD XS-2280").id != part.id
+    assert same.name == "SSD XS-2280" and same.kind == "A" and same.project == "Орион-24" and same.device == "N15"
+    assert parts.ensure("B", "Орион-24", "N15", "SSD XS-2280").id != part.id
+    assert parts.ensure("A", "Орион-24", "N16", "SSD XS-2280").id != part.id
     assert len(parts.find("ssdxs-2280")) == 3
     assert parts.get(part.id) == part
     assert parts.get(9999) is None
@@ -86,13 +86,13 @@ def test_parts_ensure_reuses_hierarchy_by_normalized_name(parts, part):
 
 
 def test_parts_article_is_filled_but_not_overwritten(parts, part):
-    assert parts.ensure("КК", "Орион-24", "N15", "SSD XS-2280", "512-XS-A").article == "512-XS-A"
-    assert parts.ensure("КК", "Орион-24", "N15", "SSD XS-2280", "другой").article == "512-XS-A"
-    assert parts.ensure("КК", "Орион-24", "N15", "SSD XS-2280").article == "512-XS-A"
+    assert parts.ensure("A", "Орион-24", "N15", "SSD XS-2280", "512-XS-A").article == "512-XS-A"
+    assert parts.ensure("A", "Орион-24", "N15", "SSD XS-2280", "другой").article == "512-XS-A"
+    assert parts.ensure("A", "Орион-24", "N15", "SSD XS-2280").article == "512-XS-A"
 
 
 @pytest.mark.parametrize(
-    "args", [("XX", "а", "б", "в"), ("КК", "", "б", "в"), ("КК", "а", "--", "в"), ("КК", "а", "б", " ")]
+    "args", [("XX", "а", "б", "в"), ("A", "", "б", "в"), ("A", "а", "--", "в"), ("A", "а", "б", " ")]
 )
 def test_parts_rejects_bad_input(parts, args):
     with pytest.raises(ValueError):
@@ -106,7 +106,7 @@ def test_path_key_treats_spellings_of_unc_as_one():
 
 
 def test_folder_add_is_idempotent_and_keeps_unc(folders, part):
-    path = r"\\srv\Фото\КК\Деталь\2026-10-31"
+    path = r"\\srv\Фото\A\Деталь\2026-10-31"
     folder = folders.add(part.id, path, "2026-10-31")
     assert folder.path == path and folder.status == "new" and folder.created_by is None
     assert folders.add(part.id, path.upper() + "\\", "2026-11-01") == folder

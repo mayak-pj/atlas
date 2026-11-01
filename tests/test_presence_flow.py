@@ -66,14 +66,14 @@ def test_sees_other_user_and_their_folder(two, qtbot):
     (ctx1, reg1), (ctx2, reg2) = two
     _login(ctx1, "Петров")
     _login(ctx2, "Кузнецова")
-    part = ctx2.services.get("parts").ensure("СТ", "Вега", "В7", "Плата PWR-7")
+    part = ctx2.services.get("parts").ensure("B", "Вега", "В7", "Плата PWR-7")
     folder = ctx2.services.get("folders").add(part.id, r"\\srv\ф\1", "2026-10-30")
     ctx2.bus.publish("folder.opened", {"folder_id": folder.id, "part_id": part.id})
     _beat(qtbot, reg2)
     feature = _beat(qtbot, reg1)
 
     assert feature.label.text() == "Онлайн: Кузнецова"  # себя не показываем
-    assert feature.label.toolTip() == "Кузнецова — СТ · Вега · Плата PWR-7 · 2026-10-30"
+    assert feature.label.toolTip() == "Кузнецова — B · Вега · Плата PWR-7 · 2026-10-30"
     assert [item.name for item in feature.working_on(folder.id)] == ["Кузнецова"]
     assert {item.name for item in feature.online()} == {"Петров", "Кузнецова"}
     assert ctx1.services.get_optional("presence") is feature

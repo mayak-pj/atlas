@@ -5,7 +5,7 @@ import pytest
 
 from atlas.features.folders import logic
 
-PART = SimpleNamespace(kind="КК", project="Орион-24", name="SSD XS-2280")
+PART = SimpleNamespace(kind="A", project="Орион-24", name="SSD XS-2280")
 
 
 def _folder(**kwargs):
@@ -35,7 +35,7 @@ def test_summary(counts, expected):
 
 def test_new_entry_shows_where_count_and_copy_time():
     entry = logic.new_entry(_folder(), PART, {"total": 486})
-    assert (entry.title, entry.subtitle, entry.note) == ("SSD XS-2280", "КК · Орион-24 · 486 фото", "скопировано 31.10 09:12")
+    assert (entry.title, entry.subtitle, entry.note) == ("SSD XS-2280", "A · Орион-24 · 486 фото", "скопировано 31.10 09:12")
     assert entry.pill == ""
 
 

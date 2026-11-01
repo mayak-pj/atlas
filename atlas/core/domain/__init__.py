@@ -21,7 +21,8 @@ def migrate(db):
     return MigrationRunner(db).run(OWNER, MIGRATIONS)
 
 
-def register_services(db, services):
+def register_services(db, services, kinds=None):
+    """kinds — допустимые виды проектов из настройки project_kinds."""
     services.register("users", UsersService(db))
-    services.register("parts", PartsService(db))
+    services.register("parts", PartsService(db, kinds))
     services.register("folders", FoldersService(db))

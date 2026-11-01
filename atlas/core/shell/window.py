@@ -3,7 +3,7 @@
 Функции получают окно как ctx.shell:
     ctx.shell.add_panel("shell.user", widget, key="login")      # положить панель в слот
     ctx.shell.register_slot("compare.right", layout)            # создать слот в своём экране
-    ctx.shell.set_context(kind="КК", project="Орион-24", ...)   # строка контекста
+    ctx.shell.set_context(kind="A", project="Орион-24", ...)   # строка контекста
 """
 from __future__ import annotations
 

@@ -23,6 +23,12 @@ DEFAULT_PHOTOS = 12
 COLORS = ["#7DB4FF", "#3DD68C", "#F2A93B", "#C59CFF", "#FF8A8A", "#5FD3D3"]
 
 
+def _kind(parts, code):
+    """В данных виды проектов условные («A», «B»): берём настроенные на этой машине виды по порядку."""
+    kinds = parts.kinds
+    return kinds[min(ord(code) - ord("A"), len(kinds) - 1)] if len(code) == 1 else code
+
+
 def _pick_marks(marks, count):
     """Отметки подряд с начала папки, сколько поместится: [("type:2", индекс фото), ...]."""
     result, index = [], 0
@@ -54,10 +60,10 @@ def seed(out, limit=DEFAULT_PHOTOS, full=False, width=photo_files.WIDTH, height=
     people = {name: users_service.add(name, lambda count: COLORS[count % len(COLORS)]) for name in data["users"]}
     app = photo_files.ensure_gui()  # держим до конца: без него QPainter не рисует текст
     for item in data["folders"]:
-        part = parts.ensure(item["kind"], item["project"], item["device"], item["part"], item["article"])
+        part = parts.ensure(_kind(parts, item["kind"]), item["project"], item["device"], item["part"], item["article"])
         day = today - timedelta(days=item["days_ago"])
         user = people[item["by"]]
-        path = out / "photos" / item["kind"] / item["project"] / item["device"] / item["part"] / day.isoformat()
+        path = out / "photos" / _kind(parts, item["kind"]) / item["project"] / item["device"] / item["part"] / day.isoformat()
         folder = folders.add(part.id, str(path), day.isoformat(), user.id)
         count = item["photos"] if full else min(limit, item["photos"])
         marks = _pick_marks(item.get("marks"), count)

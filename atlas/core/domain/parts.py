@@ -1,4 +1,4 @@
-"""Сервис «parts»: справочник проект (КК/СТ) → устройство → деталь."""
+"""Сервис «parts»: справочник проект (A/B) → устройство → деталь."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,7 +6,7 @@ from typing import Optional
 
 from atlas.core.domain.text import clean_name, normalize_name, required_key
 
-PROJECT_KINDS = ("КК", "СТ")
+DEFAULT_KINDS = ("A", "B")  # условные названия; настоящие — project_kinds в config/local.json (не в git)
 
 _SELECT = (
     "SELECT p.id, p.name, p.name_key, p.article, d.id AS device_id, d.name AS device, "
@@ -46,15 +46,16 @@ def _ensure(conn, table, owner_column, owner_value, name, key):
 
 
 class PartsService:
-    def __init__(self, db):
+    def __init__(self, db, kinds=None):
         self.db = db
+        self.kinds = tuple(str(kind) for kind in kinds) if kinds else DEFAULT_KINDS
 
     def ensure(self, kind, project, device, part, article=None):
         """Деталь с её проектом и устройством: чего нет — создаёт. Всё одной транзакцией.
 
         У существующей детали имя не меняется, артикул дописывается, только если его ещё не было.
         """
-        if kind not in PROJECT_KINDS:
+        if kind not in self.kinds:
             raise ValueError("Неизвестный вид проекта: {}".format(kind))
         keys = [required_key(project, "проект"), required_key(device, "устройство"), required_key(part, "деталь")]
         article = clean_name(article) if article else None

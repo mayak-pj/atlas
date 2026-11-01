@@ -4,6 +4,7 @@
     "path": "var/atlas.sqlite",
     "busy_timeout_ms": 5000
   },
+  "project_kinds": ["A", "B"],
   "ui": {
     "show_project_kind": true
   },

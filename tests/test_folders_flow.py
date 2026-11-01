@@ -37,7 +37,7 @@ class App:
     def feature(self, name):
         return next(item.instance for item in self.registry.loaded if item.spec.id == name)
 
-    def add_folder(self, name, project="Орион-24", kind="КК", photos=2, date="2026-10-31"):
+    def add_folder(self, name, project="Орион-24", kind="A", photos=2, date="2026-10-31"):
         part = self.svc.get("parts").ensure(kind, project, "N15", name)
         folder = self.svc.get("folders").add(part.id, str(self.root / "Сеть" / name), date)
         self.svc.get("folders").add_photos(folder.id, ["{}.jpg".format(number) for number in range(photos)])
@@ -73,7 +73,7 @@ def app(tmp_path, qtbot):
 def test_panel_lists_new_and_recently_checked(app):
     user = app.svc.get("users").add("Иванова", lambda count: "#7DB4FF")
     app.add_folder("SSD XS-2280")
-    app.add_folder("Шлейф FPC-40", kind="СТ", project="Вега")
+    app.add_folder("Шлейф FPC-40", kind="B", project="Вега")
     old = app.add_folder("Дисплей LCD-156")
     fresh = app.add_folder("Матплата MB-15")
     app.finish(old, user, datetime.now() - timedelta(days=9))

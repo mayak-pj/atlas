@@ -52,4 +52,4 @@ def test_removed_row_is_forgotten():
 def test_texts():
     assert logic.online_text([]) == ""
     assert logic.online_text(["Петров", "Кузнецова"]) == "Онлайн: Петров, Кузнецова"
-    assert logic.tooltip_text([("Петров", "КК · А"), ("Иванова", None)]) == "Петров — КК · А\nИванова — папка не открыта"
+    assert logic.tooltip_text([("Петров", "A · А"), ("Иванова", None)]) == "Петров — A · А\nИванова — папка не открыта"

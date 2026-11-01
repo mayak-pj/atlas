@@ -1,4 +1,4 @@
-"""Строка контекста: [КК/СТ] › Проект › Устройство › Деталь · путь к папке."""
+"""Строка контекста: [A/B] › Проект › Устройство › Деталь · путь к папке."""
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt
@@ -49,7 +49,7 @@ class ContextBar(QFrame):
         self.clear()
 
     def set_context(self, kind=None, project=None, device=None, part=None, path=None):
-        """Пустые части не показываются. kind — «КК» или «СТ»."""
+        """Пустые части не показываются. kind — «A» или «B»."""
         self._kind.setText(kind or "")
         self._kind.setVisible(bool(kind) and self._show_kind)
         chain = " {} ".format(SEPARATOR).join(p for p in (project, device, part) if p)

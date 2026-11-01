@@ -16,7 +16,7 @@ PREFIX_TYPE = "type:"
 class Entry:
     folder_id: int
     title: str  # деталь
-    subtitle: str  # «КК · Орион-24 · 486 фото»
+    subtitle: str  # «A · Орион-24 · 486 фото»
     note: str  # «скопировано 31.10 09:12» или «30.10 · Иванова»
     pill: str = ""  # итог проверки; у новых пусто
     pill_token: str = ""  # токен цвета темы: ok, type2, defect, remark

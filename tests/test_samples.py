@@ -23,7 +23,7 @@ def test_seed_matches_mockup_and_is_repeatable(qapp, tmp_path):
     _seed(out)
     folders = FoldersService(db)
     assert len(UsersService(db).all()) == 5
-    assert {part.kind for part in PartsService(db).all()} == {"КК", "СТ"}
+    assert {part.kind for part in PartsService(db).all()} == {"A", "B"}
     recent = folders.recent()
     assert len(recent) == 8
     assert len(folders.recent(status="new")) == 4

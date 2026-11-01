@@ -45,7 +45,7 @@ class App:
         self.ctx = build_core(AppPaths(root))
         self.path = tmp_path / "Сеть" / "SSD"
         services = self.ctx.services
-        self.part = services.get("parts").ensure("КК", "Орион-24", "N15", "SSD XS-2280")
+        self.part = services.get("parts").ensure("A", "Орион-24", "N15", "SSD XS-2280")
         self.folder = services.get("folders").add(self.part.id, str(self.path), "2026-10-31")
         services.get("folders").add_photos(self.folder.id, _photos(self.path, count, size, names) if count else [])
         self.registry = start_features(self.ctx)
@@ -306,7 +306,7 @@ def test_long_path_does_not_widen_window(app):
     app.wait_open()
     long_path = "\\\\nas\\" + "\\".join(["очень длинная папка"] * 30)
     app.window.resize(1024, 640)
-    app.window.set_context("КК", "Орион-24", "N15", "SSD", long_path)
+    app.window.set_context("A", "Орион-24", "N15", "SSD", long_path)
     QApplication.processEvents()
     assert app.window.minimumSizeHint().width() < 1024
     label = app.window.context_bar._path

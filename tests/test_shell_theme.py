@@ -62,7 +62,7 @@ def test_context_bar(qtbot):
     qtbot.addWidget(bar)
     bar.show()
     assert not bar.isVisible() or True
-    bar.set_context(kind="КК", project="Орион-24", device="SSD", part=None, path="\\\\srv\\Фото")
+    bar.set_context(kind="A", project="Орион-24", device="SSD", part=None, path="\\\\srv\\Фото")
     assert bar.chain_text == "Орион-24 › SSD"
     assert bar.isVisible()
     bar.set_show_kind(False)

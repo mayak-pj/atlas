@@ -58,7 +58,7 @@ def online_text(names):
 
 
 def describe_folder(folder, part):
-    """«КК · Орион-24 · SSD XS-2280 · 2026-10-31». Деталь могла не найтись — покажем хотя бы дату."""
+    """«A · Орион-24 · SSD XS-2280 · 2026-10-31». Деталь могла не найтись — покажем хотя бы дату."""
     if part is None:
         return folder.folder_date
     return " · ".join((part.kind, part.project, part.name, folder.folder_date))

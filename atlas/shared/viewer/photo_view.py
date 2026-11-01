@@ -80,6 +80,7 @@ class PhotoView(QWidget):
         self._failed = False
         self._smoothed = None
         self._smoothed_key = None
+        self._overlay = None  # слой фигур (shared/annotate): рисует поверх фото и может забрать мышь
         self._settle = QTimer(self)
         self._settle.setSingleShot(True)
         self._settle.setInterval(settle_ms)
@@ -126,6 +127,37 @@ class PhotoView(QWidget):
 
     def state(self):
         return self._state.state()
+
+    def set_overlay(self, overlay):
+        """Слой поверх фото: у него методы `paint(painter, view)`, `mouse_press/move/release(view, event) -> bool`, `cursor()`."""
+        self._overlay = overlay
+        self.refresh_cursor()
+        self.update()
+
+    def refresh_cursor(self):
+        tool_cursor = self._overlay.cursor() if self._overlay is not None else None
+        self.setCursor(tool_cursor if tool_cursor is not None else Qt.OpenHandCursor)
+
+    @property
+    def photo_unit(self):
+        """Меньшая сторона фото на экране в пикселях окна: от неё считаются толщина линий и размер подписи."""
+        return min(self._state.displayed_size())
+
+    def inner_rect(self):
+        """Где можно рисовать: окно без рамки."""
+        frame = 2 if self.property("active") else 1
+        return QRectF(self.rect()).adjusted(frame, frame, -frame, -frame)
+
+    def photo_to_widget(self, x, y):
+        """Точка фото (доли неповёрнутого, поворот не важен) → пиксели окна."""
+        sx, sy = rotated_center(x, y, self._image_rotation)
+        left, top, width, height = self._state.target_rect()
+        return QPointF(left + sx * width, top + sy * height)
+
+    def widget_to_photo(self, pos):
+        """Пиксели окна → доли неповёрнутого фото; вне фото получаются меньше 0 или больше 1."""
+        sx, sy = self._state.to_photo(pos.x(), pos.y())
+        return rotated_center(sx, sy, (-self._image_rotation) % 360)
 
     def set_state(self, zoom, cx, cy):
         """Применить состояние извне (синхронизация). view_changed не посылает."""
@@ -297,11 +329,15 @@ class PhotoView(QWidget):
         event.accept()
 
     def mousePressEvent(self, event):
+        if self._overlay is not None and self._overlay.mouse_press(self, event):
+            return
         if event.button() == Qt.LeftButton:
             self._drag_from = event.pos()
             self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, event):
+        if self._overlay is not None and self._overlay.mouse_move(self, event):
+            return
         if self._drag_from is None:
             return
         delta = event.pos() - self._drag_from
@@ -309,11 +345,15 @@ class PhotoView(QWidget):
         self._user_change(self._state.pan_by, delta.x(), delta.y())
 
     def mouseReleaseEvent(self, event):
+        if self._overlay is not None and self._overlay.mouse_release(self, event):
+            return
         if event.button() == Qt.LeftButton:
             self._drag_from = None
-            self.setCursor(Qt.OpenHandCursor)
+            self.refresh_cursor()
 
     def mouseDoubleClickEvent(self, event):
+        if self._overlay is not None and self._overlay.tool is not None and self._overlay.owns(event):
+            return  # двойной клик при выбранном инструменте — два быстрых клика рисования, а не «вписать»
         if event.button() == Qt.LeftButton:
             self.fit()
 
@@ -324,8 +364,7 @@ class PhotoView(QWidget):
         self.style().drawPrimitive(QStyle.PE_Widget, option, painter, self)  # фон и рамка из QSS
         if self._image is None:
             return
-        frame = 2 if self.property("active") else 1  # толщина рамки из QSS: фото не должно её закрывать
-        inner = QRectF(self.rect()).adjusted(frame, frame, -frame, -frame)
+        inner = self.inner_rect()  # без рамки из QSS: фото не должно её закрывать
         outline = QPainterPath()
         outline.addRoundedRect(inner, _INNER_RADIUS, _INNER_RADIUS)
         painter.setClipPath(outline)
@@ -350,6 +389,10 @@ class PhotoView(QWidget):
             QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
         )
         painter.drawImage(visible, image, source)
+        if self._overlay is not None:
+            painter.resetTransform()
+            painter.setClipping(False)
+            self._overlay.paint(painter, self)
 
     def _paint_image(self, target):
         """Билинейная отрисовка при уменьшении больше чем вдвое пропускает пиксели: тонкая царапина исчезла бы с экрана.

@@ -22,6 +22,10 @@
       "enabled": true
     },
     {
+      "id": "annotate_tools",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

@@ -12,5 +12,9 @@
       "defect": "D",
       "remark": "R"
     }
+  },
+  "annotate": {
+    "undo": "Ctrl+Z",
+    "redo": "Ctrl+Y"
   }
 }

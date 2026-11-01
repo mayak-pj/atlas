@@ -65,7 +65,7 @@ class MarkResult:
 
 class CompareFeature(Feature):
     """Сервис «compare»: open_folder(folder_id), set_reference(path), set_reference_folder(folder_id),
-    find_same_part(), current_folder()."""
+    find_same_part(), current_folder(), views(), active_view()."""
 
     def on_start(self):
         self.screen = None
@@ -143,6 +143,14 @@ class CompareFeature(Feature):
     def current_folder(self):
         """Folder или None."""
         return self.folder
+
+    def views(self):
+        """Все окна просмотра (PhotoView), в том числе скрытые; пусто, пока вкладка не создана."""
+        return list(self.screen.views) if self.screen is not None else []
+
+    def active_view(self):
+        """Окно, в котором сейчас работает человек, или None."""
+        return self.screen.active_view() if self.screen is not None else None
 
     # --- чтение базы в фоне ---------------------------------------------------
     def _run(self, work, *args):

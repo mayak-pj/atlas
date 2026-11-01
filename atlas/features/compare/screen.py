@@ -274,7 +274,11 @@ class CompareScreen(QWidget):
         self.find_button.setEnabled(False)
         row.addWidget(self.find_button)
         self._compare_only.append(self.find_button)
-        self.toolbar_layout = QHBoxLayout()  # слот compare.toolbar
+        row.addStretch(1)
+        row = QHBoxLayout()  # третий ряд — слот compare.toolbar: кнопки функций не помещаются во второй ряд и обрезались
+        row.setSpacing(6)
+        rows.addLayout(row)
+        self.toolbar_layout = QHBoxLayout()
         self.toolbar_layout.setSpacing(6)
         row.addLayout(self.toolbar_layout)
         row.addStretch(1)

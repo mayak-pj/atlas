@@ -48,6 +48,7 @@ class FolderCard(QFrame):
         head.setSpacing(6)
         title = QLabel(entry.title)
         title.setProperty("role", "folder-title")
+        title.setWordWrap(True)  # без переноса длинное название распирало карточку шире колонки и обрезалось
         head.addWidget(title, 1)
         if entry.pill:
             pill = QLabel(entry.pill)
@@ -59,6 +60,7 @@ class FolderCard(QFrame):
             if text:
                 label = QLabel(text)
                 label.setProperty("role", role)
+                label.setWordWrap(True)
                 layout.addWidget(label)
         if worker_text:
             label = QLabel(worker_text)

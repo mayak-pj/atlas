@@ -109,12 +109,12 @@ def test_opens_latest_folder_sets_context_and_publishes(app):
 def test_one_window_flips_and_keeps_zoom_and_place(app):
     app.wait_open()
     view = app.screen.active_view()
-    app.screen.group.set_state(8.0, 0.35, 0.6)
+    app.screen.group.set_state(8.0, 0.5, 0.6)  # центр по x: при другой высоте окна (шрифты Windows) крайние значения упираются в границы
     app.press(Qt.Key_Right)
     app.press(Qt.Key_Right)
     app.wait_shown()
     assert app.active_name() == "фото 003.jpg"
-    assert view.state() == pytest.approx((8.0, 0.35, 0.6))
+    assert view.state() == pytest.approx((8.0, 0.5, 0.6))
     app.press(Qt.Key_Left)
     assert app.active_name() == "фото 002.jpg"
     changes = [payload for name, payload in app.events if name == "photo.changed"]
@@ -772,3 +772,15 @@ def test_panel_choice_is_restored_and_bad_data_is_ignored(app):
     assert app.screen.panels_state() == {"left": True, "top": True, "bottom": False, "right": True}
     app.screen.restore_panels("не словарь")
     assert app.screen.panels_state()["bottom"] is False
+
+
+def test_second_marks_row_is_hidden_until_there_is_something_to_show(app):
+    app.wait_open()
+    screen = app.screen
+    assert screen.extra_box.isHidden()
+    app.press(Qt.Key_D)
+    app.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
+    assert not screen.extra_box.isHidden()
+    app.press(Qt.Key_D)  # повторное нажатие снимает отметку
+    app.qtbot.waitUntil(lambda: not screen.defect_box.isVisibleTo(screen), timeout=5000)
+    assert screen.extra_box.isHidden()

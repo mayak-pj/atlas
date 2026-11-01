@@ -405,9 +405,13 @@ class CompareScreen(QWidget):
         self.counts_label = QLabel("")
         self.counts_label.setProperty("role", "muted")
         row.addWidget(self.counts_label)
-        extra = QHBoxLayout()
+        self.extra_box = QWidget()  # второй ряд: пока в нём нечего показать, скрыт и места не занимает
+        self.extra_box.setProperty("role", "plain")
+        extra = QHBoxLayout(self.extra_box)
+        extra.setContentsMargins(0, 0, 0, 0)
         extra.setSpacing(8)
-        outer.addLayout(extra)
+        outer.addWidget(self.extra_box)
+        self.extra_box.hide()
         extra.addWidget(self.defect_box)
         self.defect_box.hide()
         self.marks_status = QLabel("")
@@ -415,6 +419,9 @@ class CompareScreen(QWidget):
         extra.addWidget(self.marks_status)
         extra.addStretch(1)
         return self.marks_panel
+
+    def _sync_extra(self):
+        self.extra_box.setVisible(not self.defect_box.isHidden() or bool(self.marks_status.text()))
 
     def _arrow_button(self, step, tip):
         button = self._button("", lambda: self.flip(step))
@@ -445,6 +452,7 @@ class CompareScreen(QWidget):
         self.message.setText(TEXT_NO_PHOTOS)
         self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
         self.marks_status.setText("")
+        self._sync_extra()
         self._strip_source = None
         self._fill_reference_bar()
         self.find_button.setEnabled(bool(self.model.photos))
@@ -531,6 +539,7 @@ class CompareScreen(QWidget):
             self._show_in(self._view_of(window))
         has_angle = any(self._angle_of(photo) == angle for photo in self.model.photos)
         self.marks_status.setText("" if has_angle else TEXT_NO_CURRENT_ANGLE.format(angle))
+        self._sync_extra()
         self._sync_strip()
         if self.model.active_index != before and not self.model.reference_active:
             self.photo_changed.emit(self.model.photos[self.model.active_index], self.model.active_index)
@@ -857,10 +866,12 @@ class CompareScreen(QWidget):
         else:
             self.strip.set_mark(index, self._mark_color(mark))
         self.marks_status.setText("")
+        self._sync_extra()
         self._update_marks()
 
     def show_mark_failure(self, text):
         self.marks_status.setText(text)
+        self._sync_extra()
 
     def _update_marks(self):
         """Кнопки по фото активного окна; SN и вид — только у дефекта."""
@@ -884,6 +895,7 @@ class CompareScreen(QWidget):
             button.setChecked(photo is not None and photo.mark == mark)
         is_defect = photo is not None and photo.mark == "defect" and not model.reference_active
         self.defect_box.setVisible(is_defect)
+        self._sync_extra()
         if is_defect and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
             self.sn_edit.setText(default_sn(photo, self._name_pattern))
             self.kind_box.setCurrentIndex(max(self.kind_box.findData(photo.defect_kind), 0))

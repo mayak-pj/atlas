@@ -18,7 +18,7 @@ class LoginFeature(Feature):
     """Сервис «login»: run(parent) — показать диалог; current(); users()."""
 
     def on_start(self):
-        self.repo = UserRepo(self.ctx.db)
+        self.repo = UserRepo(self.ctx.services.get("users"))
         self.ctx.services.register("login", self)
 
     def on_stop(self):

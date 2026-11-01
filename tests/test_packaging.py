@@ -47,6 +47,7 @@ def test_every_non_code_resource_is_bundled():
     assert "atlas/core/theme/atlas.qss" in targets
     assert "atlas/core/theme/tokens.json" in targets
     assert "atlas/features/login/migrations/001_init.sql" in targets
+    assert "atlas/core/domain/migrations/001_init.sql" in targets
     assert "atlas/features/hello/migrations/001_init.sql" in targets
 
 

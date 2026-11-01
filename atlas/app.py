@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
 from atlas.core.app_context import AppContext
 from atlas.core.config import AppPaths, Config, ConfigError
-from atlas.core.db import Database
+from atlas.core.db import Database, DatabaseError
 from atlas.core.logging_setup import configure, install_excepthook
 from atlas.core.qt_runtime import prepare
 
@@ -28,7 +29,11 @@ def build_core(paths):
     if not Path(db_value).is_absolute():
         db_path.parent.mkdir(parents=True, exist_ok=True)
     db = Database(db_path, config.get("database.busy_timeout_ms", 5000))
+    from atlas.core import domain
+
+    domain.migrate(db)  # без таблиц ядра работать нельзя: ошибка здесь останавливает запуск
     ctx = AppContext(config, paths, db, EventBus(), ServiceRegistry())
+    domain.register_services(db, ctx.services)
     from atlas.core.shell import ShellWindow
 
     ctx.shell = ShellWindow(ctx)  # до запуска функций: им нужны слоты оболочки
@@ -105,7 +110,7 @@ def main(argv=None):
     apply_theme(app)
     try:
         ctx = build_core(paths)
-    except (ConfigError, OSError) as exc:
+    except (ConfigError, OSError, DatabaseError, sqlite3.Error) as exc:
         log.exception("Не удалось запустить программу")
         QMessageBox.critical(None, "Atlas", str(exc))
         return 2

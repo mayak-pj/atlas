@@ -17,6 +17,7 @@ atlas/
     services.py               # ServiceRegistry: register/get/get_optional
     db.py                     # подключение SQLite, ретраи, MigrationRunner (миграции ядра + каждой функции)
     config.py                 # config/*.json + локальные настройки машины (config/local.json, не в git)
+    domain/                   # таблицы ядра (users, projects, devices, parts, folders, photos) и сервисы к ним
     logging_setup.py          # журнал в logs/, сбор ошибок
     qt_runtime.py             # подготовка Qt до QApplication
     theme/                    # atlas.qss, tokens.json (цвета), иконки SVG
@@ -91,7 +92,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 ```
 
 На каждый вызов — своё подключение, поэтому вызывать можно из любого потока (но не из GUI). При блокировке транзакция откатывается и функция вызывается заново, поэтому внутри неё — только работа с базой и никаких вложенных `read`/`write`. Если база занята дольше всех повторов — `DatabaseBusyError`.
-Миграции применяются при старте; менять уже применённый файл нельзя (проверяется контрольная сумма).
+Миграции применяются при старте: сначала ядра (`core/domain/migrations`, ошибка останавливает запуск), потом функций. Менять уже применённый файл нельзя (проверяется контрольная сумма).
 
 ## Правила связей
 1. `features/X` импортирует только `atlas.core.*` и `atlas.shared.*`. Проверяет `tests/test_boundaries.py` (ast-разбор импортов).
@@ -99,7 +100,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
    если `None` — блок интерфейса скрывается, а не падает.
 3. Функция встраивается в чужой экран только через **слоты** оболочки: `ctx.shell.add_panel("compare.right", widget)`.
    Например, сводка по детали — функция `findings` кладёт свою панель в слот `compare.right`.
-4. Свои таблицы — только свои. Чужие данные — через сервис владельца.
+4. Свои таблицы — только свои. Чужие данные — через сервис владельца. Таблицы ядра — через сервисы `users`, `parts`, `folders`; они есть всегда.
 5. Всё, что меняется без программиста (списки, шаблоны, горячие клавиши), — в `data/` и `templates/`.
 
 ## Функции (план)
@@ -110,7 +111,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `login` | вход по фамилии, теги | — (диалог при старте) | `shell.user` |
 | `presence` | кто сейчас работает и над какой папкой | — | `shell.online`, `compare.left` |
 | `compare` | просмотр 1…N фото, синхронный зум, листание, отметки | Сравнение | создаёт слоты `compare.left/right/toolbar` |
-| `folders` | история копирования, статусы папок | — | `compare.left` |
+| `folders` | панель истории копирования (данные — сервис ядра `folders`) | — | `compare.left` |
 | `annotate_tools` | ножницы, обводка, подпись | — | `compare.toolbar` |
 | `type_db` | база типов, поиск, архив | База типов | `compare.toolbar` (+ В базу) |
 | `findings` | дефекты/замечания, сводка по детали, «проблемная деталь» | — | `compare.right` |
@@ -163,7 +164,9 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
 | `findings` | findings | `summary(part_id, days)`, `add(...)` |
-| `folders` | folders | `recent()`, `set_status(...)` |
+| `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
+| `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id)`, `counts(folder_ids)` |
 
 ## Картинки 3456×5184, 5–15 МБ
 

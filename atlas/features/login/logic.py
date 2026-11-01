@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+from atlas.core.domain.text import TIME_FORMAT, name_key
+
 MIN_LENGTH = 2
 MAX_LENGTH = 40
 DEFAULT_COLORS = ["#7DB4FF", "#3DD68C", "#F2A93B", "#C59CFF", "#FF8A8A", "#5FD3D3"]
@@ -17,10 +18,6 @@ def normalize_name(raw):
     """Лишние пробелы убираем, первая буква заглавная («петров» → «Петров»)."""
     name = " ".join(raw.split())
     return name[:1].upper() + name[1:]
-
-
-def name_key(name):
-    return name.casefold()
 
 
 def validate_name(raw, existing=()):
@@ -40,10 +37,6 @@ def pick_color(colors, used_count):
     """Следующий по кругу цвет из data/user_colors.json."""
     palette = list(colors) or DEFAULT_COLORS
     return palette[used_count % len(palette)]
-
-
-def now_text(now=None):
-    return (now or datetime.now()).strftime(TIME_FORMAT)
 
 
 def describe_last_login(value, now=None):

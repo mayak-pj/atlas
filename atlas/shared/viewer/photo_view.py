@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QPainter, QPainterPath
+from PyQt5.QtGui import QPainter, QPainterPath, QTransform
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
 from atlas.shared.viewer.levels import CURRENT, L0, L1, level_divisor, level_for_scale
-from atlas.shared.viewer.view_state import ViewState
+from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
 
 SETTLE_MS = 150  # после остановки листания или зума — чёткий уровень (цель: не позже 300 мс)
 WHEEL_STEP = 1.2  # за один щелчок колеса, как в макете
@@ -71,6 +71,8 @@ class PhotoView(QWidget):
         self._path = None
         self._image = None
         self._image_path = None  # пока новое фото не пришло, на экране остаётся прежнее
+        self._rotation = 0  # поворот текущего фото, градусы по часовой стрелке
+        self._image_rotation = 0  # поворот того, что сейчас на экране: прежнее фото рисуется со своим
         self._level = L0
         self._wanted = L1
         self._full_size = None  # (ширина, высота) исходника; по L0 не вычислить
@@ -103,8 +105,14 @@ class PhotoView(QWidget):
 
     @property
     def shown_image_size(self):
-        """(ширина, высота) картинки текущего фото с учётом EXIF, уровень любой; годится для ориентации. Иначе None."""
-        return (self._image.width(), self._image.height()) if self.is_current_shown else None
+        """(ширина, высота) текущего фото на экране: с учётом EXIF и поворота, уровень любой; годится для ориентации. Иначе None."""
+        if not self.is_current_shown:
+            return None
+        return rotated_size(self._image.width(), self._image.height(), self._rotation)
+
+    @property
+    def rotation(self):
+        return self._rotation
 
     @property
     def is_current_shown(self):
@@ -124,12 +132,38 @@ class PhotoView(QWidget):
         self._state.set_state(zoom, cx, cy)
         self._after_view_change()
 
-    def set_photo(self, path):
-        """Зум и место сохраняются. Сразу — что есть в памяти или L1, через SETTLE_MS — чёткий уровень."""
+    def set_rotation(self, rotation):
+        """Человек повернул фото: точка в центре окна остаётся в центре, зум тот же. view_changed не посылает.
+
+        Картинка не пересчитывается: поворачивается только отрисовка, поэтому L3 поворачивается мгновенно, кэш не меняется.
+        """
+        delta = (rotation - self._rotation) % 360
+        if not delta:
+            return
+        zoom, cx, cy = self._state.state()
+        cx, cy = rotated_center(cx, cy, delta)
+        self._apply_rotation(rotation)
+        self._state.set_state(zoom, cx, cy)
+
+    def _apply_rotation(self, rotation):
+        self._rotation = rotation
+        if self.is_current_shown:
+            self._image_rotation = rotation
+            self._state.set_photo_size(*rotated_size(self._image.width(), self._image.height(), rotation))
+        self._after_view_change()
+
+    def set_photo(self, path, rotation=0):
+        """Зум и место на экране сохраняются. Сразу — что есть в памяти или L1, через SETTLE_MS — чёткий уровень.
+
+        rotation — сохранённый поворот этого фото. Место не пересчитывается: окна смотрят в одну точку экрана.
+        """
         path = str(path)
         if path == self._path:
+            if rotation != self._rotation:
+                self._apply_rotation(rotation)
             return
         self._path = path
+        self._rotation = rotation
         self._failed = False
         self._full_size = None
         self._wanted = L1
@@ -143,6 +177,8 @@ class PhotoView(QWidget):
         self._path = None
         self._image = None
         self._image_path = None
+        self._rotation = 0
+        self._image_rotation = 0
         self._full_size = None
         self._failed = False
         self._settle.stop()
@@ -192,7 +228,8 @@ class PhotoView(QWidget):
             return L1
         width, height = self._state.displayed_size()
         ratio = self.devicePixelRatioF()
-        return level_for_scale(max(width * ratio / self._full_size[0], height * ratio / self._full_size[1]))
+        full_w, full_h = rotated_size(*self._full_size, self._rotation)
+        return level_for_scale(max(width * ratio / full_w, height * ratio / full_h))
 
     def _on_settled(self):
         if self._path is None or self._failed:
@@ -211,12 +248,13 @@ class PhotoView(QWidget):
         keep_proportions = not first and self._level != L0  # L0 округлён сильно, L1 и выше точны
         self._image = image
         self._image_path = self._path
+        self._image_rotation = self._rotation
         self._level = level
         if level != L0:
             divisor = level_divisor(level)
             self._full_size = (image.width() * divisor, image.height() * divisor)
         if not keep_proportions:
-            self._state.set_photo_size(image.width(), image.height())
+            self._state.set_photo_size(*rotated_size(image.width(), image.height(), self._rotation))
         self._show_message("")
         self.update()
         if first:
@@ -296,6 +334,12 @@ class PhotoView(QWidget):
         visible = target.intersected(inner)
         if visible.isEmpty():
             return
+        # Дальше координаты неповёрнутого фото с началом в его центре: поворачивается отрисовка, а не пиксели
+        turn = QTransform().translate(target.center().x(), target.center().y()).rotate(self._image_rotation)
+        painter.setTransform(turn)
+        visible = turn.inverted()[0].mapRect(visible)
+        width, height = rotated_size(target.width(), target.height(), self._image_rotation)
+        target = QRectF(-width / 2, -height / 2, width, height)
         # Только видимая часть: при зуме 12× весь прямоугольник в десятки тысяч пикселей не нужно передавать
         image = self._paint_image(target)
         scale_x = image.width() / target.width()

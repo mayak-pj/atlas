@@ -17,7 +17,8 @@ _SQL_VARIABLES_LIMIT = 900  # в сборках SQLite под Windows преде
 _FOLDER_COLUMNS = (
     "id, part_id, path, folder_date, status, created_by, created_at, status_by, status_at"
 )
-_PHOTO_COLUMNS = "id, folder_id, rel_path, sn, mark, marked_by, marked_at, defect_kind"
+_PHOTO_COLUMNS = "id, folder_id, rel_path, sn, mark, marked_by, marked_at, defect_kind, rotation"
+ROTATIONS = (0, 90, 180, 270)
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class Photo:
     marked_by: Optional[int]
     marked_at: Optional[str]
     defect_kind: Optional[str] = None
+    rotation: int = 0  # градусы по часовой стрелке; файл на диске не меняется
 
 
 def path_key(path):
@@ -184,6 +186,18 @@ class FoldersService:
                 (mark, user_id if mark else None, now_text() if mark else None, kind,
                  clear_sn, new_sn or None, photo_id),
             )
+            if cur.rowcount == 0:
+                raise LookupError("Нет фото {}".format(photo_id))
+
+        self.db.write(work)
+
+    def set_rotation(self, photo_id, rotation):
+        """Запомнить поворот фото: 0, 90, 180 или 270 градусов по часовой стрелке. Отметку и статус папки не трогает."""
+        if rotation not in ROTATIONS:
+            raise ValueError("Недопустимый поворот: {}".format(rotation))
+
+        def work(conn):
+            cur = conn.execute("UPDATE photos SET rotation = ? WHERE id = ?", (rotation, photo_id))
             if cur.rowcount == 0:
                 raise LookupError("Нет фото {}".format(photo_id))
 

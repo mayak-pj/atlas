@@ -1,8 +1,10 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон, остальные — текущие; раскладка только показывает нужные."""
 from __future__ import annotations
 
-from PyQt5.QtCore import QEvent, QPointF, QSize, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QIcon, QKeySequence, QPainter, QPixmap, QPolygonF
+import math
+
+from PyQt5.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QIcon, QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PyQt5.QtWidgets import (
     QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
 )
@@ -11,7 +13,7 @@ from atlas.core import theme
 from atlas.core.domain.photo_names import parse_photo_name
 from atlas.features.compare.angles import AnglesModel, notes as angle_notes, set_mark as angle_set_mark
 from atlas.features.compare.logic import (
-    DEFAULT_MARK_KEYS, MAX_WINDOWS, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
+    DEFAULT_HOTKEYS, DEFAULT_MARK_KEYS, MAX_WINDOWS, ROTATE_STEP, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
@@ -74,6 +76,35 @@ def _arrow_icon(color, step, size=14):
     return QIcon(pixmap)
 
 
+def _rotate_icon(color, clockwise, size=16):
+    """Круговая стрелка, рисуется кодом, как и _arrow_icon. Против часовой — зеркальное отражение."""
+    ratio = 2
+    pixmap = QPixmap(size * ratio, size * ratio)
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    if not clockwise:
+        painter.translate(size, 0)
+        painter.scale(-1, 1)
+    center, radius, start, sweep = size / 2, size / 2 - 3, 60, -285
+    rect = QRectF(center - radius, center - radius, radius * 2, radius * 2)
+    arc = QPainterPath()
+    arc.arcMoveTo(rect, start)
+    arc.arcTo(rect, start, sweep)
+    painter.setPen(QPen(color, 1.6))
+    painter.drawPath(arc)
+    angle = math.radians(start + sweep)
+    end = QPointF(center + radius * math.cos(angle), center - radius * math.sin(angle))
+    along = QPointF(math.sin(angle), math.cos(angle))  # куда идёт дуга по часовой стрелке, ось y вниз
+    across = QPointF(-along.y(), along.x())
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(color)
+    painter.drawPolygon(QPolygonF([end + along * 4, end + across * 3, end - across * 3]))
+    painter.end()
+    return QIcon(pixmap)
+
+
 def _key(text):
     sequence = QKeySequence(text)
     return sequence[0] if sequence.count() else 0
@@ -83,6 +114,7 @@ class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
     find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
+    rotation_changed = pyqtSignal(int, int)  # id фото папки, новый поворот: записать в базу
 
     def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
         super().__init__(parent)
@@ -107,6 +139,10 @@ class CompareScreen(QWidget):
         self._cache = cache
         self._keys = {_key(hotkeys["prev"]): -1, _key(hotkeys["next"]): 1}
         self._flicker_key = _key(hotkeys["flicker"])
+        self._rotate_keys = {
+            _key(hotkeys.get("rotate_left", DEFAULT_HOTKEYS["rotate_left"])): -ROTATE_STEP,
+            _key(hotkeys.get("rotate_right", DEFAULT_HOTKEYS["rotate_right"])): ROTATE_STEP,
+        }
         self._flicker = None  # (окно, его состояние), пока удерживается «мигалка»
         self._portrait = True  # фото Atlas обычно вертикальные; уточняется по первому показанному
         self._orientation_known = False
@@ -218,6 +254,19 @@ class CompareScreen(QWidget):
         row = QHBoxLayout()
         row.setSpacing(6)
         rows.addLayout(row)
+        color = theme.current().qcolor("text")
+        keys = {delta: QKeySequence(key).toString() for key, delta in self._rotate_keys.items()}
+        for delta, tip in ((-ROTATE_STEP, "Повернуть против часовой стрелки"), (ROTATE_STEP, "Повернуть по часовой стрелке")):
+            button = self._button("", lambda _=False, d=delta: self.rotate(d))
+            button.setProperty("role", "square")
+            button.setIcon(_rotate_icon(color, delta > 0))
+            button.setIconSize(QSize(16, 16))
+            button.setToolTip("{} (клавиша {})".format(tip, keys.get(delta, "")))
+            if delta > 0:
+                self.rotate_right_button = button
+            else:
+                self.rotate_left_button = button
+            row.addWidget(button)
         self.find_button = self._button("Найти такую же деталь", self.find_requested.emit)
         self.find_button.setToolTip("Открыть эталоном последнюю проверку такой же детали")
         self.find_button.setEnabled(False)
@@ -556,7 +605,7 @@ class CompareScreen(QWidget):
         if source != self._strip_source:  # лента показывает то, что листается
             self._strip_source = source
             self.strip.set_items(self._angle_film_items() if self._angles_on else [
-                FilmItem(photo.path, self._mark_color(photo.mark)) for photo in model.shown_photos
+                FilmItem(photo.path, self._mark_color(photo.mark), photo.rotation) for photo in model.shown_photos
             ])
         self._update_marks()
         index, total = self._position()
@@ -568,7 +617,8 @@ class CompareScreen(QWidget):
         """В «Ракурсах» одна миниатюра на SN: листание идёт по SN."""
         photos = self.model.photos
         return [
-            FilmItem(photos[item.first_photo].path, self._angle_set_color(item)) for item in self.angles.plan.sets
+            FilmItem(photos[item.first_photo].path, self._angle_set_color(item), photos[item.first_photo].rotation)
+            for item in self.angles.plan.sets
         ]
 
     def _angle_set_color(self, angle_set):
@@ -609,13 +659,13 @@ class CompareScreen(QWidget):
     def _show_in(self, view):
         if view is self.views[0]:
             photo = self.model.reference
-            self.group.show_photo(view, photo.path)
+            self.group.show_photo(view, photo.path, photo.rotation)
             view.set_caption(self._reference_tag, self._reference_text(photo), reference=True)
             self._after_show()
             return
         window = self.views.index(view) - 1
         photo = self.model.current(window)
-        self.group.show_photo(view, photo.path)
+        self.group.show_photo(view, photo.path, photo.rotation)
         tag = TAG_SINGLE if self.model.count == 1 else TAG_CURRENT
         position = position_text(self.model.index(window), len(self.model.photos))
         view.set_caption(tag, "{}  {}".format(position, photo.name))
@@ -635,7 +685,7 @@ class CompareScreen(QWidget):
                 view.set_caption(TAG_ANGLE.format(number), "{}  {}".format(position, current.sn))
                 continue
             photo = self.model.photos[index]
-            shown.append((view, photo.path))
+            shown.append((view, photo.path, photo.rotation))
             view.set_caption(TAG_ANGLE.format(number), "{}  {}".format(position, photo.name))
         self.group.show_photos(shown)
         self._after_show()
@@ -668,6 +718,9 @@ class CompareScreen(QWidget):
         if size is None:
             return
         self._orientation_known = True
+        self._apply_orientation(size)
+
+    def _apply_orientation(self, size):
         portrait = size[1] >= size[0]
         self.strip.set_portrait(portrait)
         if portrait != self._portrait:
@@ -769,6 +822,52 @@ class CompareScreen(QWidget):
             return ""
         return "SN {}, ракурс {} —".format(current.sn, angles.active_view_number)
 
+    # --- поворот --------------------------------------------------------------
+    def rotate(self, delta):
+        """Кнопка или клавиша. «Сравнение» — все окна вместе, «Ракурсы» — только активное. Пока идёт «мигалка» — нельзя."""
+        if self._flicker is not None:
+            return
+        if self._angles_on:
+            self._rotate_angle(delta)
+        elif self.model.photos:
+            self._rotate_windows(delta)
+
+    def _rotate_windows(self, delta):
+        model = self.model
+        changed = model.rotate_windows(delta)
+        rotations = []
+        for view in self._visible_views():
+            photo = model.reference if view is self.views[0] else model.current(self.views.index(view) - 1)
+            rotations.append((view, photo.rotation))
+        self.group.rotate(delta, rotations)
+        if model.reference_active:
+            self.strip.set_rotation(model.ref_index, model.reference.rotation)
+        else:
+            for index, rotation in changed.items():
+                self.strip.set_rotation(index, rotation)
+        size = self.active_view().shown_image_size
+        if size is not None:  # сетка и лента — по новой ориентации; при листании они по-прежнему не прыгают
+            self._orientation_known = True
+            self._apply_orientation(size)
+        for index, rotation in changed.items():
+            self._save_rotation(model.photos[index], rotation)
+
+    def _rotate_angle(self, delta):
+        """Окно ракурса поворачивается само по себе. Сетка не меняется: ракурс N всегда на одном месте."""
+        number = self.angles.active_photo()
+        if number is None:
+            return  # у SN нет этого ракурса
+        rotation = self.model.rotate_photo(number, delta)
+        self.active_view().set_rotation(rotation)
+        place = self.angles.set_of_photo(number)
+        if self.angles.plan.sets[place].first_photo == number:
+            self.strip.set_rotation(place, rotation)
+        self._save_rotation(self.model.photos[number], rotation)
+
+    def _save_rotation(self, photo, rotation):
+        if photo.id is not None:
+            self.rotation_changed.emit(photo.id, rotation)
+
     # --- листание и «мигалка» -------------------------------------------------
     def flip(self, step):
         self.go(self._position()[0] + step)
@@ -804,7 +903,7 @@ class CompareScreen(QWidget):
             return
         view = self.active_view()
         self._flicker = (view, view.state())
-        self.group.show_photo(view, self.model.reference.path)
+        self.group.show_photo(view, self.model.reference.path, self.model.reference.rotation)
         view.set_caption(self._reference_tag, self._reference_text(self.model.reference), reference=True)
         self._update_marks()
 
@@ -829,6 +928,9 @@ class CompareScreen(QWidget):
         elif key == self._flicker_key:
             if not event.isAutoRepeat():
                 self._begin_flicker()
+        elif key in self._rotate_keys:
+            if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
+                self.rotate(self._rotate_keys[key])
         elif key in self._mark_by_key:
             if not event.isAutoRepeat():
                 self.request_mark(self._mark_by_key[key])

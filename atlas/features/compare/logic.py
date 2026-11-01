@@ -15,7 +15,11 @@ log = logging.getLogger("atlas.compare")
 MAX_WINDOWS = 4
 MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эталон
 DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "defect": "D", "remark": "R"}
-DEFAULT_HOTKEYS = {"prev": "Left", "next": "Right", "flicker": "Space", "marks": DEFAULT_MARK_KEYS}
+DEFAULT_HOTKEYS = {
+    "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
+    "marks": DEFAULT_MARK_KEYS,
+}
+ROTATE_STEP = 90
 DEFAULT_DEFECT_KINDS = ["Сбит / повреждён элемент", "Размытое фото", "Прислано не то фото"]
 NEIGHBORS_AHEAD = 2  # по ходу листания; при удержании стрелки чтение успевает за показом (замер --viewbench)
 NEIGHBORS_BEHIND = 1
@@ -28,6 +32,7 @@ class PhotoItem:
     mark: Optional[str] = None
     sn: Optional[str] = None
     defect_kind: Optional[str] = None
+    rotation: int = 0  # градусы по часовой стрелке, сохранённые в базе
 
     @property
     def name(self):
@@ -49,6 +54,11 @@ def grid_cells(count, portrait) -> List[Tuple[int, int, int, int]]:
     if count == 3:
         return [(0, 0, 2, 1), (0, 1, 1, 1), (1, 1, 1, 1)]
     return [(0, 0, 1, 1), (0, 1, 1, 1), (1, 0, 1, 1), (1, 1, 1, 1)]
+
+
+def next_rotation(rotation, delta):
+    """Новый поворот, 0–270: четыре поворота в одну сторону возвращают к исходному."""
+    return (rotation + delta) % 360
 
 
 def mark_token(mark):
@@ -260,6 +270,26 @@ class CompareModel:
         new_sn = old.sn if sn is None else (sn or None)  # None — не менять, как в сервисе folders
         self.photos[index] = replace(old, mark=mark, sn=new_sn, defect_kind=defect_kind)
 
+    def rotate_photo(self, index, delta):
+        """Повернуть фото папки с этим номером; вернёт новый поворот."""
+        rotation = next_rotation(self.photos[index].rotation, delta)
+        self.photos[index] = replace(self.photos[index], rotation=rotation)
+        return rotation
+
+    def rotate_windows(self, delta):
+        """«Сравнение»: всё вместе. Вернёт {номер фото папки: поворот} — это запишется в базу.
+
+        Эталон поворачивается только в памяти: это чужое фото. Окна с одним и тем же фото поворачиваются один раз.
+        Эталон при одном окне тоже: он появится в «мигалке» и должен совпасть с текущим.
+        """
+        if self.reference is not None:
+            self.reference = replace(self.reference, rotation=next_rotation(self.reference.rotation, delta))
+            if self.ref_photos:
+                self.ref_photos[self.ref_index] = self.reference
+        if not self.photos:
+            return {}
+        indexes = {self._indexes[window] for window in range(self.currents_count)}
+        return {index: self.rotate_photo(index, delta) for index in sorted(indexes)}
     def _spread_from(self, window):
         last = max(len(self.photos) - 1, 0)
         for number in range(window + 1, MAX_CURRENTS):

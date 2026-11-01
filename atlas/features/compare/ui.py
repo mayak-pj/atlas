@@ -30,6 +30,7 @@ TEXT_NOT_FOUND = "Такой же детали нет в других прове
 TEXT_NOT_FOUND_NEIGHBORS = "Такой же детали нет ни в этом проекте, ни в соседних проектах"
 TEXT_FIND_FAILED = "Не удалось найти такую же деталь"
 TEXT_MARK_FAILED = "Отметка не сохранена: база недоступна, попробуйте ещё раз"
+TEXT_ROTATION_FAILED = "Поворот не сохранён: при следующем открытии фото будет как раньше"
 
 
 class _Signals(QObject):
@@ -37,6 +38,7 @@ class _Signals(QObject):
     failed = pyqtSignal(int)
     marked = pyqtSignal(object)  # MarkResult
     mark_failed = pyqtSignal(int)  # id фото
+    rotation_failed = pyqtSignal()
     found = pyqtSignal(int, object)  # номер поиска, FindResult или None
     find_failed = pyqtSignal(int)
 
@@ -75,10 +77,11 @@ class CompareFeature(Feature):
         self.signals.failed.connect(self._on_failed)
         self.signals.marked.connect(self._on_marked)
         self.signals.mark_failed.connect(self._on_mark_failed)
+        self.signals.rotation_failed.connect(self._on_rotation_failed)
         self.signals.found.connect(self._on_found)
         self.signals.find_failed.connect(self._on_find_failed)
         self._find_request = 0
-        # Отметки пишутся одной очередью: две быстрые отметки одного фото не должны прийти в базу в обратном порядке
+        # Отметки и повороты пишутся одной очередью: два быстрых нажатия не должны прийти в базу в обратном порядке
         self._mark_queue = queue.Queue()
         self._mark_thread = threading.Thread(target=self._mark_loop, daemon=True)
         self._mark_thread.start()
@@ -90,6 +93,7 @@ class CompareFeature(Feature):
         self.screen = CompareScreen(cache, self._hotkeys(), load_pattern(data), logic.load_defect_kinds(data))
         self.screen.photo_changed.connect(self._on_photo_changed)
         self.screen.mark_requested.connect(self._on_mark_requested)
+        self.screen.rotation_changed.connect(self._on_rotation_changed)
         self.screen.find_requested.connect(self.find_same_part)
         shell = self.ctx.shell
         if shell is not None:
@@ -167,7 +171,8 @@ class CompareFeature(Feature):
         part = self.ctx.services.get("parts").get(folder.part_id)
         photos = [
             logic.PhotoItem(
-                photo.id, logic.photo_path(folder.path, photo.rel_path), photo.mark, photo.sn, photo.defect_kind
+                photo.id, logic.photo_path(folder.path, photo.rel_path), photo.mark, photo.sn, photo.defect_kind,
+                photo.rotation,
             )
             for photo in self.ctx.services.get("folders").photos(folder.id)
         ]
@@ -281,19 +286,33 @@ class CompareFeature(Feature):
         if self.folder is None:
             return
         user = self.ctx.user
-        self._mark_queue.put((self.folder, photo.id, mark, sn, defect_kind, user.id if user else None))
+        job = (self.folder, photo.id, mark, sn, defect_kind, user.id if user else None)
+        self._mark_queue.put(lambda: self._mark_job(job))
+
+    def _on_rotation_changed(self, photo_id, rotation):
+        self._mark_queue.put(lambda: self._rotation_job(photo_id, rotation))
 
     def _mark_loop(self):
         while True:
             job = self._mark_queue.get()
             if job is None:
                 return
-            photo_id = job[1]
-            try:
-                self.signals.marked.emit(self._write_mark(*job))
-            except Exception:  # нет сети, база занята: сообщаем на экране, отметка не меняется
-                log.exception("Не удалось сохранить отметку фото %s", photo_id)
-                self.signals.mark_failed.emit(photo_id)
+            job()
+
+    def _mark_job(self, job):
+        photo_id = job[1]
+        try:
+            self.signals.marked.emit(self._write_mark(*job))
+        except Exception:  # нет сети, база занята: сообщаем на экране, отметка не меняется
+            log.exception("Не удалось сохранить отметку фото %s", photo_id)
+            self.signals.mark_failed.emit(photo_id)
+
+    def _rotation_job(self, photo_id, rotation):
+        try:
+            self.ctx.services.get("folders").set_rotation(photo_id, rotation)
+        except Exception:  # на экране поворот уже виден и работает, не сохранился только на будущее
+            log.exception("Не удалось сохранить поворот фото %s", photo_id)
+            self.signals.rotation_failed.emit()
 
     def _write_mark(self, folder, photo_id, mark, sn, defect_kind, user_id):
         folders = self.ctx.services.get("folders")
@@ -315,3 +334,7 @@ class CompareFeature(Feature):
     def _on_mark_failed(self, photo_id):
         if self.screen is not None:
             self.screen.show_mark_failure(TEXT_MARK_FAILED)
+
+    def _on_rotation_failed(self):
+        if self.screen is not None:
+            self.screen.show_mark_failure(TEXT_ROTATION_FAILED)

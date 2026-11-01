@@ -3,6 +3,8 @@
     "prev": "Left",
     "next": "Right",
     "flicker": "Space",
+    "rotate_left": "PgUp",
+    "rotate_right": "PgDown",
     "marks": {
       "type:1": "1",
       "type:2": "2",

@@ -304,7 +304,7 @@ def test_show_photos_one_cancel_many_views(make_view, cache):
     group.add(first)
     group.add(second)
     before = cache.cancelled
-    group.show_photos([(first, "c.jpg"), (second, "d.jpg")])
+    group.show_photos([(first, "c.jpg", 0), (second, "d.jpg", 90)])
     assert cache.cancelled == before + 1
     assert first.path == "c.jpg" and second.path == "d.jpg"
     assert ("c.jpg", L1) in cache.pending and ("d.jpg", L1) in cache.pending

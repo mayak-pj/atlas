@@ -4,11 +4,11 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from PyQt5.QtCore import QRectF, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap, QTransform
 from PyQt5.QtWidgets import QSizePolicy, QWidget
 
 from atlas.shared.viewer.levels import L0, NEIGHBOR
@@ -25,6 +25,7 @@ _DOT = 10
 class FilmItem:
     path: str
     mark_color: Optional[QColor] = None
+    rotation: int = 0  # градусы по часовой стрелке
 
 
 def visible_range(current, total, fits):
@@ -63,7 +64,17 @@ class Filmstrip(QWidget):
 
     def set_mark(self, index, color):
         """Новая отметка у фото: точка меняется сразу, без перечитывания папки."""
-        self._items[index] = FilmItem(self._items[index].path, color)
+        self._items[index] = replace(self._items[index], mark_color=color)
+        self.update()
+
+    def set_rotation(self, index, rotation):
+        """Фото повернули: миниатюра пересчитывается из L0, файл и кэш не меняются."""
+        item = self._items[index]
+        if item.rotation == rotation:
+            return
+        self._items[index] = replace(item, rotation=rotation)
+        self._thumbs.pop(item.path, None)
+        self.request_visible()
         self.update()
 
     def set_current(self, index):
@@ -98,7 +109,11 @@ class Filmstrip(QWidget):
 
     def _adopt(self, path, image):
         ratio = self.devicePixelRatioF()
-        pixmap = QPixmap.fromImage(image).scaled(
+        rotation = next((item.rotation for item in self._items if item.path == path), 0)
+        pixmap = QPixmap.fromImage(image)
+        if rotation:
+            pixmap = pixmap.transformed(QTransform().rotate(rotation))
+        pixmap = pixmap.scaled(
             int(self._cell_width * ratio), int(CELL_HEIGHT * ratio), Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
         pixmap.setDevicePixelRatio(ratio)

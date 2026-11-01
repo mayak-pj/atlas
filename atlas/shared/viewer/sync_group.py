@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
+from atlas.shared.viewer.view_state import rotated_center
+
 _FIT_STATE = (1.0, 0.5, 0.5)
 
 
@@ -107,6 +109,18 @@ class SyncGroup(QObject):
         if target is not None:
             target.zoom_by(factor)
 
+    def rotate(self, delta, rotations):
+        """Повернуть окна вместе на delta градусов; rotations — [(окно, его новый поворот)].
+
+        Группа пересчитывает общее место сама: окно могло упереться в край, а после обратного поворота вернётся туда же.
+        """
+        zoom, cx, cy = self._state
+        self._state = (zoom,) + rotated_center(cx, cy, delta)
+        for view, rotation in rotations:
+            view.set_rotation(rotation)
+            if self._enabled:
+                view.set_state(*self._state)
+
     def touch(self, view):
         """Пользователь выбрал окно кликом: кнопки −/+ теперь действуют на него."""
         if view in self._views:
@@ -119,18 +133,18 @@ class SyncGroup(QObject):
         currents = self.currents
         return currents[-1] if currents else None
 
-    def show_photo(self, view, path):
+    def show_photo(self, view, path, rotation=0):
         """Листание: новое фото в одном окне, остальные не меняются."""
-        self.show_photos([(view, path)])
+        self.show_photos([(view, path, rotation)])
 
     def show_photos(self, shown):
-        """Новые фото сразу в нескольких окнах, [(окно, путь)], за одну отмену очереди.
+        """Новые фото сразу в нескольких окнах, [(окно, путь, поворот)], за одну отмену очереди.
 
         Отмена — здесь, а не в окнах: кэш общий. Она снимает и запросы других окон, поэтому их просим повторить.
         """
         self._cache.cancel_pending()
-        for view, path in shown:
-            view.set_photo(path)
+        for view, path, rotation in shown:
+            view.set_photo(path, rotation)
         for item in self._views:
             item.request_again()
 

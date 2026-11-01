@@ -2,6 +2,7 @@
 
 Состояние — зум (1 = «вписать») и центр в долях фото. Эти числа не зависят ни от размера окна, ни от уровня изображения:
 поэтому подмена L1 на L3 ничего не сдвигает, а SyncGroup сможет передавать их между фото разного размера.
+Фото здесь такое, каким его видно на экране: у повёрнутого на 90° стороны уже поменяны местами, доли считаются по экрану.
 """
 from __future__ import annotations
 
@@ -75,6 +76,23 @@ class ViewState:
         width, height = self.displayed_size()
         self.cx = _clamp_axis(self.cx, self.view_w / width)
         self.cy = _clamp_axis(self.cy, self.view_h / height)
+
+
+def rotated_center(cx, cy, delta):
+    """Где окажется точка фото (доли), если фото повернуть на delta градусов по часовой стрелке (кратно 90)."""
+    delta %= 360
+    if delta == 90:
+        return 1.0 - cy, cx
+    if delta == 180:
+        return 1.0 - cx, 1.0 - cy
+    if delta == 270:
+        return cy, 1.0 - cx
+    return cx, cy
+
+
+def rotated_size(width, height, rotation):
+    """Размер на экране: при 90 и 270 градусах стороны меняются местами."""
+    return (height, width) if rotation % 180 else (width, height)
 
 
 def _clamp_axis(center, visible):

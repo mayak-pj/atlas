@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+
+from atlas.core.release import RELEASE_DIR, home_of
 
 
 class ConfigError(Exception):
@@ -14,13 +17,39 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class AppPaths:
+    """root — файлы этой версии программы; home — настройки и данные, они переживают обновление.
+
+    У обычной копии это одна папка. Установка на сетевом диске — см. core/release.py.
+    """
+
     root: Path
+    installed_home: Optional[Path] = None
 
     @classmethod
     def discover(cls):
         if getattr(sys, "frozen", False):
-            return cls(Path(sys.executable).parent)
+            program = Path(sys.executable).parent
+            return cls(program, home_of(program))
         return cls(Path(__file__).resolve().parents[2])
+
+    @property
+    def home(self):
+        return self.installed_home or self.root
+
+    @property
+    def release_dir(self):
+        """Папка с версиями; у обычной копии — None."""
+        return self.installed_home / RELEASE_DIR if self.installed_home else None
+
+    @property
+    def local_config(self):
+        return self.home / "config" / "local.json"
+
+    @property
+    def user_state_dir(self):
+        """Выбор пользователя (тема, панели). В общей установке у каждого свой, иначе люди перебивали бы выбор друг друга."""
+        base = os.environ.get("LOCALAPPDATA") if self.installed_home else None
+        return Path(base) / "Atlas" if base else self.home / "var"
 
     @property
     def config(self):
@@ -36,12 +65,12 @@ class AppPaths:
 
     @property
     def logs(self):
-        return self.root / "logs"
+        return self.home / "logs"
 
     def resolve(self, value):
-        """Абсолютный путь и UNC — как есть, относительный — от папки программы."""
+        """Абсолютный путь и UNC — как есть, относительный — от папки с данными."""
         path = Path(value)
-        return path if path.is_absolute() else self.root / path
+        return path if path.is_absolute() else self.home / path
 
 
 @dataclass(frozen=True)
@@ -80,7 +109,7 @@ class Config:
     @classmethod
     def load(cls, paths):
         app = _read_json(paths.config / "app.json")
-        local = paths.config / "local.json"  # настройки этой машины, не в git
+        local = paths.local_config  # настройки этой машины, не в git
         if local.exists():
             app = _merge(app, _read_json(local))
         return cls(paths, app, _parse_features(paths.config / "features.json"))

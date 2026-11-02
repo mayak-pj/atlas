@@ -1,4 +1,4 @@
-"""Настройки вида, которые пользователь выбрал сам (панели, тема): файл var/ui_state.json рядом с программой, не в git."""
+"""Настройки вида, которые пользователь выбрал сам (панели, тема): файл ui_state.json (AppPaths.user_state_dir), не в git."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ FILE = "ui_state.json"
 
 
 def path_of(paths):
-    return Path(paths.root) / "var" / FILE
+    return Path(paths.user_state_dir) / FILE
 
 
 def load(paths):

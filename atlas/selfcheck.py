@@ -21,6 +21,7 @@ import traceback
 from pathlib import Path
 
 from atlas.core.config import AppPaths
+from atlas.core.release import current_version
 from atlas.core.logging_setup import configure, install_excepthook
 from atlas.core.qt_runtime import plugins_dir, prepare
 from atlas.core.report import TextReport
@@ -73,6 +74,7 @@ def _make_work_root(source, work):
 
 def _describe_system(check, paths):
     check.info("Программа: {}".format(sys.executable if getattr(sys, "frozen", False) else "из исходников"))
+    check.info("Версия Atlas: {}".format(current_version()))
     check.info("Папка программы: {}".format(paths.root))
     check.info("ОС: {}".format(platform.platform()))
     check.info("Python {} {}. SQLite {}".format(platform.python_version(), platform.architecture()[0], sqlite3.sqlite_version))

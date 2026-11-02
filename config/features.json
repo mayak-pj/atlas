@@ -58,6 +58,10 @@
       "enabled": true
     },
     {
+      "id": "updater",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

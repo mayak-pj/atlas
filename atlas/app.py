@@ -11,6 +11,7 @@ from atlas.core.config import AppPaths, Config, ConfigError
 from atlas.core.db import Database, DatabaseError
 from atlas.core.logging_setup import configure, install_excepthook
 from atlas.core.qt_runtime import prepare
+from atlas.core.release import current_version
 
 log = logging.getLogger("atlas.app")
 
@@ -96,6 +97,10 @@ def _run_check_command(args):
         return run_check(Path(folder), Path(report), int(seconds), _option(args, "--label"))
     if "--viewbench" in args:
         return _run_viewbench(args)
+    if "--publish" in args:
+        from atlas.publish import run as run_publish
+
+        return run_publish(AppPaths.discover(), _option(args, "--publish"))
     if "--addfolder" in args:
         from atlas.addfolder import run as run_addfolder
 
@@ -146,6 +151,7 @@ def main(argv=None):
     paths = AppPaths.discover()
     configure(paths.logs)
     install_excepthook()
+    log.info("Atlas %s, папка программы %s", current_version(), paths.root)
     prepare()
     app = QApplication(list(argv if argv is not None else sys.argv))
     from atlas.core.theme import apply_theme

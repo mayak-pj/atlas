@@ -28,6 +28,13 @@ def assemble(dist, root=ROOT):
     for bat in sorted((root / "packaging" / "bat").glob("*.bat")):
         # cmd.exe на русской Windows 7 читает .bat в кодировке 866
         (dist / bat.name).write_bytes(_to_notepad(bat.read_text(encoding="utf-8")).encode("cp866"))
+    # Файлы папки установки: --publish кладёт их рядом с release
+    install = dist / "install"
+    install.mkdir(exist_ok=True)
+    (install / "Atlas.bat").write_bytes(_to_notepad((root / "packaging" / "install" / "Atlas.bat").read_text(encoding="utf-8")).encode("cp866"))
+    # wscript на русской Windows читает .vbs в кодировке 1251
+    vbs = (root / "packaging" / "install" / "create_shortcut.vbs").read_text(encoding="utf-8")
+    (install / "create_shortcut.vbs").write_bytes(_to_notepad(vbs).encode("cp1251"))
     shutil.copy(str(root / "THIRD_PARTY_LICENSES.txt"), str(dist / "THIRD_PARTY_LICENSES.txt"))
     check = _to_notepad((root / "docs" / "WIN7_CHECK.md").read_text(encoding="utf-8"))
     (dist / "WIN7_CHECK.txt").write_bytes(check.encode("utf-8-sig"))

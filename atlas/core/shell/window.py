@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from atlas.core.release import current_version
 from PyQt5.QtCore import QSize, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
@@ -104,6 +105,8 @@ class ShellWindow(QMainWindow):
             action.setChecked(name == current)
             action.setActionGroup(group)
             action.triggered.connect(lambda _=False, n=name: self.theme_chosen.emit(n))
+        menu.addSeparator()
+        menu.addAction("Версия {}".format(current_version())).setEnabled(False)
         menu.exec_(self.settings_button.mapToGlobal(self.settings_button.rect().bottomLeft()))
         menu.deleteLater()
 

@@ -137,7 +137,7 @@ def test_publish_with_photo_is_read_by_author_and_new_for_others(app):
     assert len(rules) == 1 and rules[0].read and len(rules[0].photos) == 1
     rel = rules[0].photos[0]
     big, thumb = app.tmp / "правила" / rel, app.tmp / "правила" / logic.thumb_rel(rel)
-    assert QImage(str(big)).width() == 1600 and 0 < QImage(str(thumb)).width() <= 220
+    assert QImage(str(big)).width() == 1600 and 0 < QImage(str(thumb)).width() <= 640
     assert app.rules.repo.all(app.ivanova.id)[0].read is False
     assert app.rules.unread_count(app.ivanova.id) == 1 and app.rules.unread_count(app.petrov.id) == 0
     qt_events = [e for e in events if e.get("rule_id")]
@@ -195,3 +195,53 @@ def test_screen_filters_and_form_follow_open_folder(app):
     screen.title_edit.setText("")
     screen.publish()
     assert "заголовок" in screen.error_label.text().lower()
+
+
+def test_photo_columns():
+    from atlas.features.rules.screen import photo_columns
+    assert [photo_columns(n) for n in (1, 2, 3, 4, 6)] == [1, 2, 3, 2, 3]
+    assert photo_columns(3, compact=True) == 2
+
+
+def test_card_with_four_photos_is_big_and_opens_viewer(app, qtbot):
+    from atlas.features.rules.screen import PhotoDialog, RuleCard, ZoomView, _Tile
+    part, folder = app.folder()
+    sources = [photo(app.tmp / "плата{}.jpg".format(n)) for n in range(4)]
+    app.open(part, folder)
+    app.publish(logic.draft_for("general", None, "4 платы считать однотипными", "Общий комментарий", sources))
+    rule = app.rules.repo.all(app.petrov.id)[0]
+    assert len(rule.photos) == 4
+    card = RuleCard(rule, "Петров", app.tmp / "правила")
+    qtbot.addWidget(card)
+    card.resize(760, 600)
+    card.show()
+    tiles = card.findChildren(_Tile)
+    assert len(tiles) == 4
+    qtbot.waitUntil(lambda: all(t.width() > 300 for t in tiles))  # две в ряд: каждая крупная
+    got = []
+    card.photo_clicked.connect(lambda rels, index: got.append((len(rels), index)))
+    tiles[2].clicked.emit(2)
+    assert got == [(4, 2)]
+    dialog = PhotoDialog(app.tmp / "правила", rule.photos, 2)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert dialog.index == 2 and dialog.next_button.isEnabled()
+    dialog.step(1)
+    assert dialog.index == 3 and not dialog.next_button.isEnabled()
+    view = dialog.view
+    assert isinstance(view, ZoomView)
+    before = view.zoom
+    from PyQt5.QtCore import QPoint, QPointF, Qt
+    from PyQt5.QtGui import QWheelEvent
+    view.wheelEvent(QWheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(0, 0), QPoint(0, 120), 0, Qt.Vertical, Qt.NoButton, Qt.NoModifier))
+    assert view.zoom > before
+    view.fit()
+    assert view.zoom == pytest.approx(before, rel=0.05)
+
+
+def test_form_shows_previews_and_can_drop_photos(app, tmp_path):
+    screen = app.rules.screen
+    screen.attach([photo(tmp_path / "a.jpg"), photo(tmp_path / "b.jpg")])
+    assert screen.previews_layout.count() == 2 and not screen.drop_button.isHidden()
+    screen.drop_photos()
+    assert screen.previews_layout.count() == 0 and screen.drop_button.isHidden()

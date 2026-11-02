@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtGui import QImageReader, QPainter, QPalette, QPixmap
 from PyQt5.QtWidgets import (
     QButtonGroup, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QGridLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from atlas.features.rules import logic
@@ -22,9 +22,9 @@ TEXT_FORM = "Новое правило"
 TEXT_TITLE = "Заголовок"
 TEXT_TITLE_HINT = "Коротко, что проверять"
 TEXT_SCOPE = "Относится к"
-TEXT_BODY = "Описание"
-TEXT_BODY_HINT = "Подробности, можно приложить фото"
-TEXT_ATTACH = "Приложить фото"
+TEXT_BODY = "Общий комментарий"
+TEXT_BODY_HINT = "Один комментарий ко всем приложенным фото"
+TEXT_ATTACH = "Приложить фото (2–4 и больше)"
 TEXT_PUBLISH = "Опубликовать"
 TEXT_PUBLISHING = "Сохраняю…"
 TEXT_NOTE = "После публикации у коллег вкладка «Правила» подсветится, а правило к детали покажется в сводке на экране сравнения."
@@ -32,6 +32,9 @@ TEXT_NO_PART = "Откройте папку — тогда правило мож
 TEXT_PANEL = "Правила к детали"
 TEXT_PHOTOS = "Фото: {}"
 TEXT_PHOTO_TITLE = "Фото правила"
+TILE_MAX_HEIGHT = 420
+ATTACH_PREVIEW = 64
+TEXT_DROP_PHOTOS = "Убрать фото"
 FILTERS = ((logic.FILTER_ALL, "Все"), (logic.FILTER_GENERAL, "Общие"), (logic.FILTER_PART, "К детали"))
 SCOPE_TITLES = (
     (logic.SCOPE_GENERAL, "Общее"), (logic.SCOPE_KIND, "Вид"), (logic.SCOPE_PROJECT, "Проект"),
@@ -56,42 +59,190 @@ def _pill(text, tone):
     return pill
 
 
-class _Thumb(QLabel):
-    clicked = pyqtSignal(str)
+class _Tile(QWidget):
+    """Фото правила крупной плиткой: по ширине ячейки, высота по пропорциям. Клик — открыть в окне просмотра."""
 
-    def __init__(self, rel, path):
+    clicked = pyqtSignal(int)
+
+    def __init__(self, index, path):
         super().__init__()
-        self.rel = rel
-        self.setProperty("role", "thumb")
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
-            self.setText("нет файла")
-        else:
-            self.setPixmap(pixmap.scaledToHeight(90, Qt.SmoothTransformation))
+        self.index = index
+        self.pixmap = QPixmap(str(path))
+        policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
         self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+
+    def _ratio(self):
+        if self.pixmap.isNull() or self.pixmap.width() == 0:
+            return 0.75
+        return self.pixmap.height() / float(self.pixmap.width())
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return min(int(width * self._ratio()), TILE_MAX_HEIGHT)
+
+    def sizeHint(self):
+        return QSize(120, self.heightForWidth(120))
+
+    def minimumSizeHint(self):
+        return QSize(60, 40)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        if self.pixmap.isNull():
+            painter.setPen(self.palette().color(QPalette.Mid))
+            painter.drawText(self.rect(), Qt.AlignCenter, "нет файла")
+            return
+        scaled = self.pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        painter.drawPixmap((self.width() - scaled.width()) // 2, (self.height() - scaled.height()) // 2, scaled)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.rel)
+            self.clicked.emit(self.index)
+
+
+class ZoomView(QWidget):
+    """Одно фото: колесо — зум к курсору, мышь — сдвиг, двойной клик — вписать."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pixmap = QPixmap()
+        self.zoom = 1.0
+        self.offset = QPointF(0, 0)
+        self._drag = None
+        self.setMinimumSize(640, 480)
+        self.setCursor(Qt.OpenHandCursor)
+
+    def set_pixmap(self, pixmap):
+        self.pixmap = pixmap
+        self.fit()
+
+    def fit(self):
+        if self.pixmap.isNull():
+            self.zoom = 1.0
+        else:
+            self.zoom = min(self.width() / float(self.pixmap.width()), self.height() / float(self.pixmap.height()))
+        self.offset = QPointF(0, 0)
+        self.update()
+
+    def _origin(self):
+        return QPointF((self.width() - self.pixmap.width() * self.zoom) / 2.0 + self.offset.x(),
+                       (self.height() - self.pixmap.height() * self.zoom) / 2.0 + self.offset.y())
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self.palette().color(QPalette.Window))
+        if self.pixmap.isNull():
+            painter.drawText(self.rect(), Qt.AlignCenter, "Не удалось открыть фото")
+            return
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        origin = self._origin()
+        painter.drawPixmap(QRectF(origin.x(), origin.y(), self.pixmap.width() * self.zoom, self.pixmap.height() * self.zoom),
+                           self.pixmap, QRectF(self.pixmap.rect()))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._drag is None:
+            self.fit()
+
+    def wheelEvent(self, event):
+        if self.pixmap.isNull():
+            return
+        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
+        new_zoom = max(0.05, min(self.zoom * factor, 8.0))
+        factor = new_zoom / self.zoom
+        center = QPointF(self.width() / 2.0, self.height() / 2.0)
+        cursor = QPointF(event.pos()) - center
+        self.offset = cursor - (cursor - self.offset) * factor  # точка под курсором остаётся на месте
+        self.zoom = new_zoom
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag = (QPointF(event.pos()), QPointF(self.offset))
+            self.setCursor(Qt.ClosedHandCursor)
+
+    def mouseMoveEvent(self, event):
+        if self._drag is not None:
+            self.offset = self._drag[1] + (QPointF(event.pos()) - self._drag[0])
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        self._drag = None
+        self.setCursor(Qt.OpenHandCursor)
+
+    def mouseDoubleClickEvent(self, event):
+        self.fit()
 
 
 class PhotoDialog(QDialog):
-    def __init__(self, path, parent=None):
+    """Просмотр фото правила: зум, сдвиг, листание стрелками, полоса миниатюр внизу."""
+
+    def __init__(self, root, rels, index=0, parent=None):
         super().__init__(parent)
+        self.root, self.rels, self.index = Path(root), list(rels), 0
         self.setWindowTitle(TEXT_PHOTO_TITLE)
         layout = QVBoxLayout(self)
-        label = QLabel()
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
-            label.setText("Не удалось открыть фото")
+        self.view = ZoomView()
+        layout.addWidget(self.view, 1)
+        bar = QHBoxLayout()
+        self.prev_button = QPushButton("Назад")
+        self.next_button = QPushButton("Вперёд")
+        self.fit_button = QPushButton("Вписать")
+        self.count_label = _label("", "muted", wrap=False)
+        for button in (self.prev_button, self.next_button, self.fit_button):
+            button.setFocusPolicy(Qt.NoFocus)
+        self.prev_button.clicked.connect(lambda _=False: self.step(-1))
+        self.next_button.clicked.connect(lambda _=False: self.step(1))
+        self.fit_button.clicked.connect(lambda _=False: self.view.fit())
+        bar.addWidget(self.prev_button)
+        bar.addWidget(self.next_button)
+        bar.addWidget(self.fit_button)
+        bar.addWidget(self.count_label)
+        bar.addStretch(1)
+        bar.addWidget(_label("Колесо — приблизить, мышь — двигать, двойной клик — вписать", "muted", wrap=False))
+        layout.addLayout(bar)
+        self.resize(1000, 760)
+        self.show_index(index)
+
+    def show_index(self, index):
+        if not self.rels:
+            return
+        self.index = max(0, min(index, len(self.rels) - 1))
+        self.view.set_pixmap(QPixmap(str(self.root / self.rels[self.index])))
+        self.count_label.setText("{} из {}".format(self.index + 1, len(self.rels)))
+        self.prev_button.setEnabled(self.index > 0)
+        self.next_button.setEnabled(self.index < len(self.rels) - 1)
+
+    def step(self, delta):
+        self.show_index(self.index + delta)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Left, Qt.Key_Up):
+            self.step(-1)
+        elif event.key() in (Qt.Key_Right, Qt.Key_Down, Qt.Key_Space):
+            self.step(1)
         else:
-            label.setPixmap(pixmap.scaled(1000, 760, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        layout.addWidget(label)
+            super().keyPressEvent(event)
+
+
+def photo_columns(count, compact=False):
+    """Сколько плиток в ряду: 2 и 4 фото — по две (крупнее), 3 — в ряд, в узкой панели — по две."""
+    if count <= 1:
+        return 1
+    if compact or count in (2, 4):
+        return 2
+    return 3
 
 
 class RuleCard(QFrame):
     read_clicked = pyqtSignal(int)
-    photo_clicked = pyqtSignal(str)
+    photo_clicked = pyqtSignal(object, int)  # все фото правила (относительные пути), номер нажатого
 
     def __init__(self, rule, author, root, today=None, compact=False, parent=None):
         super().__init__(parent)
@@ -112,14 +263,7 @@ class RuleCard(QFrame):
         if rule.body:
             column.addWidget(_label(rule.body, "dim"))
         if rule.photos:
-            thumbs = QWidget()
-            thumbs.setProperty("role", "plain")
-            flow = FlowLayout(thumbs, spacing=6)
-            for rel in rule.photos:
-                thumb = _Thumb(rel, Path(root) / logic.thumb_rel(rel))
-                thumb.clicked.connect(self.photo_clicked)
-                flow.addWidget(thumb)
-            column.addWidget(thumbs)
+            column.addWidget(_photos_widget(self, rule.photos, root, compact))
         foot = QHBoxLayout()
         foot.setSpacing(8)
         who = (author + " · " if author else "") + logic.short_date(rule.created_at, today)
@@ -131,6 +275,22 @@ class RuleCard(QFrame):
             button.clicked.connect(lambda _=False: self.read_clicked.emit(rule.id))
             foot.addWidget(button)
         column.addLayout(foot)
+
+
+def _photos_widget(self, rels, root, compact):
+    holder = QWidget()
+    holder.setProperty("role", "plain")
+    grid = QGridLayout(holder)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setSpacing(6)
+    columns = photo_columns(len(rels), compact)
+    for number, rel in enumerate(rels):
+        tile = _Tile(number, Path(root) / logic.thumb_rel(rel))
+        tile.clicked.connect(lambda index, all_rels=tuple(rels): self.photo_clicked.emit(all_rels, index))
+        grid.addWidget(tile, number // columns, number % columns)
+    for column in range(columns):
+        grid.setColumnStretch(column, 1)
+    return holder
 
 
 def _clear(layout, keep=1):
@@ -239,6 +399,14 @@ class RulesScreen(QWidget):
         column.addWidget(self.attach_button)
         self.photos_label = _label("", "muted")
         column.addWidget(self.photos_label)
+        self.previews = QWidget()
+        self.previews.setProperty("role", "plain")
+        self.previews_layout = FlowLayout(self.previews, spacing=4)
+        column.addWidget(self.previews)
+        self.drop_button = QPushButton(TEXT_DROP_PHOTOS)
+        self.drop_button.setFocusPolicy(Qt.NoFocus)
+        self.drop_button.clicked.connect(lambda _=False: self.drop_photos())
+        column.addWidget(self.drop_button)
         self.publish_button = QPushButton(TEXT_PUBLISH)
         self.publish_button.setProperty("role", "primary")
         self.publish_button.setFocusPolicy(Qt.NoFocus)
@@ -268,6 +436,36 @@ class RulesScreen(QWidget):
         else:
             self.scope_note.setText("" if has_part else TEXT_NO_PART)
         self.photos_label.setText(TEXT_PHOTOS.format(len(self.photo_paths)) if self.photo_paths else "")
+        self.drop_button.setVisible(bool(self.photo_paths))
+        self._render_previews()
+
+    def _render_previews(self):
+        while self.previews_layout.count():
+            item = self.previews_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        for path in self.photo_paths:
+            reader = QImageReader(path)  # JPEG читается сразу уменьшенным: GUI не ждёт полного декодирования
+            reader.setAutoTransform(True)
+            size = reader.size()
+            if size.isValid():
+                size.scale(ATTACH_PREVIEW * 2, ATTACH_PREVIEW * 2, Qt.KeepAspectRatio)
+                reader.setScaledSize(size)
+            image = reader.read()
+            label = QLabel()
+            label.setProperty("role", "thumb")
+            if image.isNull():
+                label.setText("?")
+            else:
+                label.setPixmap(QPixmap.fromImage(image).scaledToHeight(ATTACH_PREVIEW, Qt.SmoothTransformation))
+            self.previews_layout.addWidget(label)
+
+    def drop_photos(self):
+        self.photo_paths = []
+        self._refresh_form()
 
     def attach(self, paths=None):
         if paths is None:
@@ -329,15 +527,15 @@ class RulesScreen(QWidget):
             self.list.insertWidget(index, card)
         self.read_all_button.setEnabled(logic.unread_count(self.rules) > 0)
 
-    def open_photo(self, rel):
-        PhotoDialog(self.root / rel, self).exec_()
+    def open_photo(self, rels, index):
+        PhotoDialog(self.root, rels, index, self).exec_()
 
 
 class RulesPanel(QFrame):
     """Правила к открытой детали в правой колонке экрана сравнения. Пустая — скрыта."""
 
     read_requested = pyqtSignal(list)
-    photo_clicked = pyqtSignal(str)
+    photo_clicked = pyqtSignal(object, int)
 
     def __init__(self, root, today=None, parent=None):
         super().__init__(parent)

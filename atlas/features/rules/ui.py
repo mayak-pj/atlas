@@ -210,7 +210,7 @@ class RulesFeature(Feature):
         self._again = True
         self.signals.loaded.emit(None)  # перечитать: «занято» снимется само
 
-    def _open_photo(self, rel):
+    def _open_photo(self, rels, index):
         from atlas.features.rules.screen import PhotoDialog
 
-        PhotoDialog(self._root / rel, self.panel).exec_()
+        PhotoDialog(self._root, rels, index, self.panel).exec_()

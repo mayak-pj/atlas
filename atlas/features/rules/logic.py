@@ -18,7 +18,7 @@ FILTER_PART = "part"  # «К детали»: всё, что не общее и �
 FILTER_KIND_PREFIX = "kind:"
 TITLE_LIMIT = 200
 BODY_LIMIT = 5000
-MAX_PHOTOS = 6
+MAX_PHOTOS = 8
 _ILLEGAL = re.compile(r"[^0-9A-Za-z_-]")
 
 

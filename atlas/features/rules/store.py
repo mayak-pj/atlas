@@ -12,7 +12,7 @@ from atlas.core.domain.text import now_text
 from atlas.features.rules import logic
 
 DEFAULT_MAX_SIDE = 1600
-THUMB_SIDE = 220
+THUMB_SIDE = 640  # плитка в карточке крупная: миниатюра должна выдерживать ширину в полэкрана
 JPEG_QUALITY = 88
 
 

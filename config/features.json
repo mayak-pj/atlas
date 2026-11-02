@@ -42,6 +42,10 @@
       "enabled": true
     },
     {
+      "id": "comments",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

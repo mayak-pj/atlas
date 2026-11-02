@@ -39,5 +39,9 @@
   "rules": {
     "dir": "var/rules",
     "refresh_s": 60
+  },
+  "comments": {
+    "dir": "var/comments",
+    "refresh_s": 30
   }
 }

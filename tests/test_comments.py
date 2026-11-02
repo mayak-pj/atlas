@@ -176,7 +176,8 @@ def test_bind_to_open_part_and_open_in_compare(app, monkeypatch):
     item = app.feature.repo.all(app.petrov.id)[0]
     assert (item.part_id, item.folder_id, item.earlier_error) == (part.id, folder.id, True)
     assert "SSD XS-2280" in item.part_label
-    assert screen.edit.toPlainText() == "" and screen.bind_button.isChecked()  # привязка к открытой детали остаётся
+    app.qtbot.waitUntil(lambda: screen.edit.toPlainText() == "", timeout=4000)  # ответ потока приходит очередью в GUI
+    assert screen.bind_button.isChecked()  # привязка к открытой детали остаётся
     opened = []
     monkeypatch.setattr(app.svc.get_optional("compare"), "open_folder", opened.append)
     app.feature._open_in_compare(item)

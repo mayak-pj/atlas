@@ -1,6 +1,8 @@
 """report (8.2): колонки Excel, запись .xlsx, письмо по шаблону, кнопки в слоте черновика, папка → готово."""
+import importlib
 import json
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -68,6 +70,36 @@ def test_xlsx_is_valid_zip_with_text(tmp_path):
     assert xlsx.column_name(0) == "A" and xlsx.column_name(26) == "AA"
 
 
+# --- Outlook на Windows ---------------------------------------------------------------------
+def _fake_cscript(monkeypatch, code, output):
+    from atlas.features.report import outlook_win
+
+    monkeypatch.setattr(outlook_win.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=code, stdout=output))
+    return outlook_win
+
+
+def test_outlook_error_with_exit_code_zero_is_a_failure(tmp_path, monkeypatch):
+    """Без Outlook cscript пишет ошибку и может вернуть 0: папка не должна стать «готово»."""
+    outlook_win = _fake_cscript(monkeypatch, 0, "Ошибка: нет объекта".encode("cp866"))
+    with pytest.raises(outlook_win.OutlookError, match="нет объекта"):
+        outlook_win.open_mail("Тема", "<p>Тело</p>", tmp_path)
+    outlook_win = _fake_cscript(monkeypatch, 1, b"")
+    with pytest.raises(outlook_win.OutlookError):
+        outlook_win.open_mail("Тема", "<p>Тело</p>", tmp_path)
+
+
+def test_outlook_success_only_when_script_reached_the_end(tmp_path, monkeypatch):
+    outlook_win = _fake_cscript(monkeypatch, 0, outlook_win_done())
+    assert outlook_win.open_mail("Тема", "<p>Тело</p>", tmp_path) is None
+    assert outlook_win_done().decode() in (tmp_path / "open_mail.vbs").read_text(encoding="ascii")
+
+
+def outlook_win_done():
+    from atlas.features.report import outlook_win
+
+    return outlook_win._DONE.encode("ascii")
+
+
 # --- в приложении ---------------------------------------------------------------------------
 class App:
     def __init__(self, tmp_path, qtbot, features=("compare", "draft", "report")):
@@ -107,8 +139,11 @@ class App:
 
 
 @pytest.fixture
-def app(tmp_path, qtbot):
+def app(tmp_path, qtbot, monkeypatch):
     result = App(tmp_path, qtbot)
+    # На Windows иначе пошёл бы настоящий cscript и Outlook
+    module = sys.modules["atlas.features.report.ui"]
+    monkeypatch.setattr(module, "_outlook", lambda: importlib.import_module("atlas.features.report.outlook_fake"))
     yield result
     result.registry.stop_all()
 

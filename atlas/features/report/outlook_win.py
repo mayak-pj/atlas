@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 TIMEOUT_S = 60
+_DONE = "ATLAS_MAIL_SHOWN"  # cscript при ошибке в скрипте может вернуть код 0: успех — только дошедший до конца скрипт
 _SCRIPT = (
     'Set args = WScript.Arguments\r\n'
     'Function ReadUtf8(path)\r\n'
@@ -23,6 +24,7 @@ _SCRIPT = (
     'mail.HTMLBody = ReadUtf8(args(1))\r\n'
     'If args.Count > 2 Then mail.To = ReadUtf8(args(2))\r\n'
     'mail.Display\r\n'
+    'WScript.Echo "' + _DONE + '"\r\n'
 )
 
 
@@ -55,6 +57,7 @@ def open_mail(subject, html, work_dir, to=""):
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise OutlookError(str(exc))
-    if done.returncode != 0:
-        raise OutlookError(done.stdout.decode("cp866", "replace").strip() or "код {}".format(done.returncode))
+    output = done.stdout.decode("cp866", "replace").strip()
+    if done.returncode != 0 or _DONE not in output:
+        raise OutlookError(output or "код {}".format(done.returncode))
     return None

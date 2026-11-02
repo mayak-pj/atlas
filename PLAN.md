@@ -239,7 +239,7 @@
   - Свободные заметки с автосохранением; автосписок из `photo.marked`/`finding.added`; ручное добавление.
   - Чат: не очищать → **8.2**, Sonnet
 
-- [ ] **8.2 Функция `report`** — *Sonnet* · нужны шаблон письма и формат Excel (OPEN_ITEMS №4, №5)
+- [x] **8.2 Функция `report`** — *Sonnet* · нужны шаблон письма и формат Excel (OPEN_ITEMS №4, №5)
   - Excel по `templates/excel_columns.json`; письмо по `templates/mail_reply.html` → ответ в Outlook (`Display`, не отправлять).
     Папка → done.
   - Чат: можно очистить → **9.1**, Sonnet

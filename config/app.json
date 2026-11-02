@@ -43,5 +43,10 @@
   "comments": {
     "dir": "var/comments",
     "refresh_s": 30
+  },
+  "report": {
+    "excel_dir": "var/reports",
+    "work_dir": "var/report",
+    "subject": "RE: ${part}, ${date}"
   }
 }

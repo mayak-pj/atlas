@@ -50,6 +50,10 @@
       "enabled": true
     },
     {
+      "id": "report",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

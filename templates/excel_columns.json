@@ -1,0 +1,17 @@
+{
+  "_comment": "TODO(OPEN_ITEMS №5): временный набор колонок, пока нет формата от заказчика. Ключи — из atlas/features/report/logic.py (COLUMN_KEYS). Порядок — как в файле.",
+  "sheet": "Проверка",
+  "columns": [
+    {"key": "date", "title": "Дата папки", "width": 12},
+    {"key": "project", "title": "Проект", "width": 22},
+    {"key": "device", "title": "Устройство", "width": 22},
+    {"key": "part", "title": "Деталь", "width": 30},
+    {"key": "kind", "title": "Что найдено", "width": 14},
+    {"key": "type_no", "title": "Тип №", "width": 8},
+    {"key": "sn", "title": "SN", "width": 18},
+    {"key": "photos", "title": "Фото", "width": 8},
+    {"key": "kind_text", "title": "Вид замечания", "width": 26},
+    {"key": "text", "title": "Пояснение", "width": 44},
+    {"key": "user", "title": "Проверил", "width": 14}
+  ]
+}

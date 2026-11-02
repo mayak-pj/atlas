@@ -183,6 +183,8 @@ class DraftFeature(Feature):
         if self.screen is not None:
             self.screen.form_done()
         self.reload()
+        if self.folder_id is not None:
+            self.ctx.bus.publish("draft.changed", {"folder_id": self.folder_id})
 
     def _write(self, method, *args):
         try:
@@ -196,6 +198,8 @@ class DraftFeature(Feature):
     def _on_saved(self):
         if not self._stopped and self.screen is not None:
             self.screen.mark_saved()
+        if not self._stopped and self.folder_id is not None:
+            self.ctx.bus.publish("draft.changed", {"folder_id": self.folder_id})
 
     def _on_failed(self, text):
         if not self._stopped and self.screen is not None:

@@ -7,6 +7,9 @@ QLabel[role="dim"] { color: $text_dim; }
 QLabel[role="caption"] { color: $muted; font-size: ${font_sm}px; font-weight: 600; }
 QLabel[role="heading"] { font-size: ${font_lg}px; font-weight: 700; }
 QLabel[role="title"] { font-size: ${font_xl}px; font-weight: 800; }
+QLabel[role="kpi"] { font-size: 30px; font-weight: 800; }
+QLabel[role="kpi"][tone="defect"] { color: $defect; }
+QLabel[role="kpi"][tone="type2"] { color: $type2; }
 QLabel[role="mono"] { font-family: $font_mono; color: $muted; }
 QLabel[role="warn"] { color: $type2; }
 

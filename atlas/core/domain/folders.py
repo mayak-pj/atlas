@@ -48,6 +48,14 @@ class Photo:
 
 
 @dataclass(frozen=True)
+class Activity:
+    """Что сделано за период (для дашборда): завершённые папки и отметки замечаний."""
+
+    done: list  # [(folder_id, part_id, photo_count)] — папки, завершённые за период
+    problems: list  # [(part_id, defect_kind or None)] — замечания и дефекты, отмеченные за период
+
+
+@dataclass(frozen=True)
 class MarkedPhoto:
     """Фото с отметкой «дефект» или «замечание» и папка, в которой оно лежит."""
 
@@ -272,6 +280,26 @@ class FoldersService:
         self.db.read(work)
         found.sort(key=lambda item: (item.marked_at, item.photo_id), reverse=True)
         return found
+
+    def activity(self, since, until):
+        """Activity за [since, until): «ГГГГ-ММ-ДД ЧЧ:ММ:СС». Папка — по времени завершения, замечание — по времени отметки."""
+        result = []
+
+        def work(conn):
+            done = [
+                tuple(row) for row in conn.execute(
+                    "SELECT f.id, f.part_id, (SELECT COUNT(*) FROM photos p WHERE p.folder_id = f.id) FROM folders f "
+                    "WHERE f.status = 'done' AND f.status_at >= ? AND f.status_at < ?", (since, until))
+            ]
+            problems = [
+                tuple(row) for row in conn.execute(
+                    "SELECT f.part_id, p.defect_kind FROM photos p JOIN folders f ON f.id = p.folder_id "
+                    "WHERE p.mark IN ('defect', 'remark') AND p.marked_at >= ? AND p.marked_at < ?", (since, until))
+            ]
+            result[:] = [Activity(done, problems)]  # при повторе после «database is locked» не дублировать
+
+        self.db.read(work)
+        return result[0]
 
     def last_done(self, part_ids):
         """Последняя завершённая проверка среди этих деталей: Folder или None."""

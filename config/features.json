@@ -46,6 +46,10 @@
       "enabled": true
     },
     {
+      "id": "dashboard",
+      "enabled": true
+    },
+    {
       "id": "draft",
       "enabled": true
     },

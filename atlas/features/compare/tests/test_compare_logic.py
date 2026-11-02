@@ -114,7 +114,8 @@ def test_go_remembers_direction_and_clamps():
 def test_mark_tokens():
     assert mark_token(None) is None
     assert mark_token("type:1") == "ok"
-    assert mark_token("type:2") == mark_token("type:7") == "type2"
+    assert mark_token("type:2") == "type2"
+    assert mark_token("type:3") == mark_token("type:7") == "type3"
     assert mark_token("defect") == "defect"
     assert mark_token("remark") == "remark"
     assert mark_token("странное") is None

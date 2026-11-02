@@ -130,8 +130,8 @@ def test_mark_goes_to_active_window_photo(app):
     screen = app.screen
     click(app, screen.views[1])
     app.wait_shown()
-    app.press(Qt.Key_D)
-    app.qtbot.waitUntil(lambda: screen.mark_buttons["defect"].isChecked(), timeout=5000)
+    app.press(Qt.Key_R)
+    app.qtbot.waitUntil(lambda: screen.mark_buttons["remark"].isChecked(), timeout=5000)
     folders = app.ctx.services.get("folders")
     marked = {photo.rel_path: photo for photo in folders.photos(app.folder.id) if photo.mark}
     assert list(marked) == ["1_2_A.jpg"] and marked["1_2_A.jpg"].sn == "A"
@@ -143,9 +143,9 @@ def test_no_mark_on_missing_angle(app):
     app.press(Qt.Key_Right)
     click(app, screen.views[1])
     assert not screen.can_mark
-    assert not screen.mark_buttons["defect"].isEnabled()
+    assert not screen.mark_buttons["remark"].isEnabled()
     events = len(app.events)
-    app.press(Qt.Key_D)
+    app.press(Qt.Key_R)
     QTest.qWait(50)
     assert len(app.events) == events
 

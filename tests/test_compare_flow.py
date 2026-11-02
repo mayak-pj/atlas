@@ -62,6 +62,7 @@ class App:
     def wait_open(self):
         self.feature.open_folder(self.folder.id)
         self.qtbot.waitUntil(lambda: self.feature.folder is not None, timeout=5000)
+        self.qtbot.waitUntil(lambda: not self.screen._sizes_pending, timeout=5000)  # поворот группы ждёт размеры
         self.wait_shown()
 
     def wait_shown(self):
@@ -584,26 +585,26 @@ def test_first_mark_puts_folder_in_work_and_tells_folders_panel(app):
     app.qtbot.waitUntil(lambda: app.feature.folder.status == "in_work", timeout=5000)
 
 
-def test_defect_takes_sn_from_file_name(named):
+def test_remark_takes_sn_from_file_name(named):
     named.wait_open()
-    named.press(Qt.Key_D)
-    _wait_db(named, lambda photos: photos[0].mark == "defect")
+    named.press(Qt.Key_R)
+    _wait_db(named, lambda photos: photos[0].mark == "remark")
     assert _db_photos(named)[0].sn == "WFL8GKHR"  # окончание `_2` в SN не входит
     named.qtbot.waitUntil(lambda: named.screen.defect_box.isVisibleTo(named.screen), timeout=5000)
     assert named.screen.sn_edit.text() == "WFL8GKHR"
     assert _marked_events(named)[-1]["sn"] == "WFL8GKHR"
     named.press(Qt.Key_Right)
-    named.press(Qt.Key_D)
-    _wait_db(named, lambda photos: photos[1].mark == "defect")
+    named.press(Qt.Key_R)
+    _wait_db(named, lambda photos: photos[1].mark == "remark")
     assert _db_photos(named)[1].sn == "XZ79070"
 
 
-def test_defect_with_unknown_name_has_empty_sn(named):
+def test_remark_with_unknown_name_has_empty_sn(named):
     named.wait_open()
     named.screen.go(2)
     named.wait_shown()
-    named.press(Qt.Key_D)
-    _wait_db(named, lambda photos: photos[2].mark == "defect")
+    named.press(Qt.Key_R)
+    _wait_db(named, lambda photos: photos[2].mark == "remark")
     assert _db_photos(named)[2].sn is None
     named.qtbot.waitUntil(lambda: named.screen.defect_box.isVisibleTo(named.screen), timeout=5000)
     assert named.screen.sn_edit.text() == ""
@@ -611,8 +612,8 @@ def test_defect_with_unknown_name_has_empty_sn(named):
 
 def test_sn_and_kind_can_be_corrected(named):
     named.wait_open()
-    named.press(Qt.Key_D)
-    _wait_db(named, lambda photos: photos[0].mark == "defect")
+    named.press(Qt.Key_R)
+    _wait_db(named, lambda photos: photos[0].mark == "remark")
     screen = named.screen
     named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
     screen.sn_edit.setFocus()
@@ -631,7 +632,7 @@ def test_changing_mark_keeps_hand_typed_sn(named):
     named.wait_open()
     named.screen.go(2)  # имя не разобрано: SN вводят руками
     named.wait_shown()
-    named.press(Qt.Key_D)
+    named.press(Qt.Key_R)
     screen = named.screen
     named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
     screen.sn_edit.setText("ZZ1")
@@ -645,14 +646,14 @@ def test_changing_mark_keeps_hand_typed_sn(named):
 
 def test_typing_in_sn_field_does_not_mark_or_flip(named):
     named.wait_open()
-    named.press(Qt.Key_D)
+    named.press(Qt.Key_R)
     screen = named.screen
     named.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
     screen.sn_edit.setFocus()
     QTest.keyClicks(screen.sn_edit, "d1")  # буквы и цифры уходят в поле, а не в отметки
     assert screen.sn_edit.text().endswith("d1")
     assert named.active_name() == REAL_NAMES[0]
-    assert _db_photos(named)[0].mark == "defect"
+    assert _db_photos(named)[0].mark == "remark"
 
 
 def test_mark_is_refused_during_flicker_and_while_photo_not_shown(app, monkeypatch):
@@ -666,8 +667,8 @@ def test_mark_is_refused_during_flicker_and_while_photo_not_shown(app, monkeypat
     monkeypatch.setattr(type(app.screen.active_view()), "is_current_shown", property(lambda self: False))
     assert not app.screen.can_mark
     app.press(Qt.Key_1)
-    app.screen.mark_buttons["defect"].setEnabled(True)  # даже если кнопку включили силой, отметка не пройдёт
-    app.screen.mark_buttons["defect"].click()
+    app.screen.mark_buttons["remark"].setEnabled(True)  # даже если кнопку включили силой, отметка не пройдёт
+    app.screen.mark_buttons["remark"].click()
     app.qtbot.wait(150)
     assert [photo.mark for photo in _db_photos(app)] == [None] * 6
     assert _marked_events(app) == []
@@ -733,8 +734,8 @@ def test_marks_panel_hidden_without_photos(tmp_path, qtbot):
 def test_mark_keys_come_from_hotkeys_file(tmp_path, qtbot):
     app = App(tmp_path, qtbot)
     try:
-        assert app.screen.mark_buttons["defect"].toolTip().endswith("D")
-        assert set(app.screen.mark_buttons) == {"type:1", "type:2", "type:3", "defect", "remark"}
+        assert app.screen.mark_buttons["remark"].toolTip().endswith("R")
+        assert set(app.screen.mark_buttons) == {"type:1", "type:2", "type:3", "remark"}
     finally:
         app.stop()
 
@@ -774,16 +775,18 @@ def test_panel_choice_is_restored_and_bad_data_is_ignored(app):
     assert app.screen.panels_state()["bottom"] is False
 
 
-def test_second_marks_row_is_hidden_until_there_is_something_to_show(app):
+def test_remark_fields_stand_beside_the_buttons_and_the_second_row_stays_hidden(app):
     app.wait_open()
     screen = app.screen
-    assert screen.extra_box.isHidden()
-    app.press(Qt.Key_D)
+    app.press(Qt.Key_R)
     app.qtbot.waitUntil(lambda: screen.defect_box.isVisibleTo(screen), timeout=5000)
-    assert not screen.extra_box.isHidden()
-    app.press(Qt.Key_D)  # повторное нажатие снимает отметку
-    app.qtbot.waitUntil(lambda: not screen.defect_box.isVisibleTo(screen), timeout=5000)
     assert screen.extra_box.isHidden()
+    assert screen.defect_box.geometry().top() < screen.mark_buttons["remark"].geometry().bottom()
+    screen.show_mark_failure("сбой")
+    assert not screen.extra_box.isHidden()
+    screen.marks_status.setText("")
+    app.press(Qt.Key_R)  # повторное нажатие снимает отметку
+    app.qtbot.waitUntil(lambda: not screen.defect_box.isVisibleTo(screen), timeout=5000)
 
 
 def _write_state(tmp_path, panels):

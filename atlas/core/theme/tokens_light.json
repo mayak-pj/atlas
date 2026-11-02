@@ -18,11 +18,13 @@
     "on_accent": "#FFFFFF",
     "link": "#1A5FD0",
     "type2": "#B96A00",
+    "type3": "#0A7C91",
     "defect": "#D6293A",
     "remark": "#7E3FCF",
     "ok": "#11803F",
     "ok_soft": "#D8F3E3",
     "type2_soft": "#FCE9C8",
+    "type3_soft": "#D3F0F5",
     "defect_soft": "#FBDADC",
     "remark_soft": "#EADFFB"
   },

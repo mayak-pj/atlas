@@ -1,10 +1,10 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон, остальные — текущие; раскладка только показывает нужные."""
 from __future__ import annotations
 
-from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
-    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from atlas.core import theme
@@ -31,7 +31,7 @@ PANEL_BUTTONS = (
     ("right", "Сводка", "Показать или скрыть панель справа (сводка по детали)"),
 )
 PANEL_ICONS = {"left": "panel-left", "top": "wrench", "bottom": "gallery-horizontal", "right": "panel-right"}
-MARK_ICONS = {"defect": ("triangle-alert", "defect"), "remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
+MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_SHOW_UI = "Показать всё"
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
@@ -43,6 +43,9 @@ TAG_REFERENCE = "ЭТАЛОН"
 TAG_SINGLE = "ЛИСТАНИЕ"
 TAG_CURRENT = "НОВОЕ"
 TEXT_KIND_NONE = "Вид не выбран"
+TEXT_SIZES_PENDING = "Читаю размеры фото: поворот применится сам"
+SN_WIDTH = 120
+KIND_CHARS = 18  # ширина списка видов в знаках; длинные названия видны в раскрытом списке
 TEXT_REFERENCE_MARKS = "Эталон из другой папки — отметки недоступны"
 TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
@@ -81,6 +84,16 @@ def _key(text):
     return sequence[0] if sequence.count() else 0
 
 
+class UpwardComboBox(QComboBox):
+    """Панель отметок внизу окна: список открывается вверх, поверх фото, а не за край экрана."""
+
+    def showPopup(self):
+        super().showPopup()
+        popup = self.view().window()
+        top = self.mapToGlobal(QPoint(0, 0)).y() - popup.height()
+        popup.move(popup.x(), max(top, 0))
+
+
 class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
@@ -117,6 +130,8 @@ class CompareScreen(QWidget):
             _key(hotkeys.get("rotate_right", DEFAULT_HOTKEYS["rotate_right"])): ROTATE_STEP,
         }
         self._flicker = None  # (окно, его состояние), пока удерживается «мигалка»
+        self._sizes_pending = False  # размеры фото ещё читаются: поворот группы ждёт их
+        self._deferred_turns = []
         self._portrait = True  # фото Atlas обычно вертикальные; уточняется по первому показанному
         self._orientation_known = False
         self.views = [PhotoView(cache, self) for _ in range(MAX_WINDOWS)]
@@ -310,7 +325,7 @@ class CompareScreen(QWidget):
             button = self._button("", lambda _=False, d=delta: self.rotate(d))
             button.setProperty("role", "square")
             set_icon(button, "rotate-cw" if delta > 0 else "rotate-ccw", "text")
-            button.setToolTip("{} (клавиша {})".format(tip, keys.get(delta, "")))
+            button.setToolTip("{} (клавиша {}; с Shift — только это фото)".format(tip, keys.get(delta, "")))
             if delta > 0:
                 self.rotate_right_button = button
             else:
@@ -377,7 +392,7 @@ class CompareScreen(QWidget):
         outer = QVBoxLayout(self.marks_panel)
         outer.setContentsMargins(10, 10, 10, 10)
         outer.setSpacing(8)
-        row = QHBoxLayout()  # первый ряд — отметки и счётчик; SN и вид дефекта — вторым рядом, иначе всё не помещается
+        row = QHBoxLayout()  # отметки, справа от них SN и вид замечания, потом счётчик
         row.setSpacing(8)
         outer.addLayout(row)
         self.marks_title = QLabel("")
@@ -399,22 +414,28 @@ class CompareScreen(QWidget):
         box.setSpacing(8)
         box.addWidget(QLabel("SN"))
         self.sn_edit = QLineEdit()
-        self.sn_edit.setMaximumWidth(150)
+        self.sn_edit.setFixedWidth(SN_WIDTH)
         self.sn_edit.editingFinished.connect(self._on_defect_edited)
         self.sn_edit.returnPressed.connect(self.setFocus)  # иначе стрелки останутся в поле
         box.addWidget(self.sn_edit)
         box.addWidget(QLabel("Вид"))
-        self.kind_box = QComboBox()
+        self.kind_box = UpwardComboBox()
         self.kind_box.setFocusPolicy(Qt.NoFocus)
+        self.kind_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.kind_box.setMinimumContentsLength(KIND_CHARS)
         self.kind_box.addItem(TEXT_KIND_NONE, None)
         for kind in self._defect_kinds:
             self.kind_box.addItem(kind, kind)
         self.kind_box.activated.connect(lambda _=0: self._on_defect_edited())
         box.addWidget(self.kind_box)
-        row.addStretch(1)
+        row.addWidget(self.defect_box)
+        self.defect_box.hide()
         self.counts_label = QLabel("")
         self.counts_label.setProperty("role", "muted")
-        row.addWidget(self.counts_label)
+        self.counts_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        # Счётчик занимает остаток ряда и не раздвигает окно: в узком окне обрезается, целиком — в подсказке
+        self.counts_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        row.addWidget(self.counts_label, 1)
         self.extra_box = QWidget()  # второй ряд: пока в нём нечего показать, скрыт и места не занимает
         self.extra_box.setProperty("role", "plain")
         extra = QHBoxLayout(self.extra_box)
@@ -422,8 +443,6 @@ class CompareScreen(QWidget):
         extra.setSpacing(8)
         outer.addWidget(self.extra_box)
         self.extra_box.hide()
-        extra.addWidget(self.defect_box)
-        self.defect_box.hide()
         self.marks_status = QLabel("")
         self.marks_status.setProperty("role", "warn")
         extra.addWidget(self.marks_status)
@@ -431,7 +450,7 @@ class CompareScreen(QWidget):
         return self.marks_panel
 
     def _sync_extra(self):
-        self.extra_box.setVisible(not self.defect_box.isHidden() or bool(self.marks_status.text()))
+        self.extra_box.setVisible(bool(self.marks_status.text()))
 
     def _arrow_button(self, step, tip):
         button = self._button("", lambda: self.flip(step))
@@ -459,6 +478,8 @@ class CompareScreen(QWidget):
         self.model.set_photos(photos)
         self.angles.set_photos(self.model.photos, self._name_pattern)
         self._orientation_known = False
+        self._sizes_pending = False
+        self._deferred_turns = []
         self.message.setText(TEXT_NO_PHOTOS)
         self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
         self.marks_status.setText("")
@@ -848,7 +869,7 @@ class CompareScreen(QWidget):
         if self.can_mark:
             photo = self.model.photos[self._marked_number()]
             new = toggle_mark(photo.mark, mark)
-            if new == "defect":
+            if new == "remark":
                 self.mark_requested.emit(photo, new, default_sn(photo, self._name_pattern), photo.defect_kind)
             else:
                 self.mark_requested.emit(photo, new, None, None)  # SN остаётся у фото
@@ -856,12 +877,12 @@ class CompareScreen(QWidget):
 
     def _on_defect_edited(self):
         photo = self._panel_photo
-        if photo is None or photo.mark != "defect" or not self.can_mark:
+        if photo is None or photo.mark != "remark" or not self.can_mark:
             return
         sn = self.sn_edit.text().strip()
         kind = self.kind_box.currentData()
         if sn != (photo.sn or "") or kind != photo.defect_kind:
-            self.mark_requested.emit(photo, "defect", sn, kind)
+            self.mark_requested.emit(photo, "remark", sn, kind)
 
     def apply_mark(self, photo_id, mark, sn, defect_kind):
         """Отметка записана в базу: точка на ленте, счётчики и панель обновляются сразу."""
@@ -884,7 +905,7 @@ class CompareScreen(QWidget):
         self._sync_extra()
 
     def _update_marks(self):
-        """Кнопки по фото активного окна; SN и вид — только у дефекта."""
+        """Кнопки по фото активного окна; SN и вид — только у замечания."""
         model = self.model
         if not model.photos:
             self._panel_photo = None
@@ -903,14 +924,15 @@ class CompareScreen(QWidget):
         for mark, button in self.mark_buttons.items():
             button.setEnabled(enabled)
             button.setChecked(photo is not None and photo.mark == mark)
-        is_defect = photo is not None and photo.mark == "defect" and not model.reference_active
-        self.defect_box.setVisible(is_defect)
+        is_remark = photo is not None and photo.mark == "remark" and not model.reference_active
+        self.defect_box.setVisible(is_remark)
         self._sync_extra()
-        if is_defect and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
+        if is_remark and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
             self.sn_edit.setText(default_sn(photo, self._name_pattern))
             self.kind_box.setCurrentIndex(max(self.kind_box.findData(photo.defect_kind), 0))
         self.defect_box.setEnabled(enabled)
         self.counts_label.setText(counts_text(model.photos, self._mark_keys))
+        self.counts_label.setToolTip(self.counts_label.text())
 
     def _angles_marks_title(self):
         angles = self.angles
@@ -920,13 +942,52 @@ class CompareScreen(QWidget):
         return "SN {}, ракурс {} —".format(current.sn, angles.active_view_number)
 
     # --- поворот --------------------------------------------------------------
+    def expect_sizes(self):
+        """Размеры фото папки читаются в фоне: повороты группы подождут `set_sizes`."""
+        self._sizes_pending = True
+        self._deferred_turns = []
+
+    def set_sizes(self, by_path):
+        """{путь: (ширина, высота)}: теперь поворот знает, какие фото стоят так же, как текущее. Нажатое раньше применяется сейчас."""
+        self.model.sizes = {number: by_path.get(photo.path) for number, photo in enumerate(self.model.photos)}
+        self._sizes_pending = False
+        turns, self._deferred_turns = self._deferred_turns, []
+        if turns:
+            self.marks_status.setText("")
+            self._sync_extra()
+        for delta in turns:
+            self.rotate(delta)
+
+    def rotate_single(self, delta):
+        """С Shift: только фото активного окна, остальные не трогаем. Эталон чужой: его так не повернуть."""
+        if self._flicker is not None or not self.model.photos or self.model.reference_active:
+            return
+        number = self._marked_number()
+        if number is None:
+            return
+        changed = self.model.rotate_one(number, delta)
+        if self._angles_on:
+            self.active_view().set_rotation(changed[number])
+            photos = self.model.photos
+            self.strip.set_rotations([photos[item.first_photo].rotation for item in self.angles.plan.sets])
+            self._save_rotations(changed)
+            return
+        for view, rotation in self._window_rotations():
+            view.set_rotation(rotation)
+        self._after_rotate(changed)
+
     def rotate(self, delta):
-        """Кнопка или клавиша, действует на весь ракурс. Пока идёт «мигалка» — нельзя.
+        """Кнопка или клавиша, действует на фото ракурса, стоящие так же, как текущее. Пока идёт «мигалка» — нельзя.
 
         «Сравнение»: при включённой синхронности все окна вместе, при выключенной — только активное, чтобы выровнять окна.
         При одном фото всегда вместе: эталон появится в «мигалке» и должен совпасть. «Ракурсы» — только активное.
         """
         if self._flicker is not None:
+            return
+        if self._sizes_pending:
+            self._deferred_turns.append(delta)
+            self.marks_status.setText(TEXT_SIZES_PENDING)
+            self._sync_extra()
             return
         if self._angles_on:
             self._rotate_angle(delta)
@@ -1051,7 +1112,10 @@ class CompareScreen(QWidget):
                 self.toggle_interface()
         elif key in self._rotate_keys:
             if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
-                self.rotate(self._rotate_keys[key])
+                if event.modifiers() & Qt.ShiftModifier:
+                    self.rotate_single(self._rotate_keys[key])
+                else:
+                    self.rotate(self._rotate_keys[key])
         elif key in self._mark_by_key:
             if not event.isAutoRepeat():
                 self.request_mark(self._mark_by_key[key])

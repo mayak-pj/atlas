@@ -17,10 +17,10 @@ STOP_WAIT_S = 2.0  # сеть могла пропасть: дольше не д�
 RELOAD_EVENTS = ("type.added", "type.archived", "type.restored", "folder.done")
 TITLE = "Сводка по детали"
 TITLE_TYPES = "Типы"
-TITLE_FINDINGS = "Дефекты и замечания"
+TITLE_FINDINGS = "Замечания"
 TEXT_NO_FOLDER = "Откройте папку — здесь появится сводка по детали"
 TEXT_NO_TYPES = "В базе типов для этой детали ничего нет"
-TEXT_NO_FINDINGS = "Дефектов и замечаний раньше не было"
+TEXT_NO_FINDINGS = "Замечаний раньше не было"
 TEXT_NEVER_CHECKED = "Раньше эта деталь не проверялась"
 TEXT_ARCHIVED = "в архиве"
 TEXT_LOAD_FAILED = "Не удалось прочитать данные: сводка может быть устаревшей"
@@ -144,7 +144,7 @@ class FindingsPanel(QFrame):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        tone = "muted" if line.archived or line.type_no <= 1 else "type2"
+        tone = "muted" if line.archived or line.type_no <= 1 else ("type2" if line.type_no == 2 else "type3")
         layout.addWidget(_pill("Тип {}".format(line.type_no), tone), 0, Qt.AlignTop)
         text = _label(line.text, "muted" if line.archived else None)
         layout.addWidget(text, 1)

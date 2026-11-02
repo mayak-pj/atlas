@@ -187,13 +187,13 @@ class FoldersService:
         """mark: "type:N", "defect", "remark" или None (снять отметку).
 
         sn: None — оставить как есть, пустая строка — стереть.
-        defect_kind: только для дефекта; None или пустая строка — вид не выбран. Любая другая отметка вид стирает.
+        defect_kind: для замечания (и старого дефекта); None или пустая строка — вид не выбран. Отметка типа вид стирает.
         """
         if not valid_mark(mark):
             raise ValueError("Неизвестная отметка: {}".format(mark))
         new_sn = sn.strip() if sn is not None else None
         clear_sn = new_sn == ""
-        kind = (defect_kind or "").strip() or None if mark == MARK_DEFECT else None
+        kind = (defect_kind or "").strip() or None if mark in (MARK_DEFECT, MARK_REMARK) else None
 
         def work(conn):
             cur = conn.execute(

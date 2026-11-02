@@ -181,7 +181,7 @@ def test_marks_sn_and_counts(db, folders, part):
     assert folders.photos(folder.id)[1].sn is None
 
 
-def test_defect_kind_is_kept_only_for_defect(folders, part):
+def test_kind_is_kept_for_remark_and_cleared_by_type(folders, part):
     folder = folders.add(part.id, "f", "2026-10-31")
     folders.add_photos(folder.id, ["1.jpg"])
     photo_id = folders.photos(folder.id)[0].id
@@ -190,9 +190,11 @@ def test_defect_kind_is_kept_only_for_defect(folders, part):
     folders.mark_photo(photo_id, "defect", "SN-2", defect_kind="")  # вид сняли
     assert folders.photos(folder.id)[0].defect_kind is None
     folders.mark_photo(photo_id, "defect", defect_kind="Размытое фото")
-    folders.mark_photo(photo_id, "remark", defect_kind="Размытое фото")  # у замечания вида нет
+    folders.mark_photo(photo_id, "remark", defect_kind="Размытое фото")
     photo = folders.photos(folder.id)[0]
-    assert (photo.mark, photo.defect_kind, photo.sn) == ("remark", None, "SN-2")
+    assert (photo.mark, photo.defect_kind, photo.sn) == ("remark", "Размытое фото", "SN-2")
+    folders.mark_photo(photo_id, "type:1")  # у типа вида нет
+    assert folders.photos(folder.id)[0].defect_kind is None
 
 
 def test_move_photos_is_all_or_nothing(folders, part):

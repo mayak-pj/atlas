@@ -14,6 +14,7 @@ from atlas.core.domain.photo_names import load_pattern
 from atlas.core.feature import Feature
 from atlas.features.compare import logic
 from atlas.features.compare.screen import CompareScreen
+from atlas.shared.viewer.decode import read_size
 
 log = logging.getLogger("atlas.compare")
 
@@ -40,6 +41,7 @@ class _Signals(QObject):
     marked = pyqtSignal(object)  # MarkResult
     mark_failed = pyqtSignal(int)  # id фото
     rotation_failed = pyqtSignal()
+    sizes_read = pyqtSignal(int, object)  # запрос, {путь: (ширина, высота)}
     found = pyqtSignal(int, object)  # номер поиска, FindResult или None
     find_failed = pyqtSignal(int)
 
@@ -79,6 +81,7 @@ class CompareFeature(Feature):
         self.signals.marked.connect(self._on_marked)
         self.signals.mark_failed.connect(self._on_mark_failed)
         self.signals.rotation_failed.connect(self._on_rotation_failed)
+        self.signals.sizes_read.connect(self._on_sizes_read)
         self.signals.found.connect(self._on_found)
         self.signals.find_failed.connect(self._on_find_failed)
         self._find_request = 0
@@ -288,9 +291,30 @@ class CompareFeature(Feature):
         self.folder = folder
         self._find_request += 1  # найденная для прежней папки деталь больше не нужна
         self.screen.set_photos(photos)
+        if photos:
+            self.screen.expect_sizes()
+            paths = [photo.path for photo in self.screen.model.photos]
+            thread = threading.Thread(target=self._read_sizes, args=(request, paths), daemon=True)
+            self._threads.append(thread)
+            thread.start()
         if self.ctx.shell is not None and part is not None:
             self.ctx.shell.set_context(part.kind, part.project, part.device, part.name, folder.path)
         self.ctx.bus.publish(EVENT_FOLDER_OPENED, {"folder_id": folder.id, "part_id": folder.part_id})
+
+    def _read_sizes(self, request, paths):
+        """Не в GUI-потоке: только заголовки файлов. Папку сменили или программа закрывается — читать дальше незачем."""
+        sizes = {}
+        for path in paths:
+            if request != self._request:
+                return
+            size = read_size(path)
+            if size is not None:
+                sizes[path] = size
+        self.signals.sizes_read.emit(request, sizes)
+
+    def _on_sizes_read(self, request, sizes):
+        if request == self._request and self.screen is not None:
+            self.screen.set_sizes(sizes)
 
     def _on_photo_changed(self, photo, index):
         if self.folder is not None:

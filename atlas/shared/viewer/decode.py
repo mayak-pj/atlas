@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from PyQt5.QtCore import QSize, Qt
-from PyQt5.QtGui import QImage, QImageReader
+from PyQt5.QtGui import QImage, QImageIOHandler, QImageReader
 
 from atlas.shared.viewer.levels import L3, scaled_size
 
@@ -34,6 +34,18 @@ def decode_file(path, level):
     if image.isNull():
         raise DecodeError("{}: {}".format(path, reader.errorString()))
     return image
+
+
+def read_size(path):
+    """(ширина, высота) фото с учётом EXIF, читает только заголовок файла; не прочиталось — None. Можно не из GUI-потока."""
+    reader = QImageReader(str(path))
+    reader.setDecideFormatFromContent(True)
+    size = reader.size()
+    if not size.isValid():
+        return None
+    if reader.transformation() & QImageIOHandler.TransformationRotate90:
+        return size.height(), size.width()
+    return size.width(), size.height()
 
 
 def make_thumbnail(image, side):

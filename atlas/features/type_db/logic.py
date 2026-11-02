@@ -126,10 +126,10 @@ class Entry:
 
     @property
     def tone(self):
-        """Цвет «таблетки» как в макете: тип 1 — зелёный, остальные типы — янтарный, дефект — красный."""
+        """Цвет «таблетки» как в макете: тип 1 — зелёный, второй — янтарный, остальные — бирюзовый, дефект — красный."""
         if self.kind == KIND_DEFECT:
             return "defect"
-        return "ok" if self.type_no == 1 else "type2"
+        return {1: "ok", 2: "type2"}.get(self.type_no, "type3")
 
     @property
     def date_text(self):

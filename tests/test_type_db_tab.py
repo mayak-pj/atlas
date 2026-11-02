@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtGui import QImage
+from PyQt5.QtTest import QTest
 
 from atlas.features.type_db import logic
 from atlas.features.type_db.screen import MAX_CARDS, TypeDbScreen
@@ -310,3 +311,12 @@ def test_opening_the_tab_picks_up_cards_added_by_a_colleague(app, tmp_path):
     assert screen.visible_ids == []
     app.window.select_tab("type_db")
     app.qtbot.waitUntil(lambda: len(screen.visible_ids) == 1, timeout=5000)
+
+
+def test_double_click_on_photo_opens_it_big(screen, qtbot):
+    screen.set_entries([entry(1)])
+    card = screen._cards[1]
+    screen.show()
+    QTest.mouseDClick(card.thumb, Qt.LeftButton)
+    assert screen.photo_window.view.path == str(Path("/типы") / "x/1_photo.jpg")
+    screen.photo_window.close()

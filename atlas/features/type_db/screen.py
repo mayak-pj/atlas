@@ -11,15 +11,16 @@ from PyQt5.QtWidgets import (
 
 from atlas.core import theme
 from atlas.features.type_db import logic
+from atlas.features.type_db.photo_window import PhotoWindow
 from atlas.shared.viewer.levels import L1
 from atlas.shared.widgets import StampAnimation
 from atlas.shared.widgets import stamp as stamp_math
 from atlas.shared.widgets.icons import set_icon
 
 MAX_CARDS = 60  # больше виджетов сразу не строим: поиск уточняют, а не листают сотни карточек
-CARD_MIN_WIDTH = 250
+CARD_MIN_WIDTH = 340
 GRID_SPACING = 12
-THUMB_HEIGHT = 150
+THUMB_HEIGHT = 240
 DETAIL_PHOTO_HEIGHT = 260
 DETAIL_CROP_HEIGHT = 150
 PLACEHOLDER = "Поиск по названию, артикулу, устройству, описанию…"
@@ -42,6 +43,7 @@ def _found_text(count, shown):
 
 class ThumbView(QWidget):
     """Картинка по пути: уровень L1 из общего кэша, читается в фоне; рисуется по центру с сохранением пропорций."""
+    open_requested = pyqtSignal(str)  # двойной клик: открыть это фото большим
 
     def __init__(self, cache, height, parent=None):
         super().__init__(parent)
@@ -98,6 +100,11 @@ class ThumbView(QWidget):
         if path == self._path and self._image is None:
             self._failed = True
             self.update()
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton and self._path:
+            self.open_requested.emit(self._path)
+        super().mouseDoubleClickEvent(event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -389,6 +396,8 @@ class TypeDbScreen(QWidget):
         middle.addWidget(self.message)
         middle.addWidget(self.scroll, 1)
         self.detail = DetailPanel(cache, root)
+        self.detail.photo.open_requested.connect(self.open_photo)
+        self.detail.crop.open_requested.connect(self.open_photo)
         root_layout = QHBoxLayout(self)
         root_layout.setContentsMargins(16, 16, 16, 16)
         root_layout.setSpacing(14)
@@ -536,6 +545,7 @@ class TypeDbScreen(QWidget):
             if card is None:
                 card = TypeCard(entry, self._cache, self._root, entry.id == self._selected, self.grid_holder)
                 card.clicked.connect(self.select)
+                card.thumb.open_requested.connect(self.open_photo)
                 card.archive_clicked.connect(self._on_archive_clicked)
                 card.animation_done.connect(self._on_animation_done)
                 self._cards[entry.id] = card
@@ -549,6 +559,11 @@ class TypeDbScreen(QWidget):
         self.message.setVisible(bool(self.message.text()))
         self.found.setText(_found_text(len(self._visible), len(shown)) if self._entries else "")
         self.detail.show_entry(self._entry(self._selected), self._entries)
+
+    def open_photo(self, path):
+        """Двойной клик по фото: большое окно с зумом и сдвигом."""
+        self.photo_window = PhotoWindow(self._cache, path, self)
+        self.photo_window.show()
 
     def _place(self, shown):
         width = max(1, self.scroll.viewport().width())

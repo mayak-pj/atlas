@@ -38,6 +38,7 @@ QFrame[role="hsep"] { background: $border; border: none; min-height: 1px; max-he
 QLabel[role="pill"] { border: 1px solid transparent; border-radius: 6px; padding: 1px 8px; min-height: 16px; font-size: ${font_sm}px; font-weight: 700; }
 QLabel[role="pill"][tone="ok"] { border: 1px solid transparent; border-radius: 6px; background: $ok_soft; color: $ok; }
 QLabel[role="pill"][tone="type2"] { border: 1px solid transparent; border-radius: 6px; background: $type2_soft; color: $type2; }
+QLabel[role="pill"][tone="type3"] { border: 1px solid transparent; border-radius: 6px; background: $type3_soft; color: $type3; }
 QLabel[role="pill"][tone="defect"] { border: 1px solid transparent; border-radius: 6px; background: $defect_soft; color: $defect; }
 QLabel[role="pill"][tone="remark"] { border: 1px solid transparent; border-radius: 6px; background: $remark_soft; color: $remark; }
 QFrame[role="alert"] { background: $defect_soft; border: 1px solid $defect; border-radius: ${radius_md}px; }
@@ -69,6 +70,7 @@ QPushButton:hover { border-color: $accent; }
 QPushButton:disabled { color: $disabled; border-color: $border; }
 QPushButton[tone="ok"]:checked { background: $ok_soft; border-color: $ok; color: $ok; }
 QPushButton[tone="type2"]:checked { background: $type2_soft; border-color: $type2; color: $type2; }
+QPushButton[tone="type3"]:checked { background: $type3_soft; border-color: $type3; color: $type3; }
 QPushButton[tone="defect"]:checked { background: $defect_soft; border-color: $defect; color: $defect; }
 QPushButton[tone="remark"]:checked { background: $remark_soft; border-color: $remark; color: $remark; }
 QPushButton[role="primary"] { background: $accent; color: $on_accent; border: none; font-weight: 700; font-size: ${font_lg}px;

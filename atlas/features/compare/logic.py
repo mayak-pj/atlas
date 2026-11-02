@@ -14,7 +14,7 @@ log = logging.getLogger("atlas.compare")
 
 MAX_WINDOWS = 4
 MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эталон
-DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "defect": "D", "remark": "R"}
+DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "remark": "R"}
 DEFAULT_HOTKEYS = {
     "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
     "toggle_ui": "H",
@@ -72,14 +72,37 @@ def same_angle(photos, number, pattern=None):
     return [index for index, other in enumerate(names) if other is not None and other.view == parsed.view]
 
 
-def turn_angle(photos, number, delta, pattern=None):
-    """Весь ракурс получает один новый поворот, даже если раньше фото были повёрнуты по-разному. Меняет список на месте."""
-    rotation = next_rotation(photos[number].rotation, delta)
-    changed = {}
-    for index in same_angle(photos, number, pattern):
+def shown_portrait(size, rotation):
+    """Стоит ли фото вертикально на экране: size — (ширина, высота) файла, rotation — наш поворот."""
+    width, height = size
+    if rotation % 180:
+        width, height = height, width
+    return height >= width
+
+
+def turn_angle(photos, number, delta, pattern=None, sizes=None):
+    """Повернуть ракурс этого фото. Вернёт {номер: поворот}; меняет список на месте.
+
+    В одной папке бывают и вертикальные, и горизонтальные снимки одного ракурса (снимали разными фотоаппаратами).
+    sizes — {номер: (ширина, высота) файла}: поворачиваются только фото, стоящие на экране так же, как это, каждое на delta.
+    Поэтому после первого нажатия все стоят одинаково, а дальше крутятся вместе.
+    sizes=None — размеры неизвестны (чужая папка): весь ракурс получает один поворот.
+    """
+    if sizes is None:
+        rotation = next_rotation(photos[number].rotation, delta)
+        targets = {index: rotation for index in same_angle(photos, number, pattern)}
+    else:
+        targets = {number: next_rotation(photos[number].rotation, delta)}
+        size = sizes.get(number)
+        if size is not None:
+            wanted = shown_portrait(size, photos[number].rotation)
+            for index in same_angle(photos, number, pattern):
+                other = sizes.get(index)
+                if other is not None and shown_portrait(other, photos[index].rotation) == wanted:
+                    targets[index] = next_rotation(photos[index].rotation, delta)
+    for index, rotation in targets.items():
         photos[index] = replace(photos[index], rotation=rotation)
-        changed[index] = rotation
-    return changed
+    return targets
 
 
 def mark_token(mark):
@@ -89,7 +112,7 @@ def mark_token(mark):
     if mark == "type:1":
         return "ok"
     if mark.startswith("type:"):
-        return "type2"
+        return "type2" if mark == "type:2" else "type3"
     return {"defect": "defect", "remark": "remark"}.get(mark)
 
 
@@ -194,6 +217,7 @@ class CompareModel:
     def __init__(self):
         self.photos = []
         self.reference = None  # PhotoItem
+        self.sizes = None  # {номер фото: (ширина, высота) файла}; None — ещё не прочитаны
         self.ref_photos = []  # фото найденной папки эталона; пусто — эталон одиночный (первое фото папки или путь)
         self.ref_index = 0
         self.reference_active = False  # активно окно эталона: стрелки листают найденную папку
@@ -245,6 +269,7 @@ class CompareModel:
     def set_photos(self, photos):
         """Новая папка. Раскладка сохраняется, эталон пока — первое фото папки."""
         self.photos = list(photos)
+        self.sizes = None
         self.set_reference(self.photos[0] if self.photos else None)
         self.active = 0
         self.direction = 1
@@ -329,7 +354,13 @@ class CompareModel:
 
     def rotate_angle(self, index, delta, pattern=None):
         """Повернуть фото с этим номером и все фото его ракурса; вернёт {номер: поворот} для записи в базу."""
-        return turn_angle(self.photos, index, delta, pattern)
+        return turn_angle(self.photos, index, delta, pattern, self.sizes)
+
+    def rotate_one(self, index, delta):
+        """Повернуть только это фото: одно снято вверх ногами, остальные на месте."""
+        rotation = next_rotation(self.photos[index].rotation, delta)
+        self.photos[index] = replace(self.photos[index], rotation=rotation)
+        return {index: rotation}
 
     def rotate_windows(self, delta, pattern=None):
         """«Сравнение»: всё вместе. Вернёт {номер фото папки: поворот} — это запишется в базу.

@@ -35,5 +35,9 @@
     "dir": "var/type_db",
     "max_side": 2600,
     "jpeg_quality": 90
+  },
+  "rules": {
+    "dir": "var/rules",
+    "refresh_s": 60
   }
 }

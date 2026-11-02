@@ -38,6 +38,10 @@
       "enabled": true
     },
     {
+      "id": "rules",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

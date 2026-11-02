@@ -46,6 +46,10 @@
       "enabled": true
     },
     {
+      "id": "draft",
+      "enabled": true
+    },
+    {
       "id": "hello",
       "enabled": true,
       "tab_order": 10

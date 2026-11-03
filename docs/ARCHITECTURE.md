@@ -128,6 +128,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 | `draft` | черновик, автосписок найденного | Черновик | — |
 | `report` | Excel + письмо-ответ в Outlook (8.2); `draft` необязателен — без него панели нет | — | — |
 | `dashboard` | показатели за неделю / месяц / год (9.1): папки, фото, замечания, новые типы, детали с замечаниями, виды замечаний, детали без проблем. `type_db` необязателен | Дашборд | — |
+| `defect_kinds` | общий список видов замечаний в базе (03.11.2026): окно «Виды замечаний» — добавить, исправить (меняет и уже поставленные замечания), удалить (старые замечания сохраняют текст). Начальный список — `data/defect_kinds.json`, один раз при пустой таблице. Таблица `defect_kinds`, миграция 001 | — | кнопка в панели отметок `compare` (через сервис) |
 | `updater` | при старте сверяет свою версию с `release/version.txt` и после входа предлагает перезапуститься (10.1). У обычной копии молчит | — | — |
 | `history_import` | выгрузка старых писем (в конце, необязательно) | — | страница настроек |
 
@@ -135,7 +136,7 @@ ctx.db.write(lambda conn: conn.execute("INSERT ...", (...)))
 
 Дашборд (`dashboard`, 9.1): своих таблиц и событий нет, ничего не публикует. Читает сервисы ядра `parts` и `folders.activity(since, until)` (завершённые папки с числом фото и отметки замечаний за период; граница «по» не включается) и, если есть, `type_db.search` для новых типов. Период — календарные неделя (с понедельника) / месяц / год, фильтр по виду проекта (из `project_kinds`). «Фото» — все фото завершённых за период папок (число просмотров программа не пишет). «Без проблем» — детали с завершённой проверкой за 90 суток и без замечаний за них. Столбики рисует `QPainter` (`charts.BarChart`, цвета из темы). Обновляется при показе вкладки и по событиям `folder.done`, `photo.marked`, `type.added/archived/restored`, если вкладка открыта.
 
-Отметки (`compare`): клавиши и кнопки — `data/hotkeys.json` → `compare.marks`, виды замечания — `data/defect_kinds.json`. Кнопки «Дефект» нет, миграция ядра 004 перевела старые дефекты в замечания; значение `defect` база ещё принимает, карточка «тип или дефект» в `type_db` — отдельная вещь и осталась. `mark_photo`: `sn=None` — не менять, `""` — стереть; `defect_kind` хранится у замечания (и `defect`), отметка типа его стирает. Запись идёт в фоне одной очередью, на экране отметка появляется после подтверждения базы. `photos.defect_kind` — миграция ядра 002.
+Отметки (`compare`): клавиши и кнопки — `data/hotkeys.json` → `compare.marks`, виды замечания — сервис `defect_kinds` (читается в фоне при запуске и при каждом открытии папки, обновляется по `defect_kinds.changed`; нет функции — `data/defect_kinds.json` и кнопки правки нет). Вид, которого уже нет в списке, у старого замечания всё равно показывается. Кнопки «Дефект» нет, миграция ядра 004 перевела старые дефекты в замечания; значение `defect` база ещё принимает, карточка «тип или дефект» в `type_db` — отдельная вещь и осталась. `mark_photo`: `sn=None` — не менять, `""` — стереть; `defect_kind` хранится у замечания (и `defect`), отметка типа его стирает. Запись идёт в фоне одной очередью, на экране отметка появляется после подтверждения базы. `photos.defect_kind` — миграция ядра 002.
 
 ## Слоты оболочки (поддерживать актуальным)
 
@@ -218,6 +219,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `type.added` / `type.archived` / `type.restored` | type_db | `{type_id, part_id}` |
 | `rule.published` | rules | `{rule_id, part_id}` — `part_id` пуст, если правило не к детали |
 | `comment.posted` | comments | `{comment_id, to_user}` — `to_user` пуст, если «всем» |
+| `defect_kinds.changed` | defect_kinds | `{kinds}` — список живых видов после добавления, исправления или удаления (подписчик `compare` обновляет выпадающий список) |
 | `draft.changed` | draft | `{folder_id}` — сохранены пояснение, ручная строка или заметки (подписчик `report` обновляет предпросмотр) |
 
 ## Сервисы (поддерживать актуальным)
@@ -231,6 +233,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `annotations` | annotate_tools | `shapes(path)` → кортеж `Crop`/`Ellipse`/`Label`, `crop(path)` → `Crop` или None; `store` — `AnnotationStore` (`changed(path)`). Координаты — доли неповёрнутого фото |
 | `compare` | compare | `views()` — все окна `PhotoView`, `active_view()`, `open_folder(folder_id)` — из GUI-потока, база читается в фоне; `set_reference(path)`; `set_reference_folder(folder_id)` — эталон из фото другой папки (листается, окно эталона становится активным по клику; раскладка 1 → 2); `find_same_part()` — то же для «Найти такую же деталь»; `current_folder()` → Folder или None |
 | `comments` | comments | из любого потока, кроме GUI: `pending_count(user_id=None)` → сколько сообщений ждут пользователя |
+| `defect_kinds` | defect_kinds | из любого потока, кроме GUI: `names()` → [имя], `add(name)`, `rename(old, new)` → сколько замечаний исправлено, `remove(name)`; ошибки ввода — `KindError` (текст для человека). `edit(parent)` — окно правки, из GUI-потока |
 | `draft` | draft | из любого потока, кроме GUI: `snapshot(folder_id, user_id=None)` → заметки и строки найденного |
 | `outlook` | shared/outlook (ядро) | `selected_mail()`, `reply(mail, html)` |
 | `type_db` | type_db | `types_for_part(part_id, include_archived)`, `search(q)` |
@@ -238,7 +241,7 @@ API окна, `ctx.shell`: `add_panel(слот, widget, key=None, order=0)` (т�
 | `findings` | findings | из любого потока, кроме GUI: `summary(part_id, days=None, exclude_folder_id=None)` → `Summary` или None (нет детали) |
 | `users` | ядро | `all()` → [(User, last_login_at)], `add(name, color_for)`, `touch(id)` |
 | `parts` | ядро | `ensure(kind, project, device, part, article)` → Part, `get(id)`, `find(name)`, `all()` |
-| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `set_rotation(photo_ids, rotation)` — 0/90/180/270, одной транзакцией, отметку и статус папки не трогает, `latest_for_part(name, project_id, kind, exclude_project_id, exclude_folder_id, since)` — последняя папка детали с таким названием (с фото), `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)`, `problem_marks(part_ids, exclude_folder_id, since)` → [MarkedPhoto] — дефекты и замечания, свежие первыми, `last_done(part_ids)` — последняя завершённая проверка |
+| `folders` | ядро | `add(part_id, path, folder_date, created_by)`, `get(id)`, `recent(limit, status)`, `set_status(id, status, user_id)`, `add_photos(folder_id, rel_paths)`, `photos(folder_id)`, `mark_photo(photo_id, mark, sn, user_id, defect_kind)`, `rename_defect_kind(old, new)` → сколько фото: вид замечания переименовали в списке, `set_rotation(photo_ids, rotation)` — 0/90/180/270, одной транзакцией, отметку и статус папки не трогает, `latest_for_part(name, project_id, kind, exclude_project_id, exclude_folder_id, since)` — последняя папка детали с таким названием (с фото), `move_photos([(photo_id, новый_rel_path)])` — одной транзакцией, файлы переносит вызывающий, `counts(folder_ids)`, `problem_marks(part_ids, exclude_folder_id, since)` → [MarkedPhoto] — дефекты и замечания, свежие первыми, `last_done(part_ids)` — последняя завершённая проверка |
 
 ## Картинки 3456×5184, 5–15 МБ
 

@@ -44,6 +44,7 @@ class _Signals(QObject):
     sizes_read = pyqtSignal(int, object)  # запрос, {путь: (ширина, высота)}
     found = pyqtSignal(int, object)  # номер поиска, FindResult или None
     find_failed = pyqtSignal(int)
+    kinds_loaded = pyqtSignal(object)  # [вид] из общего списка
 
 
 class FindResult:
@@ -84,6 +85,8 @@ class CompareFeature(Feature):
         self.signals.sizes_read.connect(self._on_sizes_read)
         self.signals.found.connect(self._on_found)
         self.signals.find_failed.connect(self._on_find_failed)
+        self.signals.kinds_loaded.connect(self._on_kinds)
+        self.ctx.bus.subscribe("defect_kinds.changed", lambda data: self._on_kinds(data.get("kinds", [])))
         self._find_request = 0
         # Отметки и повороты пишутся одной очередью: два быстрых нажатия не должны прийти в базу в обратном порядке
         self._mark_queue = queue.Queue()
@@ -99,6 +102,10 @@ class CompareFeature(Feature):
         self.screen.mark_requested.connect(self._on_mark_requested)
         self.screen.rotation_changed.connect(self._on_rotation_changed)
         self.screen.find_requested.connect(self.find_same_part)
+        self.screen.kinds_edit_requested.connect(self._edit_kinds)
+        if self.ctx.services.get_optional("defect_kinds") is not None:
+            self.screen.set_kinds_editable(True)
+            self._load_kinds()
         self.screen.restore_panels(ui_state.load(self.ctx.paths).get(logic.PANELS_KEY))
         self.screen.panels_changed.connect(self._save_panels)
         shell = self.ctx.shell
@@ -133,6 +140,31 @@ class CompareFeature(Feature):
     def open_folder(self, folder_id):
         """Открыть папку в сравнении. Чтение базы — в фоне; из GUI-потока."""
         self._run(self._load, folder_id)
+        self._load_kinds()  # заодно подхватить виды, добавленные на другом ПК
+
+    # --- виды замечаний ------------------------------------------------------------
+    def _load_kinds(self):
+        service = self.ctx.services.get_optional("defect_kinds")
+        if service is None:
+            return
+
+        def work():
+            try:
+                self.signals.kinds_loaded.emit(service.names())
+            except Exception:  # нет сети: остаётся прежний список
+                log.exception("Не удалось прочитать виды замечаний")
+        thread = threading.Thread(target=work, daemon=True)
+        self._threads.append(thread)
+        thread.start()
+
+    def _on_kinds(self, kinds):
+        if self.screen is not None:
+            self.screen.set_defect_kinds(kinds)
+
+    def _edit_kinds(self):
+        service = self.ctx.services.get_optional("defect_kinds")
+        if service is not None:
+            service.edit(self.screen)
 
     def set_reference(self, path):
         """Показать в окне эталона это фото."""

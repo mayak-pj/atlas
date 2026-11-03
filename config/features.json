@@ -9,6 +9,10 @@
       "enabled": true
     },
     {
+      "id": "defect_kinds",
+      "enabled": true
+    },
+    {
       "id": "compare",
       "enabled": true,
       "tab_order": 5

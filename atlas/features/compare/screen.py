@@ -51,6 +51,7 @@ TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
+TIP_KINDS_EDIT = "Виды замечаний: добавить, исправить, удалить"
 TIP_ANGLE_TOGGLE = "Ракурс {}: показать или убрать окно"
 TEXT_ANGLE_LIMIT = "Окон не больше 4: сначала выключите другой ракурс"
 TEXT_ANGLE_LAST = "Хотя бы один ракурс должен остаться"
@@ -106,6 +107,7 @@ class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
     find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
+    kinds_edit_requested = pyqtSignal()  # кнопка правки списка видов замечаний
     panels_changed = pyqtSignal(object)  # {панель: видна}: пользователь спрятал или показал панель
     rotation_changed = pyqtSignal(object, int)  # [id фото папки], новый поворот: записать в базу
 
@@ -442,11 +444,15 @@ class CompareScreen(QWidget):
         self.kind_box.setFocusPolicy(Qt.NoFocus)
         self.kind_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.kind_box.setMinimumContentsLength(KIND_CHARS)
-        self.kind_box.addItem(TEXT_KIND_NONE, None)
-        for kind in self._defect_kinds:
-            self.kind_box.addItem(kind, kind)
+        self._fill_kinds()
         self.kind_box.activated.connect(lambda _=0: self._on_defect_edited())
         box.addWidget(self.kind_box)
+        self.kinds_button = self._button("", self.kinds_edit_requested.emit)
+        self.kinds_button.setProperty("role", "square")
+        set_icon(self.kinds_button, "list-checks", "text")
+        self.kinds_button.setToolTip(TIP_KINDS_EDIT)
+        self.kinds_button.hide()  # только когда есть функция defect_kinds
+        box.addWidget(self.kinds_button)
         row.addWidget(self.defect_box)
         self.defect_box.hide()
         self.counts_label = QLabel("")
@@ -687,6 +693,33 @@ class CompareScreen(QWidget):
         self._strip_source = None  # цвет точки на ленте — по включённым ракурсам
         self._apply_layout()
         self.group.touch(self.active_view())
+
+    def _fill_kinds(self):
+        self.kind_box.clear()
+        self.kind_box.addItem(TEXT_KIND_NONE, None)
+        for kind in self._defect_kinds:
+            self.kind_box.addItem(kind, kind)
+
+    def set_defect_kinds(self, kinds):
+        """Новый список видов (правка в программе, другой ПК). Выбранный у текущего фото вид остаётся на экране."""
+        kinds = list(kinds)
+        if kinds == self._defect_kinds:
+            return
+        self._defect_kinds = kinds
+        current = self.kind_box.currentData()
+        self._fill_kinds()
+        self._select_kind(current)
+
+    def set_kinds_editable(self, editable):
+        self.kinds_button.setVisible(bool(editable))
+
+    def _select_kind(self, kind):
+        """Вид, которого уже нет в списке (удалили, другой ПК), всё равно показывается у старого замечания."""
+        index = self.kind_box.findData(kind) if kind else 0
+        if index < 0:
+            self.kind_box.addItem(kind, kind)
+            index = self.kind_box.count() - 1
+        self.kind_box.setCurrentIndex(index)
 
     @property
     def angles_mode(self):
@@ -988,7 +1021,7 @@ class CompareScreen(QWidget):
         self._sync_extra()
         if is_remark and not (same and self.sn_edit.hasFocus()):  # пока человек печатает, поле не трогаем
             self.sn_edit.setText(default_sn(photo, self._name_pattern))
-            self.kind_box.setCurrentIndex(max(self.kind_box.findData(photo.defect_kind), 0))
+            self._select_kind(photo.defect_kind)
         self.defect_box.setEnabled(enabled)
         self.counts_label.setText(counts_text(model.photos, self._mark_keys))
         self.counts_label.setToolTip(self.counts_label.text())

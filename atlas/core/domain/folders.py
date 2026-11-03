@@ -215,6 +215,17 @@ class FoldersService:
 
         self.db.write(work)
 
+    def rename_defect_kind(self, old, new):
+        """Вид замечания переименовали: те же отметки с новым текстом. → сколько фото изменилось.
+
+        Сравнение — точное по тексту: в базе лежит то, что выбрали из списка.
+        """
+        new = (new or "").strip()
+        if not new:
+            raise ValueError("Пустой вид замечания")
+        return self.db.write(lambda conn: conn.execute(
+            "UPDATE photos SET defect_kind = ? WHERE defect_kind = ?", (new, old)).rowcount)
+
     def set_rotation(self, photo_ids, rotation):
         """Запомнить поворот фото одной транзакцией: 0, 90, 180 или 270 градусов по часовой стрелке.
 

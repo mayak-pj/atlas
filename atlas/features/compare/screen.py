@@ -1,4 +1,4 @@
-"""Экран сравнения. Окна постоянные: views[0] — эталон, остальные — текущие; раскладка только показывает нужные."""
+"""Экран сравнения. Окна постоянные: views[0] — эталон (если он есть), текущие — views[1], views[2]…; раскладка только показывает нужные."""
 from __future__ import annotations
 
 from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
@@ -607,7 +607,7 @@ class CompareScreen(QWidget):
             return
         self.model.go_reference(index)
         self._check_angle()
-        if self.model.count == 1:
+        if not self.model.reference_window:
             return  # эталона на экране нет: он покажется при раскладке «2 фото»
         self._show_in(self.views[0])
         if self.model.reference_active:
@@ -741,15 +741,22 @@ class CompareScreen(QWidget):
         self.group.set_enabled(checked)
 
     def _visible_views(self):
-        """Окна раскладки: при одном фото только первое текущее, эталона нет. В «Ракурсах» окно N — всегда ракурс N."""
+        """Окна раскладки: эталон (если есть) первым, затем текущие. В «Ракурсах» окно N — всегда ракурс N."""
         if self._angles_on:
             return self.views[:len(self.angles.plan.views)]
-        if self.model.count == 1:
-            return [self.views[1]]
-        return self.views[:self.model.count]
+        currents = [self._view_of(window) for window in range(self.model.currents_count)]
+        return [self.views[0]] + currents if self.model.reference_window else currents
 
     def _view_of(self, window):
-        return self.views[window + 1]
+        """Текущие окна — views[1], views[2], views[3], четвёртое без эталона — views[0]: при появлении эталона
+        первые три окна остаются теми же виджетами и не перечитывают фото."""
+        return self.views[(window + 1) % MAX_WINDOWS]
+
+    def _window_of(self, view):
+        return (self.views.index(view) - 1) % MAX_WINDOWS
+
+    def _is_reference_view(self, view):
+        return self.model.reference_window and view is self.views[0] and not self._angles_on
 
     def active_view(self):
         if self._angles_on:
@@ -760,7 +767,7 @@ class CompareScreen(QWidget):
         has_photos = bool(self.model.photos)
         angles = self._angles_on
         has_content = bool(self.angles.plan.sets) if angles else has_photos
-        self.reference_bar.setVisible(not angles and has_photos and self.model.has_reference_folder and self.model.count > 1)
+        self.reference_bar.setVisible(not angles and has_photos and self.model.has_reference_folder and self.model.reference_window)
         texts = angle_notes(self.angles.plan) if angles else []
         self.angles_label.setText(" · ".join(texts))
         self.angles_bar.setVisible(bool(texts))
@@ -779,7 +786,7 @@ class CompareScreen(QWidget):
         for view in visible:
             if view not in self.group.views:
                 self.group.add(view)
-        self.group.set_reference(self.views[0] if not angles and has_photos and self.model.count > 1 else None)
+        self.group.set_reference(self.views[0] if not angles and has_photos and self.model.reference_window else None)
         self._place(visible)
         for view in visible:
             view.show()
@@ -864,13 +871,13 @@ class CompareScreen(QWidget):
             self.grid.setColumnStretch(column, 1)
 
     def _show_in(self, view):
-        if view is self.views[0]:
+        if self._is_reference_view(view):
             photo = self.model.reference
             self.group.show_photo(view, photo.path, photo.rotation)
             view.set_caption(self._reference_tag, self._reference_text(photo), reference=True)
             self._after_show()
             return
-        window = self.views.index(view) - 1
+        window = self._window_of(view)
         photo = self.model.current(window)
         self.group.show_photo(view, photo.path, photo.rotation)
         tag = TAG_SINGLE if self.model.count == 1 else TAG_CURRENT
@@ -919,7 +926,7 @@ class CompareScreen(QWidget):
 
     def _learn_orientation(self, view):
         """Один раз на папку: при листании сетка не должна прыгать, даже если попалось фото другой ориентации."""
-        if self._orientation_known or (view is self.views[0] and not self._angles_on):
+        if self._orientation_known or self._is_reference_view(view):
             return
         size = view.shown_image_size
         if size is None:
@@ -1118,7 +1125,7 @@ class CompareScreen(QWidget):
         model = self.model
         result = []
         for view in self._visible_views():
-            photo = model.reference if view is self.views[0] else model.current(self.views.index(view) - 1)
+            photo = model.reference if self._is_reference_view(view) else model.current(self._window_of(view))
             result.append((view, photo.rotation))
         return result
 
@@ -1247,12 +1254,12 @@ class CompareScreen(QWidget):
         if self._angles_on:
             self.angles.set_active(self.views.index(view))
             self._show_zoom(view.state()[0])
-        elif view is self.views[0]:
-            if not self.model.has_reference_folder or self.model.count == 1:
+        elif self._is_reference_view(view):
+            if not self.model.has_reference_folder:
                 return  # одиночный эталон не листается: активным остаётся прежнее окно
             self.model.set_reference_active(True)
         else:
-            self.model.set_active(self.views.index(view) - 1)
+            self.model.set_active(self._window_of(view))
         self._mark_active()
         self._sync_strip()
         self._after_show()

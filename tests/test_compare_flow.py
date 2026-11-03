@@ -75,6 +75,13 @@ class App:
     def active_name(self):
         return Path(self.screen.active_view().path).name
 
+    def with_reference(self):
+        """Эталон — первое фото папки, как раньше было по умолчанию. Ждёт, пока он покажется."""
+        from atlas.features.compare.logic import PhotoItem
+
+        self.screen.set_reference(PhotoItem(None, self.screen.model.photos[0].path))
+        self.wait_shown()
+
     def press(self, key):
         QTest.keyClick(self.screen, key)
 
@@ -145,7 +152,8 @@ def test_layouts_show_requested_number_of_windows(app, count):
     app.wait_shown()
     assert len(app.screen.group.views) == count
     assert sum(view.isVisible() for view in app.screen.views) == count
-    assert (app.screen.group.reference is not None) == (count > 1)
+    assert app.screen.group.reference is None  # эталона нет, пока его не найдут: все окна — текущая папка
+    assert app.names() == ["фото {:03d}.jpg".format(number) for number in range(1, count + 1)]
     assert app.screen.sync_button.isEnabled()  # и при одном окне: от неё зависит поворот одного фото
 
 
@@ -166,6 +174,7 @@ def test_click_selects_active_window_and_only_it_flips(app):
 
 def test_click_on_reference_keeps_active_window(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.screen.set_layout(2)
     app.wait_shown()
     current = app.screen.views[1]
@@ -179,6 +188,7 @@ def test_click_on_reference_keeps_active_window(app):
 
 def test_zoom_is_synchronous_and_can_be_turned_off(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.screen.set_layout(2)
     app.wait_shown()
     reference, current = app.screen.views[0], app.screen.views[1]
@@ -193,6 +203,7 @@ def test_zoom_is_synchronous_and_can_be_turned_off(app):
 
 def test_minus_plus_follow_clicked_window_when_sync_off(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.screen.set_layout(2)
     app.wait_shown()
     app.screen.sync_button.click()
@@ -210,6 +221,7 @@ def _space(screen, kind, auto=False):
 
 def test_flicker_ignores_auto_repeat_of_space(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.press(Qt.Key_Right)
     _space(app.screen, QTest.Press)
     _space(app.screen, QTest.Release, auto=True)  # так выглядит удержание: отпускание-нажатие с автоповтором
@@ -222,6 +234,7 @@ def test_flicker_ignores_auto_repeat_of_space(app):
 
 def test_flicker_shows_reference_on_same_place_until_release(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.press(Qt.Key_Right)
     app.wait_shown()
     view = app.screen.active_view()
@@ -243,6 +256,7 @@ def test_flicker_shows_reference_on_same_place_until_release(app):
 
 def test_flicker_really_changes_picture(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.press(Qt.Key_Right)
     view = app.screen.active_view()
     app.qtbot.waitUntil(lambda: view.is_sharp, timeout=5000)
@@ -264,6 +278,7 @@ def test_flicker_ends_when_tab_is_hidden(app):
 
 def test_flicker_ends_when_layout_changes(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.press(Qt.Key_Right)
     _space(app.screen, QTest.Press)
     app.screen.set_layout(2)
@@ -431,6 +446,7 @@ def test_click_in_gap_between_cells_does_nothing(app):
 
 def test_strip_follows_active_window_not_reference(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     app.screen.set_layout(3)
     app.wait_shown()
     assert app.screen.strip.current == 0
@@ -444,6 +460,7 @@ def test_strip_follows_active_window_not_reference(app):
 
 def test_strip_click_ignored_during_flicker(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     _space(app.screen, QTest.Press)
     _click_cell(app.screen.strip, 3)
     _space(app.screen, QTest.Release)
@@ -658,6 +675,7 @@ def test_typing_in_sn_field_does_not_mark_or_flip(named):
 
 def test_mark_is_refused_during_flicker_and_while_photo_not_shown(app, monkeypatch):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     _space(app.screen, QTest.Press)
     assert not app.screen.can_mark
     app.press(Qt.Key_1)
@@ -676,6 +694,7 @@ def test_mark_is_refused_during_flicker_and_while_photo_not_shown(app, monkeypat
 
 def test_buttons_are_disabled_while_flickering(app):
     app.wait_open()
+    app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     _space(app.screen, QTest.Press)
     assert not any(button.isEnabled() for button in app.screen.mark_buttons.values())
     _space(app.screen, QTest.Release)
@@ -819,3 +838,48 @@ def test_panels_marked_open_are_shown_at_start(tmp_path, qtbot):
         assert screen.left.isVisibleTo(screen) and screen.right.isVisibleTo(screen)
     finally:
         app.stop()
+
+
+# --- кнопки 1–4 без эталона (решение пользователя 03.11.2026) ----------------------------
+def test_windows_are_folder_photos_each_flips_alone_and_marks_its_photo(app):
+    app.wait_open()
+    screen = app.screen
+    screen.set_layout(3)
+    app.wait_shown()
+    first, second, third = screen._visible_views()
+    assert app.names() == ["фото 001.jpg", "фото 002.jpg", "фото 003.jpg"]
+    QTest.mouseClick(first, Qt.LeftButton)  # в окно 1 кладу образец: листаю только его
+    app.press(Qt.Key_Right)
+    app.press(Qt.Key_Right)
+    app.wait_shown()
+    assert [Path(view.path).name for view in (first, second, third)] == ["фото 003.jpg", "фото 002.jpg", "фото 003.jpg"]
+    QTest.mouseClick(third, Qt.LeftButton)
+    app.press(Qt.Key_Right)
+    app.wait_shown()
+    screen.mark_buttons["type:2"].click()
+    app.qtbot.waitUntil(lambda: screen.model.photos[3].mark == "type:2", timeout=3000)
+    assert screen.model.photos[2].mark is None  # окно 1 с тем же фото раньше не тронуто
+
+
+def test_space_without_reference_does_nothing(app):
+    app.wait_open()
+    _space(app.screen, QTest.Press)
+    assert not app.screen.flickering
+
+
+def test_found_reference_takes_first_window_and_currents_keep_their_photos(app, tmp_path):
+    app.wait_open()
+    screen = app.screen
+    screen.set_layout(4)
+    app.wait_shown()
+    kept = [Path(view.path).name for view in screen._visible_views()[:3]]
+    from atlas.features.compare.logic import PhotoItem
+
+    other = tmp_path / "чужая"
+    other.mkdir()
+    reference = [PhotoItem(100, screen.model.photos[5].path)]
+    screen.set_reference_folder(reference)
+    app.wait_shown()
+    visible = screen._visible_views()
+    assert visible[0] is screen.views[0] and screen.group.reference is screen.views[0]
+    assert [Path(view.path).name for view in visible[1:]] == kept  # окна 1–3 остались, четвёртое отдано эталону

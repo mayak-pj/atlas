@@ -58,16 +58,16 @@ def test_new_windows_continue_after_active_photo_kept():
     model = _model()
     model.flip(4)
     model.set_layout(4)
-    assert [model.index(window) for window in range(3)] == [4, 5, 6]
-    model.set_active(2)
+    assert [model.index(window) for window in range(4)] == [4, 5, 6, 7]  # без эталона все 4 окна — текущая папка
+    model.set_active(3)
     model.set_layout(2)
-    assert model.active == 0
+    assert model.active == 1
     assert model.index(0) == 4
 
 
 def test_windows_stop_at_last_photo():
     model = _model(total=2, count=4)
-    assert [model.index(window) for window in range(3)] == [0, 1, 1]
+    assert [model.index(window) for window in range(4)] == [0, 1, 1, 1]
 
 
 def test_empty_folder_is_safe():
@@ -83,9 +83,16 @@ def test_only_one_to_four_windows(count):
         CompareModel().set_layout(count)
 
 
-def test_reference_window_cannot_be_active():
+def test_reference_takes_a_window_only_when_set():
+    model = _model(count=2)
+    assert model.currents_count == 2 and not model.reference_window and model.reference is None
+    model.set_active(1)
+    model.set_reference(PhotoItem(None, "/эталон.jpg"))  # эталон занял окно: текущих одно
+    assert model.reference_window and model.currents_count == 1 and model.active == 0
     with pytest.raises(ValueError):
-        _model(count=2).set_active(1)
+        model.set_active(1)
+    model.set_layout(1)
+    assert not model.reference_window and model.currents_count == 1  # при одном окне эталон только в «мигалке»
 
 
 def test_photo_path_and_position():
@@ -229,4 +236,4 @@ def test_new_folder_and_single_reference_forget_found_folder():
     model.set_reference_folder([PhotoItem(1, "/чужая/1.jpg"), PhotoItem(2, "/чужая/2.jpg")])
     model.set_reference_active(True)
     model.set_photos([PhotoItem(7, "/новая/7.jpg")])
-    assert not model.has_reference_folder and not model.reference_active and model.reference.id == 7
+    assert not model.has_reference_folder and not model.reference_active and model.reference is None

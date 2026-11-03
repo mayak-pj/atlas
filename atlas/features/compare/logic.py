@@ -13,7 +13,7 @@ from atlas.core.domain.photo_names import parse_photo_name
 log = logging.getLogger("atlas.compare")
 
 MAX_WINDOWS = 4
-MAX_CURRENTS = MAX_WINDOWS - 1  # при 2–4 окнах первое — эталон
+MAX_CURRENTS = MAX_WINDOWS  # 1–4 — число окон текущей папки; эталон (из «Найти такую же деталь») занимает одно из них
 DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "remark": "R"}
 DEFAULT_HOTKEYS = {
     "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
@@ -227,8 +227,13 @@ class CompareModel:
         self._indexes = [0] * MAX_CURRENTS
 
     @property
+    def reference_window(self):
+        """Окно эталона на экране: эталон задан и окон больше одного. Иначе все окна — фото текущей папки."""
+        return self.reference is not None and self.count > 1
+
+    @property
     def currents_count(self):
-        return max(1, self.count - 1)
+        return max(1, self.count - 1) if self.reference_window else self.count
 
     @property
     def has_reference_folder(self):
@@ -244,19 +249,29 @@ class CompareModel:
         return self.ref_index if self.reference_active else self.active_index
 
     def set_reference(self, photo):
-        """Одиночный эталон: найденная папка забывается."""
+        """Одиночный эталон: найденная папка забывается. None — эталона нет, все окна — текущая папка."""
+        before = self.currents_count
         self.reference = photo
         self.ref_photos = []
         self.ref_index = 0
         self.reference_active = False
+        self._after_reference(before)
+
+    def _after_reference(self, before):
+        """Эталон занял окно или освободил его: активное окно в пределах, новое окно — следующее фото."""
+        if self.currents_count > before and self.photos:
+            self._spread_from(before - 1)
+        self.active = min(self.active, self.currents_count - 1)
 
     def set_reference_folder(self, photos, index=0):
         """Эталон — фото другой папки; листается, когда его окно активно."""
         if not photos:
             raise ValueError("В папке эталона нет фото")
+        before = self.currents_count
         self.ref_photos = list(photos)
         self.go_reference(index)
         self.direction = 1
+        self._after_reference(before)
 
     def go_reference(self, index):
         self.ref_index = min(max(index, 0), len(self.ref_photos) - 1)
@@ -267,10 +282,10 @@ class CompareModel:
         self.reference_active = bool(active) and self.has_reference_folder and self.count > 1
 
     def set_photos(self, photos):
-        """Новая папка. Раскладка сохраняется, эталон пока — первое фото папки."""
+        """Новая папка. Раскладка сохраняется; эталона нет, пока его не найдут («Найти такую же деталь»)."""
         self.photos = list(photos)
         self.sizes = None
-        self.set_reference(self.photos[0] if self.photos else None)
+        self.set_reference(None)
         self.active = 0
         self.direction = 1
         self._indexes = [0] * MAX_CURRENTS

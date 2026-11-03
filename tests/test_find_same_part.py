@@ -191,7 +191,10 @@ def test_strip_follows_the_active_window(app):
 
 
 def test_single_reference_still_cannot_be_flipped(app):
+    from atlas.features.compare.logic import PhotoItem
+
     app.screen.set_layout(2)
+    app.screen.set_reference(PhotoItem(None, app.screen.model.photos[0].path))
     _wait_shown(app)
     _click(app.screen.views[0])
     assert not app.screen.model.reference_active
@@ -233,7 +236,7 @@ def test_opening_another_folder_drops_found_reference(app):
     app.feature.open_folder(app.folder.id)
     app.qtbot.waitUntil(lambda: not app.screen.model.has_reference_folder, timeout=5000)
     assert not app.screen.reference_bar.isVisible()
-    assert _ref_name(app) == "фото 001.jpg"
+    assert app.screen.model.reference is None and app.screen.group.reference is None  # эталона больше нет
 
 
 def test_layout_1_hides_reference_and_it_returns(app):

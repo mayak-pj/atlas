@@ -243,6 +243,7 @@ def test_model_windows_turn_their_angles_and_reference_in_memory():
 def test_model_single_reference_turns_alone():
     model = CompareModel()
     model.set_photos(photos(1))
+    model.set_reference(model.photos[0])
     model.set_layout(3)
     assert model.rotate_windows(90) == {0: 90}
     assert model.reference.rotation == 90
@@ -325,6 +326,7 @@ def test_opposite_key_and_buttons(app, qtbot):
 def test_reference_turns_with_windows_but_is_not_saved(app, qtbot):
     screen = app.screen
     screen.set_layout(2)
+    app.with_reference()
     app.wait_shown()
     app.press(Qt.Key_Right)
     app.press(Qt.Key_Right)  # в текущем окне ракурс 2, эталон — первое фото, ракурс 1
@@ -336,6 +338,7 @@ def test_reference_turns_with_windows_but_is_not_saved(app, qtbot):
 
 def test_flicker_shows_reference_with_its_rotation(app, qtbot):
     screen = app.screen
+    app.with_reference()
     app.press(Qt.Key_Right)
     app.wait_shown()
     app.press(Qt.Key_PageDown)
@@ -425,6 +428,7 @@ def test_rotation_failure_is_shown(app, qtbot, monkeypatch):
 def test_sync_zoom_and_pan_work_with_rotated_window(app, qtbot):
     screen = app.screen
     screen.set_layout(2)
+    app.with_reference()
     app.wait_shown()
     app.press(Qt.Key_PageDown)
     reference, current = screen.views[:2]

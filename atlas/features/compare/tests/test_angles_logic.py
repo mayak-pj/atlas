@@ -26,7 +26,7 @@ def test_more_than_four_angles_are_counted_not_shown():
     plan = build_plan(items(*["1_{}_A.jpg".format(view) for view in (6, 5, 4, 3, 2, 1)]))
     assert plan.views == [1, 2, 3, 4] and len(plan.views) == MAX_WINDOWS
     assert plan.hidden == 2
-    assert notes(plan) == ["Ещё ракурсов: 2"]
+    assert notes(plan) == ["Ещё ракурсов: 2 — чтобы показать, выключите другой"]
 
 
 def test_unparsed_are_counted_and_absent():
@@ -97,3 +97,18 @@ def test_strip_mark_priority():
     assert set_mark(angle_set, photos, [1, 2]) == "type:2"
     assert set_mark(angle_set, photos, [1]) == "remark"
     assert set_mark(angle_set, [PhotoItem(1, "a"), PhotoItem(2, "b"), PhotoItem(3, "c")]) is None
+
+
+def test_turning_angles_off_and_on_keeps_active_view():
+    photos = items(*["1_{}_A.jpg".format(n) for n in range(1, 7)])
+    model = AnglesModel()
+    model.set_photos(photos)
+    assert model.plan.available == [1, 2, 3, 4, 5, 6] and model.plan.views == [1, 2, 3, 4] and model.plan.hidden == 2
+    model.set_active(2)  # ракурс 3
+    assert not model.set_view_shown(5, True)  # окон уже 4
+    assert model.set_view_shown(1, False) and model.plan.views == [2, 3, 4]
+    assert model.active_view_number == 3 and model.plan.hidden == 0
+    assert model.set_view_shown(6, True) and model.plan.views == [2, 3, 4, 6]
+    assert not model.set_view_shown(6, True) and not model.set_view_shown(9, True)
+    model.show_all()
+    assert model.plan.views == [1, 2, 3, 4] and model.active_view_number == 3

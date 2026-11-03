@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional
 
 from atlas.core.domain.photo_names import parse_photo_name
@@ -32,6 +32,7 @@ class AnglesPlan:
     sets: List[AngleSet]  # по артикулу и SN: папка отсортирована по имени, там все первые ракурсы идут раньше вторых
     unparsed: int  # имя не разобрано: такие фото видны только в «Сравнении»
     repeats: List[List[str]]  # имена файлов с одинаковыми артикулом, ракурсом и SN; показан первый
+    available: List[int] = field(default_factory=list)  # все ракурсы папки по возрастанию: кнопки включения
 
 
 def build_plan(photos, pattern=None) -> AnglesPlan:
@@ -54,14 +55,21 @@ def build_plan(photos, pattern=None) -> AnglesPlan:
         all_views.update(chosen)
         sets.append(AngleSet(article, sn, chosen))
     ordered_views = sorted(all_views)
-    return AnglesPlan(ordered_views[:MAX_WINDOWS], max(len(ordered_views) - MAX_WINDOWS, 0), sets, unparsed, repeats)
+    return AnglesPlan(ordered_views[:MAX_WINDOWS], max(len(ordered_views) - MAX_WINDOWS, 0), sets, unparsed, repeats,
+                      ordered_views)
+
+
+def with_views(plan, views) -> AnglesPlan:
+    """Человек выключил часть ракурсов: окна только у включённых, по возрастанию."""
+    shown = sorted(views)
+    return replace(plan, views=shown, hidden=max(len(plan.available) - MAX_WINDOWS, 0) if len(shown) == MAX_WINDOWS else 0)
 
 
 def notes(plan) -> List[str]:
     """Что сказать про папку. Текст один на всю папку: строка не меняет высоту при листании, раскладка не прыгает."""
     result = []
     if plan.hidden:
-        result.append("Ещё ракурсов: {}".format(plan.hidden))
+        result.append("Ещё ракурсов: {} — чтобы показать, выключите другой".format(plan.hidden))
     if plan.unparsed:
         result.append("Имя не разобрано у фото: {} (они видны в «Сравнении»)".format(plan.unparsed))
     if plan.repeats:
@@ -88,6 +96,7 @@ class AnglesModel:
 
     def __init__(self):
         self.plan = build_plan([])
+        self._full_views = []
         self.index = 0
         self.active = 0
         self.direction = 1
@@ -95,12 +104,32 @@ class AnglesModel:
 
     def set_photos(self, photos, pattern=None):
         self.plan = build_plan(photos, pattern)
+        self._full_views = list(self.plan.views)
         self.index = 0
         self.active = 0
         self.direction = 1
         self._set_of_photo = {
             number: place for place, angle_set in enumerate(self.plan.sets) for number in angle_set.photos.values()
         }
+
+    def show_all(self):
+        """Режим включили заново: снова все ракурсы, сколько помещается."""
+        self._set_views(self._full_views)
+
+    def set_view_shown(self, view, shown):
+        """Включить или выключить ракурс. False — нельзя: больше окон нет или это последний включённый."""
+        views = set(self.plan.views)
+        if view not in self.plan.available or (view in views) == shown:
+            return False
+        if shown and len(views) >= MAX_WINDOWS or not shown and len(views) == 1:
+            return False
+        self._set_views(views | {view} if shown else views - {view})
+        return True
+
+    def _set_views(self, views):
+        active_view = self.active_view_number
+        self.plan = with_views(self.plan, views)
+        self.active = self.plan.views.index(active_view) if active_view in self.plan.views else 0
 
     @property
     def total(self):

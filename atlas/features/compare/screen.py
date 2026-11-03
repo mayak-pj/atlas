@@ -51,6 +51,9 @@ TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
+TIP_ANGLE_TOGGLE = "Ракурс {}: показать или убрать окно"
+TEXT_ANGLE_LIMIT = "Окон не больше 4: сначала выключите другой ракурс"
+TEXT_ANGLE_LAST = "Хотя бы один ракурс должен остаться"
 TEXT_NO_ANGLES = "Ни одно имя фото не разобрано: ракурсы показать нельзя. Фото видны в «Сравнении»"
 FIT_STATE = (1.0, 0.5, 0.5)
 
@@ -294,6 +297,15 @@ class CompareScreen(QWidget):
         self.angles_mode_button.setToolTip("Все стороны одного SN: листаются вместе; зум и поворот вместе — кнопкой «Синхронно»")
         row.addWidget(self.angles_mode_button)
         row.addWidget(self._separator())
+        # Кнопки ракурсов стоят на месте кнопок раскладки: в «Ракурсах» тех нет, ряд не становится шире
+        self.angle_toggles = QWidget()
+        self.angle_toggles.setProperty("role", "plain")
+        self._angle_toggle_row = QHBoxLayout(self.angle_toggles)
+        self._angle_toggle_row.setContentsMargins(0, 0, 0, 0)
+        self._angle_toggle_row.setSpacing(6)
+        self._angle_toggle_buttons = {}
+        self.angle_toggles.hide()
+        row.addWidget(self.angle_toggles)
         self._compare_only = []  # в «Ракурсах» этого нет: окон столько, сколько ракурсов, эталона нет
         for count in range(1, MAX_WINDOWS + 1):
             # Цифры, а не «1 фото»: с панелью папок ряд иначе не помещается в окно шириной 1024
@@ -484,6 +496,7 @@ class CompareScreen(QWidget):
         self._end_flicker()
         self.model.set_photos(photos)
         self.angles.set_photos(self.model.photos, self._name_pattern)
+        self._fill_angle_toggles()
         self._orientation_known = False
         self._sizes_pending = False
         self._deferred_turns = []
@@ -614,6 +627,8 @@ class CompareScreen(QWidget):
             self._compare_states = states
             self._compare_group_state = self.group.state
             self.model.set_reference_active(False)
+            self.angles.show_all()  # «нажимаю «Ракурсы» — включены все»
+            self._fill_angle_toggles()
             if self.model.photos:
                 self.angles.show_photo(self.model.active_index)
         else:
@@ -625,6 +640,7 @@ class CompareScreen(QWidget):
         self._angles_on = on
         for widget in self._compare_only:
             widget.setVisible(not on)
+        self.angle_toggles.setVisible(on and len(self.angles.plan.available) > 1)
         self.hint.setText(HINT_ANGLES if on else HINT)
         sync = self._sync_by_mode[on]
         self.sync_button.blockSignals(True)
@@ -640,6 +656,37 @@ class CompareScreen(QWidget):
                 view.set_state(*saved.get(view, FIT_STATE))
         self.group.touch(self.active_view())
         self._show_zoom(self.active_view().state()[0])
+
+    def _fill_angle_toggles(self):
+        """Кнопка на каждый ракурс папки; нажата — у ракурса есть окно."""
+        for button in self._angle_toggle_buttons.values():
+            self._angle_toggle_row.removeWidget(button)
+            button.setParent(None)  # иначе до deleteLater старые кнопки ещё видны рядом с новыми
+            button.deleteLater()
+        self._angle_toggle_buttons = {}
+        plan = self.angles.plan
+        for view in plan.available:
+            button = self._button(str(view), lambda checked, v=view: self._toggle_angle(v, checked), checkable=True)
+            button.setProperty("role", "square")
+            button.setToolTip(TIP_ANGLE_TOGGLE.format(view))
+            button.setChecked(view in plan.views)
+            self._angle_toggle_buttons[view] = button
+            self._angle_toggle_row.addWidget(button)
+        self.angle_toggles.setVisible(self._angles_on and len(plan.available) > 1)
+
+    def _toggle_angle(self, view, shown):
+        if not self.angles.set_view_shown(view, shown):
+            button = self._angle_toggle_buttons[view]
+            button.blockSignals(True)
+            button.setChecked(not shown)
+            button.blockSignals(False)
+            self.marks_status.setText(TEXT_ANGLE_LIMIT if shown else TEXT_ANGLE_LAST)
+            return
+        self.marks_status.setText("")
+        self._end_flicker()
+        self._strip_source = None  # цвет точки на ленте — по включённым ракурсам
+        self._apply_layout()
+        self.group.touch(self.active_view())
 
     @property
     def angles_mode(self):

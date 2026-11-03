@@ -146,7 +146,7 @@ def test_layouts_show_requested_number_of_windows(app, count):
     assert len(app.screen.group.views) == count
     assert sum(view.isVisible() for view in app.screen.views) == count
     assert (app.screen.group.reference is not None) == (count > 1)
-    assert app.screen.sync_button.isEnabled() == (count > 1)
+    assert app.screen.sync_button.isEnabled()  # и при одном окне: от неё зависит поворот одного фото
 
 
 def test_click_selects_active_window_and_only_it_flips(app):

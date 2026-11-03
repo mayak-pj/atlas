@@ -67,7 +67,7 @@ def test_one_cancel_for_all_windows(app):
 def test_zoom_is_per_window_and_survives_listing(app):
     screen = app.screen
     first, second = screen.views[:2]
-    assert screen.sync_button.isHidden()
+    assert not screen.sync_button.isHidden() and not screen.sync_button.isChecked()  # в «Ракурсах» по умолчанию выключена
     click(app, first)
     plus_state = second.state()
     screen.group.zoom_by(2.0)

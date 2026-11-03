@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QImage, QPainter
+from PyQt5.QtTest import QTest
 
 from atlas.features.compare.logic import CompareModel, PhotoItem, next_rotation, same_angle
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
@@ -362,18 +363,51 @@ def test_grid_and_strip_follow_rotated_orientation(app, qtbot):
     assert screen._portrait == before
 
 
-def test_angles_turn_only_active_window(app, qtbot):
+def test_angles_without_sync_turn_one_photo_and_shift_turns_angle(app, qtbot):
     screen = app.screen
     screen.set_angles_mode(True)
     app.wait_shown()
+    assert not screen.sync_button.isHidden() and not screen.sync_button.isChecked()
     first, second = screen.views[:2]
     before = second.state()
-    app.press(Qt.Key_PageDown)
+    app.press(Qt.Key_PageDown)  # одно фото: 1_1_A
     assert (first.rotation, second.rotation) == (90, 0)
     assert second.state() == before
-    saved(app, qtbot, {0: 90, 1: 90})
-    app.press(Qt.Key_Right)  # следующий SN: тот же ракурс повёрнут, другой — нет
+    saved(app, qtbot, {0: 90})
+    app.press(Qt.Key_Right)  # у следующего SN ракурс 1 не повёрнут
+    assert (first.rotation, second.rotation) == (0, 0)
+    QTest.keyClick(screen, Qt.Key_PageDown, Qt.ShiftModifier)  # ракурс 1: те, что стоят как это фото; 1_1_A уже стоит иначе
     assert (first.rotation, second.rotation) == (90, 0)
+    saved(app, qtbot, {0: 90, 1: 90})
+
+
+def test_angles_with_sync_zoom_and_turn_together(app, qtbot):
+    screen = app.screen
+    screen.set_angles_mode(True)
+    app.wait_shown()
+    screen.sync_button.click()
+    first, second = screen.views[:2]
+    first.zoom_by(3.0)
+    assert second.state() == pytest.approx(first.state())
+    app.press(Qt.Key_PageDown)  # оба окна, у каждого весь его ракурс
+    assert (first.rotation, second.rotation) == (90, 90)
+    assert second.state() == pytest.approx(first.state())
+    saved(app, qtbot, {0: 90, 1: 90, 2: 90, 3: 90})
+
+
+def test_sync_is_remembered_per_mode(app):
+    screen = app.screen
+    assert screen.sync_button.isChecked()
+    screen.set_angles_mode(True)
+    assert not screen.sync_button.isChecked() and not screen.group.enabled
+    screen.sync_button.click()
+    screen.set_angles_mode(False)
+    assert screen.sync_button.isChecked() and screen.group.enabled
+    screen.sync_button.click()
+    screen.set_angles_mode(True)
+    assert screen.sync_button.isChecked() and screen.group.enabled
+    screen.set_angles_mode(False)
+    assert not screen.sync_button.isChecked() and not screen.group.enabled
 
 
 def test_rotation_failure_is_shown(app, qtbot, monkeypatch):
@@ -409,13 +443,16 @@ def _found_reference(app):
     return screen
 
 
-def test_sync_off_turns_only_active_current(app, qtbot):
+def test_sync_off_turns_only_one_photo_and_shift_its_angle(app, qtbot):
     screen = _found_reference(app)
     screen.sync_button.click()
     assert not screen.sync_button.isChecked()
-    app.press(Qt.Key_PageDown)
+    QTest.keyClick(screen, Qt.Key_PageDown, Qt.ShiftModifier)  # весь ракурс текущего окна, эталон не трогаем
     assert [view.rotation for view in screen.views[:2]] == [0, 90]
     saved(app, qtbot, {0: 90, 1: 90})
+    app.press(Qt.Key_PageDown)  # одно фото, остальные фото ракурса на месте
+    assert [view.rotation for view in screen.views[:2]] == [0, 180]
+    saved(app, qtbot, {0: 180, 1: 90})
 
 
 def test_sync_off_aligns_reference_in_memory_then_they_turn_together(app, qtbot):
@@ -425,9 +462,9 @@ def test_sync_off_aligns_reference_in_memory_then_they_turn_together(app, qtbot)
     screen.sync_button.click()
     screen._on_view_clicked(screen.views[0])
     assert screen.model.reference_active
-    app.press(Qt.Key_PageUp)  # эталон обратно, текущее окно не трогаем
+    app.press(Qt.Key_PageUp)  # одно фото эталона обратно, текущее окно не трогаем
     assert [view.rotation for view in screen.views[:2]] == [0, 90]
-    assert [item.rotation for item in screen.strip._items] == [0, 0]  # на ленте сейчас эталон: весь его ракурс
+    assert [item.rotation for item in screen.strip._items] == [0, 90]  # на ленте сейчас эталон: второе фото не тронуто
     saved(app, qtbot, {0: 90, 1: 90})  # в базу эталон не попал
     screen.sync_button.click()
     app.press(Qt.Key_PageDown)  # снова вместе, разница сохраняется
@@ -446,10 +483,13 @@ def test_sync_off_keeps_other_window_place_and_group_state(app):
     assert screen.views[1].state() == pytest.approx((6.0, 0.6, 0.3))
 
 
-def test_single_window_always_turns_with_reference(app):
+def test_single_window_turns_with_reference_only_with_sync(app):
     screen = _found_reference(app)
-    screen.sync_button.click()
     screen.set_layout(1)
     app.wait_shown()
+    assert screen.sync_button.isEnabled()  # и при одном окне: без неё не повернуть одно фото
     app.press(Qt.Key_PageDown)
-    assert screen.model.reference.rotation == 90
+    assert screen.model.reference.rotation == 90  # эталон появится в «мигалке» и должен совпасть
+    screen.sync_button.click()
+    app.press(Qt.Key_PageDown)
+    assert screen.model.reference.rotation == 90 and screen.active_view().rotation == 180

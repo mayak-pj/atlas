@@ -76,16 +76,27 @@ def _rotations(app):
     return {photo.rel_path: photo.rotation for photo in app.ctx.services.get("folders").photos(app.folder.id)}
 
 
-def test_page_key_leaves_differently_shot_photos_alone_and_shift_turns_one(mixed):
+def test_page_key_leaves_differently_shot_photos_alone_and_sync_off_turns_one(mixed):
     app = mixed
     app.wait_open()
     app.press(Qt.Key_PageDown)
     app.qtbot.waitUntil(lambda: _rotations(app)["1_1_A.jpg"] == 90, timeout=5000)
     app.qtbot.waitUntil(lambda: _rotations(app)["1_1_B.jpg"] == 90, timeout=5000)
     assert _rotations(app)["1_1_C.jpg"] == 0
-    QTest.keyClick(app.screen, Qt.Key_PageDown, Qt.ShiftModifier)
+    app.screen.sync_button.click()  # замечание с выезда 03.11: выключил «Синхронно» — поворачивается одно фото
+    app.press(Qt.Key_PageDown)
     app.qtbot.waitUntil(lambda: _rotations(app)["1_1_A.jpg"] == 180, timeout=5000)
     assert _rotations(app)["1_1_B.jpg"] == 90 and _rotations(app)["1_1_C.jpg"] == 0
+
+
+def test_turn_of_one_photo_does_not_wait_for_sizes(mixed):
+    app = mixed
+    app.wait_open()
+    screen = app.screen
+    screen.sync_button.click()
+    screen.expect_sizes()
+    app.press(Qt.Key_PageDown)
+    assert screen.model.photos[0].rotation == 90 and not screen.marks_status.text()
 
 
 def test_turn_pressed_before_sizes_arrive_is_applied_afterwards(mixed):

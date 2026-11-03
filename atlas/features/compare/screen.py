@@ -4,7 +4,7 @@ from __future__ import annotations
 from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
-    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from atlas.core import theme
@@ -35,7 +35,7 @@ MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен 
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_SHOW_UI = "Показать всё"
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
-HINT_ANGLES = "Колесо — зум окна · перетаскивание — сдвиг · двойной клик — вписать · стрелки — следующий SN · клик — активное окно"
+HINT_ANGLES = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — следующий SN · клик — активное окно"
 STRIP_SETTLE_MS = 150  # миниатюры — после остановки: при удержании стрелки чтение нужно текущему фото
 TEXT_NO_FOLDER = "Папка не открыта"
 TEXT_NO_PHOTOS = "В папке нет фото"
@@ -79,6 +79,11 @@ class SlotColumn(QVBoxLayout):
             self.changed()
 
 
+def _shift_held():
+    """Кнопку поворота нажали с Shift: тогда, как и с клавишей, весь ракурс окна."""
+    return bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
+
+
 def _key(text):
     sequence = QKeySequence(text)
     return sequence[0] if sequence.count() else 0
@@ -116,6 +121,8 @@ class CompareScreen(QWidget):
         self._angle_states = {}  # окно → (зум, x, y) в «Ракурсах»; у каждого окна своё
         self._compare_states = {}  # то же в «Сравнении»: при выключенной синхронности окна тоже стоят по-разному
         self._compare_group_state = FIT_STATE
+        self._angle_group_state = FIT_STATE
+        self._sync_by_mode = {False: True, True: False}  # «Синхронно» у каждого режима своя: стороны платы по месту не совпадают
         self._reference_note = ""  # подпись найденной папки: проект, дата
         self._reference_tag = TAG_REFERENCE
         self.setFocusPolicy(Qt.StrongFocus)  # стрелки и пробел приходят сюда, кнопки фокус не берут
@@ -284,7 +291,7 @@ class CompareScreen(QWidget):
         self.compare_mode_button.setChecked(True)
         row.addWidget(self.compare_mode_button)
         self.angles_mode_button = self._button("Ракурсы", lambda _=False: self.set_angles_mode(True), checkable=True)
-        self.angles_mode_button.setToolTip("Все стороны одного SN: листаются вместе, зум у каждого окна свой")
+        self.angles_mode_button.setToolTip("Все стороны одного SN: листаются вместе; зум и поворот вместе — кнопкой «Синхронно»")
         row.addWidget(self.angles_mode_button)
         row.addWidget(self._separator())
         self._compare_only = []  # в «Ракурсах» этого нет: окон столько, сколько ракурсов, эталона нет
@@ -313,19 +320,19 @@ class CompareScreen(QWidget):
         row.addWidget(self._button("Вписать", self.fit))  # первый ряд без значков: с ними он не помещается в окно шириной 1024
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
-        self.sync_button.setToolTip("Включено: зум, сдвиг и поворот у всех окон вместе. Выключено: у каждого окна свои")
+        self.sync_button.setToolTip(
+            "Включено: зум, сдвиг и поворот у всех окон вместе. Выключено: у каждого окна свои, поворот — одного фото")
         row.addWidget(self.sync_button)
-        self._compare_only.append(self.sync_button)
         row.addStretch(1)
         row = QHBoxLayout()
         row.setSpacing(6)
         rows.addLayout(row)
         keys = {delta: QKeySequence(key).toString() for key, delta in self._rotate_keys.items()}
         for delta, tip in ((-ROTATE_STEP, "Повернуть против часовой стрелки"), (ROTATE_STEP, "Повернуть по часовой стрелке")):
-            button = self._button("", lambda _=False, d=delta: self.rotate(d))
+            button = self._button("", lambda _=False, d=delta: self.rotate(d, whole_angle=_shift_held()))
             button.setProperty("role", "square")
             set_icon(button, "rotate-cw" if delta > 0 else "rotate-ccw", "text")
-            button.setToolTip("{} (клавиша {}; с Shift — только это фото)".format(tip, keys.get(delta, "")))
+            button.setToolTip("{} (клавиша {}; с Shift — весь ракурс этого окна)".format(tip, keys.get(delta, "")))
             if delta > 0:
                 self.rotate_right_button = button
             else:
@@ -592,7 +599,6 @@ class CompareScreen(QWidget):
         self.model.set_layout(count)
         for number, button in self._layout_buttons.items():
             button.setChecked(number == count)
-        self.sync_button.setEnabled(count > 1)
         self._apply_layout()
 
     def set_angles_mode(self, on):
@@ -612,6 +618,7 @@ class CompareScreen(QWidget):
                 self.angles.show_photo(self.model.active_index)
         else:
             self._angle_states = states
+            self._angle_group_state = self.group.state
             number = self.angles.active_photo()
             if number is not None:
                 self.model.go(number)
@@ -619,11 +626,15 @@ class CompareScreen(QWidget):
         for widget in self._compare_only:
             widget.setVisible(not on)
         self.hint.setText(HINT_ANGLES if on else HINT)
-        self.group.set_enabled(not on and self.sync_button.isChecked())
-        if not on:
-            self.group.set_state(*self._compare_group_state)
+        sync = self._sync_by_mode[on]
+        self.sync_button.blockSignals(True)
+        self.sync_button.setChecked(sync)
+        self.sync_button.blockSignals(False)
+        self.group.set_enabled(sync)
+        if sync:
+            self.group.set_state(*(self._angle_group_state if on else self._compare_group_state))
         self._apply_layout()
-        if on or not self.group.enabled:
+        if not sync:
             saved = self._angle_states if on else self._compare_states
             for view in self.views:
                 view.set_state(*saved.get(view, FIT_STATE))
@@ -646,6 +657,7 @@ class CompareScreen(QWidget):
         self.zoom_label.setText("{:.0f}%".format(zoom * 100))
 
     def _on_sync_toggled(self, checked):
+        self._sync_by_mode[self._angles_on] = bool(checked)
         self.group.set_enabled(checked)
 
     def _visible_views(self):
@@ -955,47 +967,59 @@ class CompareScreen(QWidget):
         if turns:
             self.marks_status.setText("")
             self._sync_extra()
-        for delta in turns:
-            self.rotate(delta)
+        for delta, whole_angle in turns:
+            self.rotate(delta, whole_angle)
 
-    def rotate_single(self, delta):
-        """С Shift: только фото активного окна, остальные не трогаем. Эталон чужой: его так не повернуть."""
-        if self._flicker is not None or not self.model.photos or self.model.reference_active:
+    def rotate(self, delta, whole_angle=False):
+        """Кнопка или клавиша поворота. Пока идёт «мигалка» — нельзя.
+
+        «Синхронно» включена — все окна вместе, у каждого весь его ракурс (фото, стоящие так же, как в окне).
+        Выключена — одно фото активного окна: так исправляют неверно повёрнутое. whole_angle (Shift) — весь ракурс
+        активного окна, остальные окна не трогаются: так выравнивают окна между собой или один ракурс во всех SN.
+        """
+        if self._flicker is not None or not self.model.photos:
             return
-        number = self._marked_number()
-        if number is None:
+        if self._sizes_pending and (whole_angle or self.sync_button.isChecked()):
+            self._deferred_turns.append((delta, whole_angle))  # одному фото размеры не нужны
+            self.marks_status.setText(TEXT_SIZES_PENDING)
+            self._sync_extra()
             return
-        changed = self.model.rotate_one(number, delta)
+        if whole_angle:
+            self._rotate_angle(delta) if self._angles_on else self._rotate_active(delta)
+        elif not self.sync_button.isChecked():
+            self._rotate_one(delta)
+        elif self._angles_on:
+            self._rotate_angle_windows(delta)
+        else:
+            self._rotate_windows(delta)
+
+    def _rotate_one(self, delta):
+        """Только фото активного окна. Эталон чужой: поворачивается в памяти."""
+        if self.model.reference_active:
+            changed = self.model.rotate_reference_one(delta)
+        else:
+            number = self._marked_number()
+            if number is None:
+                return  # в «Ракурсах» у SN нет этого ракурса
+            changed = self.model.rotate_one(number, delta)
         if self._angles_on:
-            self.active_view().set_rotation(changed[number])
-            photos = self.model.photos
-            self.strip.set_rotations([photos[item.first_photo].rotation for item in self.angles.plan.sets])
-            self._save_rotations(changed)
+            self.active_view().set_rotation(self.model.photos[number].rotation)
+            self._after_angle_rotate(changed)
             return
         for view, rotation in self._window_rotations():
             view.set_rotation(rotation)
         self._after_rotate(changed)
 
-    def rotate(self, delta):
-        """Кнопка или клавиша, действует на фото ракурса, стоящие так же, как текущее. Пока идёт «мигалка» — нельзя.
-
-        «Сравнение»: при включённой синхронности все окна вместе, при выключенной — только активное, чтобы выровнять окна.
-        При одном фото всегда вместе: эталон появится в «мигалке» и должен совпасть. «Ракурсы» — только активное.
-        """
-        if self._flicker is not None:
-            return
-        if self._sizes_pending:
-            self._deferred_turns.append(delta)
-            self.marks_status.setText(TEXT_SIZES_PENDING)
-            self._sync_extra()
-            return
-        if self._angles_on:
-            self._rotate_angle(delta)
-        elif self.model.photos:
-            if self.model.count == 1 or self.sync_button.isChecked():
-                self._rotate_windows(delta)
-            else:
-                self._rotate_active(delta)
+    def _rotate_angle_windows(self, delta):
+        """«Ракурсы» с синхронностью: все окна вместе, у каждого весь его ракурс. Место — общее, как в «Сравнении»."""
+        windows = [(self.views[window], self.angles.photo_in(window)) for window in range(len(self.angles.plan.views))]
+        changed = {}
+        for _, number in windows:
+            if number is not None and number not in changed:
+                changed.update(self.model.rotate_angle(number, delta, self._name_pattern))
+        photos = self.model.photos
+        self.group.rotate(delta, [(view, photos[number].rotation) for view, number in windows if number is not None])
+        self._after_angle_rotate(changed)
 
     def _rotate_windows(self, delta):
         model = self.model
@@ -1033,6 +1057,9 @@ class CompareScreen(QWidget):
             return  # у SN нет этого ракурса
         changed = self.model.rotate_angle(number, delta, self._name_pattern)
         self.active_view().set_rotation(changed[number])
+        self._after_angle_rotate(changed)
+
+    def _after_angle_rotate(self, changed):
         photos = self.model.photos
         self.strip.set_rotations([photos[item.first_photo].rotation for item in self.angles.plan.sets])
         self._save_rotations(changed)
@@ -1112,10 +1139,7 @@ class CompareScreen(QWidget):
                 self.toggle_interface()
         elif key in self._rotate_keys:
             if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
-                if event.modifiers() & Qt.ShiftModifier:
-                    self.rotate_single(self._rotate_keys[key])
-                else:
-                    self.rotate(self._rotate_keys[key])
+                self.rotate(self._rotate_keys[key], whole_angle=bool(event.modifiers() & Qt.ShiftModifier))
         elif key in self._mark_by_key:
             if not event.isAutoRepeat():
                 self.request_mark(self._mark_by_key[key])

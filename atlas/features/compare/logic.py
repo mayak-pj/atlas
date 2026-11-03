@@ -362,6 +362,15 @@ class CompareModel:
         self.photos[index] = replace(self.photos[index], rotation=rotation)
         return {index: rotation}
 
+    def rotate_reference_one(self, delta):
+        """Только фото эталона, в памяти: это чужие фото, в базу не идёт."""
+        if self.reference is None:
+            return {}
+        self.reference = replace(self.reference, rotation=next_rotation(self.reference.rotation, delta))
+        if self.ref_photos:
+            self.ref_photos[self.ref_index] = self.reference
+        return {}
+
     def rotate_windows(self, delta, pattern=None):
         """«Сравнение»: всё вместе. Вернёт {номер фото папки: поворот} — это запишется в базу.
 

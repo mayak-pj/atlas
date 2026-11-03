@@ -48,7 +48,8 @@ def test_card_is_checked_and_cleaned():
     card = logic.checked(CardData(logic.KIND_TYPE, 2, "  третий   чип \n NAND ", " 512-XS-B "))
     assert card == CardData("type", 2, "третий чип NAND", "512-XS-B")
     assert logic.checked(CardData("defect", 5, "скол", "")).type_no is None  # у дефекта номера нет
-    for bad in (CardData("type", 2, "   "), CardData("type", None, "x"), CardData("type", 0, "x"), CardData("type", 100, "x"), CardData("?", 1, "x")):
+    assert logic.checked(CardData("type", 2, "   ")).description == ""  # без описания можно
+    for bad in (CardData("type", None, "x"), CardData("type", 0, "x"), CardData("type", 100, "x"), CardData("?", 1, "x")):
         with pytest.raises(CardError):
             logic.checked(bad)
 
@@ -175,7 +176,7 @@ def test_unreadable_photo_and_missing_network_folder_are_reported(db, tmp_path):
     local.save(request(make_jpeg(tmp_path / "a.jpg")))
     assert (tmp_path / "своя" / "типы").is_dir()
     with pytest.raises(CardError):
-        TypeStore(Repo(db), root, COLORS).save(request(make_jpeg(tmp_path / "a.jpg"), CardData("type", 1, "")))
+        TypeStore(Repo(db), root, COLORS).save(request(make_jpeg(tmp_path / "a.jpg"), CardData("type", 0, "")))
     assert Repo(db).numbers(7) == [2]
 
 
@@ -257,12 +258,12 @@ def test_saving_error_is_shown_and_button_stays_usable(app, tmp_path):
 
 
 # --- окно карточки ----------------------------------------------------------------
-def test_dialog_needs_a_description_and_defect_has_no_number(qtbot):
+def test_dialog_saves_without_description_and_defect_has_no_number(qtbot):
     from atlas.features.type_db.dialog import CardDialog
     dialog = CardDialog("A › Орион-24 › N15 › SSD XS-2280", 3, "512-XS-A", "Сохранится фото")
     qtbot.addWidget(dialog)
     assert dialog.number.value() == 3 and dialog.article.text() == "512-XS-A"
-    assert not dialog.save_button.isEnabled()
+    assert dialog.save_button.isEnabled()  # сразу, без описания
     dialog.description.setPlainText("  третий чип ")
     card = dialog.card()  # поля, а не сам объект: другой тест выгружает модули функций, и класс может оказаться новой копией
     assert dialog.save_button.isEnabled()

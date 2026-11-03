@@ -61,7 +61,7 @@ class CardDialog(QDialog):
 
     def _refresh(self):
         self.number.setEnabled(self.kind.currentData() == logic.KIND_TYPE)
-        self.save_button.setEnabled(bool(self.description.toPlainText().strip()))
+        self.save_button.setEnabled(True)  # отличие необязательно (просьба пользователя 03.11.2026)
 
     def card(self):
         kind = self.kind.currentData()

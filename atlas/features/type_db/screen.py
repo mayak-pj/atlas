@@ -306,7 +306,7 @@ class DetailPanel(QFrame):
         for label in (self.pill, self.status):
             label.style().unpolish(label)
             label.style().polish(label)
-        self.description.setText(entry.description)
+        self.description.setText(entry.description or "—")
         self.article.setText(entry.article or "—")
         self.author.setText(", ".join(part for part in (entry.author, entry.date_text) if part))
         self.device_caption.setText("Все типы устройства «{}»".format(entry.device))

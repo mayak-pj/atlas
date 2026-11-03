@@ -33,9 +33,7 @@ def checked(card):
     """Карточка в чистом виде или CardError."""
     if card.kind not in KINDS:
         raise CardError("Выберите: тип или дефект")
-    description = " ".join(str(card.description).split())
-    if not description:
-        raise CardError("Опишите отличие")
+    description = " ".join(str(card.description or "").split())  # необязательно: добавляют сразу, описать можно потом
     type_no = card.type_no
     if card.kind == KIND_TYPE:
         if type_no is None or not 1 <= int(type_no) <= MAX_TYPE_NO:

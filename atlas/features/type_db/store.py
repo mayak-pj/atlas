@@ -75,6 +75,22 @@ class TypeStore:
                 raise
             raise StoreError("Не удалось сохранить в базу типов: {}".format(exc)) from exc
 
+    def delete(self, type_id):
+        """Запись — из базы, затем её картинки с диска. → TypeRecord или None (уже удалили на другом ПК).
+
+        Картинку, которую не удалось стереть (сеть, файл открыт), оставляем: запись из базы уже ушла, ничего не сломано.
+        """
+        record = self.repo.delete(type_id)
+        if record is None:
+            return None
+        for rel in (record.photo_rel, record.crop_rel):
+            if rel:
+                try:
+                    os.remove(str(self.root / rel))
+                except OSError:
+                    pass
+        return record
+
     def _mkdir(self, path):
         try:
             path.mkdir(parents=True, exist_ok=True)

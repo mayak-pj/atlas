@@ -1,4 +1,7 @@
-"""Вкладка «База типов»: поиск, фильтры, сетка карточек, карточка типа справа. Данные приходят готовыми (`set_entries`)."""
+"""Вкладка «БД»: внутри «База типов» и «Замечания», общий поиск, фильтры, сетка карточек, карточка типа справа.
+
+Данные приходят готовыми (`set_entries`): записи таблицы types и замечания — отметки фото из «Сравнения».
+"""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -6,7 +9,7 @@ from dataclasses import replace
 from PyQt5.QtCore import QEvent, QRectF, Qt, pyqtSignal
 from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QTabBar, QVBoxLayout, QWidget,
 )
 
 from atlas.core import theme
@@ -23,7 +26,13 @@ GRID_SPACING = 12
 THUMB_HEIGHT = 240
 DETAIL_PHOTO_HEIGHT = 260
 DETAIL_CROP_HEIGHT = 150
-PLACEHOLDER = "Поиск по названию, артикулу, устройству, описанию…"
+PLACEHOLDER = "Поиск сразу по типам и замечаниям: деталь, артикул, устройство, SN, описание…"
+TEXT_TAB_TYPES = "База типов"
+TEXT_TAB_REMARKS = "Замечания"
+TEXT_SEARCH_BOTH = "Ищу в обеих базах"
+TEXT_EMPTY_REMARKS = "Замечаний пока нет: они появляются сами, когда фото отмечают «Замечание» на экране сравнения"
+TEXT_KIND_NONE = "Вид не указан"
+TEXT_DELETE = "Удалить из БД насовсем"
 TEXT_ALL = "Все проекты"
 TEXT_ARCHIVE_NOTE = "Архив — всегда внизу"
 TEXT_EMPTY = "В базе типов пока ничего нет: добавьте тип кнопкой «+ В базу типов» на экране сравнения"
@@ -138,6 +147,7 @@ class ThumbView(QWidget):
 class TypeCard(QFrame):
     clicked = pyqtSignal(int)
     archive_clicked = pyqtSignal(int)
+    delete_clicked = pyqtSignal(int)
     animation_done = pyqtSignal(int)
 
     def __init__(self, entry, cache, root, selected, parent=None):
@@ -151,7 +161,7 @@ class TypeCard(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self.thumb = ThumbView(cache, THUMB_HEIGHT)
-        self.thumb.set_path(root / entry.photo_rel)
+        self.thumb.set_path(root / (entry.crop_rel or entry.photo_rel))  # вырезка, если есть: так виден сам тип
         self.thumb.show_frame(stamp_math.final_frame(entry.archived))
         layout.addWidget(self.thumb)
         self._layout = layout
@@ -168,6 +178,13 @@ class TypeCard(QFrame):
         self.pill.setProperty("role", "pill")
         self.pill.setProperty("tone", "muted" if entry.archived else entry.tone)
         head.addWidget(self.pill)
+        self.delete_button = QPushButton("")
+        self.delete_button.setProperty("role", "square")
+        set_icon(self.delete_button, "x", "text_dim")
+        self.delete_button.setToolTip(TEXT_DELETE)
+        self.delete_button.setFocusPolicy(Qt.NoFocus)
+        self.delete_button.clicked.connect(lambda _=False: self.delete_clicked.emit(self.entry.id))
+        head.addWidget(self.delete_button)
         body.addLayout(head)
         self.description = QLabel(logic.short_text(entry.description))
         self.description.setWordWrap(True)
@@ -215,6 +232,49 @@ class TypeCard(QFrame):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.entry.id)
         super().mousePressEvent(event)
+
+
+class RemarkCard(QFrame):
+    """Замечание — отметка фото в «Сравнении»: само фото из папки проверки, деталь, вид, SN, кто и когда."""
+
+    def __init__(self, entry, cache, parent=None):
+        super().__init__(parent)
+        self.entry = entry
+        self.setProperty("role", "type-card")
+        self.setProperty("on", False)
+        self.setProperty("archived", False)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.thumb = ThumbView(cache, THUMB_HEIGHT)
+        self.thumb.set_path(entry.path)
+        layout.addWidget(self.thumb)
+        body = QVBoxLayout()
+        body.setContentsMargins(12, 10, 12, 10)
+        body.setSpacing(6)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        self.name = QLabel(entry.part_name)
+        self.name.setProperty("role", "folder-title")
+        head.addWidget(self.name, 1)
+        self.pill = QLabel(entry.pill)
+        self.pill.setProperty("role", "pill")
+        self.pill.setProperty("tone", entry.tone)
+        head.addWidget(self.pill)
+        body.addLayout(head)
+        self.description = QLabel(entry.defect_kind or TEXT_KIND_NONE)
+        self.description.setWordWrap(True)
+        self.description.setProperty("role", "dim")
+        body.addWidget(self.description)
+        meta = " · ".join(part for part in ("SN " + entry.sn if entry.sn else "", entry.date_text, entry.author) if part)
+        self.meta = QLabel(meta)
+        self.meta.setProperty("role", "mono")
+        body.addWidget(self.meta)
+        layout.addLayout(body)
+        self.setToolTip("{} › {} › {}\n{}".format(entry.project, entry.device, entry.part_name, entry.path))
+
+    def stop_animation(self):
+        pass
 
 
 class DetailPanel(QFrame):
@@ -328,6 +388,7 @@ def _escape(text):
 class TypeDbScreen(QWidget):
     shown = pyqtSignal()  # вкладку открыли: данные могли измениться у коллег
     archive_toggled = pyqtSignal(int, bool)  # запись, True — в архив / False — вернуть: записать в базу
+    delete_requested = pyqtSignal(int)  # крестик на карточке: спросить и удалить
 
     def __init__(self, cache, root, kinds, animations=True, parent=None):
         super().__init__(parent)
@@ -337,8 +398,11 @@ class TypeDbScreen(QWidget):
         self._cache = cache
         self._root = root
         self._entries = []
+        self._remarks = []
+        self._tab = logic.TAB_TYPES
         self._visible = []
         self._cards = {}
+        self._remark_cards = {}
         self._selected = None
         self._kind = None
         self._device_only = False
@@ -355,6 +419,22 @@ class TypeDbScreen(QWidget):
         search_row = QHBoxLayout()
         search_row.addWidget(self.search, 1)
         search_row.addWidget(self.found)
+
+        # Две базы внутри «БД»: по умолчанию «База типов». С запросом вкладки прячутся: ищется сразу в обеих
+        self.tabs = QTabBar()
+        self.tabs.addTab(TEXT_TAB_TYPES)
+        self.tabs.addTab(TEXT_TAB_REMARKS)
+        self.tabs.setDrawBase(False)
+        self.tabs.setExpanding(False)
+        self.tabs.setFocusPolicy(Qt.NoFocus)
+        self.tabs.currentChanged.connect(self._on_tab)
+        self.both_note = QLabel(TEXT_SEARCH_BOTH)
+        self.both_note.setProperty("role", "muted")
+        self.both_note.hide()
+        tabs_row = QHBoxLayout()
+        tabs_row.addWidget(self.tabs)
+        tabs_row.addWidget(self.both_note)
+        tabs_row.addStretch(1)
 
         chips = QHBoxLayout()
         chips.setSpacing(8)
@@ -392,6 +472,7 @@ class TypeDbScreen(QWidget):
         middle = QVBoxLayout()
         middle.setSpacing(12)
         middle.addLayout(search_row)
+        middle.addLayout(tabs_row)
         middle.addLayout(chips)
         middle.addWidget(self.message)
         middle.addWidget(self.scroll, 1)
@@ -406,14 +487,15 @@ class TypeDbScreen(QWidget):
         self._render()
 
     # --- данные -----------------------------------------------------------------
-    def set_entries(self, entries):
-        entries = list(entries)
+    def set_entries(self, entries, remarks=()):
+        entries, remarks = list(entries), list(remarks)
         if self._animating:
-            self._pending = entries  # карточка играет анимацию: перестройка её оборвала бы
+            self._pending = (entries, remarks)  # карточка играет анимацию: перестройка её оборвала бы
             return
-        if self._loaded and entries == self._entries:
+        if self._loaded and entries == self._entries and remarks == self._remarks:
             return  # ничего не изменилось: не перестраиваем сетку и не мигаем при каждом открытии вкладки
         self._entries = entries
+        self._remarks = remarks
         self._loaded = True
         self._drop_cards()  # записи могли измениться: карточки строим заново
         if self._selected is not None and self._entry(self._selected) is None:
@@ -421,11 +503,12 @@ class TypeDbScreen(QWidget):
         self._refilter()
 
     def _drop_cards(self):
-        for card in self._cards.values():
+        for card in list(self._cards.values()) + list(self._remark_cards.values()):
             card.stop_animation()
             card.setParent(None)
             card.deleteLater()
         self._cards = {}
+        self._remark_cards = {}
 
     # --- архив ----------------------------------------------------------------------
     def apply_archive(self, entry_id, archived, archived_at):
@@ -467,7 +550,7 @@ class TypeDbScreen(QWidget):
         pending, self._pending = self._pending, None
         self._drop_cards()
         if pending is not None:
-            self._entries = pending
+            self._entries, self._remarks = pending
             if self._selected is not None and self._entry(self._selected) is None:
                 self._selected = None
         self._refilter()
@@ -482,7 +565,27 @@ class TypeDbScreen(QWidget):
 
     @property
     def visible_ids(self):
-        return [entry.id for entry in self._visible]
+        """Записи types в порядке выдачи (замечания — отметки фото — сюда не входят)."""
+        return [entry.id for entry in self._visible if not logic.is_remark(entry)]
+
+    @property
+    def visible(self):
+        return list(self._visible)
+
+    @property
+    def tab(self):
+        return self._tab
+
+    def set_tab(self, tab):
+        self.tabs.setCurrentIndex(0 if tab == logic.TAB_TYPES else 1)
+
+    def _on_tab(self, index):
+        self._tab = logic.TAB_TYPES if index == 0 else logic.TAB_REMARKS
+        self._refilter()
+
+    def entry(self, entry_id):
+        """Запись types по id или None."""
+        return self._entry(entry_id)
 
     def select(self, entry_id):
         self._selected = entry_id if self._entry(entry_id) is not None else None
@@ -527,37 +630,54 @@ class TypeDbScreen(QWidget):
     def _refilter(self):
         entry = self._entry(self._selected)
         device_id = entry.device_id if self._device_only and entry is not None else None
-        self._visible = logic.select(self._entries, self.search.text(), self._kind, device_id)
+        self._visible = logic.select_db(self._entries, self._remarks, self.search.text(), self._kind, device_id, self._tab)
+        searching = bool(self.search.text().strip())
+        self.tabs.setVisible(not searching)
+        self.both_note.setVisible(searching)
         self._render()
 
     # --- показ ------------------------------------------------------------------
     def _render(self):
         self._update_device_chip()
         shown = self._visible[:MAX_CARDS]
-        keep = {entry.id for entry in shown}
+        keep = {entry.id for entry in shown if not logic.is_remark(entry)}
+        keep_remarks = {entry.photo_id for entry in shown if logic.is_remark(entry)}
         while self.grid.count():
             self.grid.takeAt(0)
         for card_id, card in self._cards.items():
             if card_id not in keep:
                 card.hide()
+        for photo_id, card in self._remark_cards.items():
+            if photo_id not in keep_remarks:
+                card.hide()
         for entry in shown:
+            if logic.is_remark(entry):
+                if entry.photo_id not in self._remark_cards:
+                    card = RemarkCard(entry, self._cache, self.grid_holder)
+                    card.thumb.open_requested.connect(self.open_photo)
+                    self._remark_cards[entry.photo_id] = card
+                continue
             card = self._cards.get(entry.id)
             if card is None:
                 card = TypeCard(entry, self._cache, self._root, entry.id == self._selected, self.grid_holder)
                 card.clicked.connect(self.select)
                 card.thumb.open_requested.connect(self.open_photo)
                 card.archive_clicked.connect(self._on_archive_clicked)
+                card.delete_clicked.connect(self.delete_requested.emit)
                 card.animation_done.connect(self._on_animation_done)
                 self._cards[entry.id] = card
         self._place(shown)
-        if not self._entries:
+        searching = bool(self.search.text().strip())
+        if not searching and self._tab == logic.TAB_REMARKS and not self._visible and self._loaded and not self._kind:
+            self.message.setText(TEXT_EMPTY_REMARKS)
+        elif not self._entries and not self._remarks:
             self.message.setText(TEXT_EMPTY if self._loaded else "")
         elif not self._visible:
             self.message.setText(TEXT_NOTHING)
         else:
             self.message.setText("")
         self.message.setVisible(bool(self.message.text()))
-        self.found.setText(_found_text(len(self._visible), len(shown)) if self._entries else "")
+        self.found.setText(_found_text(len(self._visible), len(shown)) if self._entries or self._remarks else "")
         self.detail.show_entry(self._entry(self._selected), self._entries)
 
     def open_photo(self, path):
@@ -570,7 +690,7 @@ class TypeDbScreen(QWidget):
         columns = max(1, (width + GRID_SPACING) // (CARD_MIN_WIDTH + GRID_SPACING))
         self._columns = columns
         for number, entry in enumerate(shown):
-            card = self._cards[entry.id]
+            card = self._remark_cards[entry.photo_id] if logic.is_remark(entry) else self._cards[entry.id]
             self.grid.addWidget(card, number // columns, number % columns)
             card.show()
         for column in range(columns):

@@ -82,6 +82,17 @@ class Repo:
 
         return self.db.write(work)
 
+    def delete(self, type_id):
+        """Удалить запись насовсем → TypeRecord, который был (файлы картинок убирает вызывающий), или None."""
+        def work(conn):
+            row = conn.execute("SELECT {} FROM types WHERE id = ?".format(_COLUMNS), (type_id,)).fetchone()
+            if row is None:
+                return None
+            conn.execute("DELETE FROM types WHERE id = ?", (type_id,))
+            return TypeRecord(*row)
+
+        return self.db.write(work)
+
     def all(self):
         """Все записи, новые первыми. Базу типов читаем целиком: записей сотни, поиск идёт в памяти."""
         def work(conn):

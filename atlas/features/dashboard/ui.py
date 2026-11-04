@@ -13,7 +13,7 @@ log = logging.getLogger("atlas.dashboard")
 
 STOP_WAIT_S = 3.0
 RELOAD_MS = 800
-RELOAD_EVENTS = ("folder.done", "photo.marked", "type.added", "type.archived", "type.restored")
+RELOAD_EVENTS = ("folder.done", "photo.marked", "type.added", "type.archived", "type.restored", "type.deleted")
 
 
 class _Signals(QObject):

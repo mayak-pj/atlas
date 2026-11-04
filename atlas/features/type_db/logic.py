@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -202,6 +203,102 @@ def select(entries, query="", project_kind=None, device_id=None):
     found.sort(key=lambda entry: (entry.created_at, entry.id), reverse=True)
     found.sort(key=lambda entry: entry.archived)  # устойчивая: порядок «новые первыми» внутри групп сохранится
     return found
+
+
+# --- замечания: отметки фото из «Сравнения» (БД, 04.11.2026) ---------------------------
+TAB_TYPES = "types"
+TAB_REMARKS = "remarks"
+TEXT_REMARK = "Замечание"
+
+
+@dataclass(frozen=True)
+class RemarkEntry:
+    """Фото, отмеченное «Замечание» (или старым «Дефектом») в «Сравнении». Хранится в отметке фото, не в таблице types."""
+
+    photo_id: int
+    folder_id: int
+    part_id: int
+    device_id: int
+    project_kind: str
+    project: str
+    device: str
+    part_name: str
+    article: str
+    sn: str
+    defect_kind: str
+    path: str  # полный путь фото: папка + путь внутри неё
+    author: str
+    created_at: str  # когда отметили
+
+    archived = False
+    kind = "remark"
+
+    @property
+    def label(self):
+        return TEXT_REMARK
+
+    @property
+    def pill(self):
+        return TEXT_REMARK.upper()
+
+    @property
+    def tone(self):
+        return "remark"
+
+    @property
+    def date_text(self):
+        day = str(self.created_at)[:10].split("-")
+        return ".".join(reversed(day)) if len(day) == 3 else str(self.created_at)
+
+
+def remark_entry_of(marked, part, folder_path, author):
+    """MarkedPhoto ядра + Part + путь папки + имя автора → RemarkEntry."""
+    path = str(Path(str(folder_path)) / Path(*str(marked.rel_path).split("/")))
+    return RemarkEntry(
+        marked.photo_id, marked.folder_id, marked.part_id, part.device_id, part.kind, part.project, part.device, part.name,
+        part.article or "", marked.sn or "", marked.defect_kind or "", path, author or "", marked.marked_at,
+    )
+
+
+def _remark_search_text(entry):
+    return normalize_name(" ".join((entry.part_name, entry.article, entry.device, entry.project, entry.sn,
+                                    entry.defect_kind, TEXT_REMARK)))
+
+
+def is_remark(item):
+    """Замечание — отметка фото, а не запись types. По полю, а не по классу: тесты перезагружают модули функций."""
+    return getattr(item, "kind", None) == RemarkEntry.kind
+
+
+def _db_text(item):
+    return _remark_search_text(item) if is_remark(item) else search_text(item)
+
+
+def select_db(entries, remarks, query="", project_kind=None, device_id=None, tab=TAB_TYPES):
+    """Выдача вкладки «БД».
+
+    Без запроса — то, что на вкладке: «База типов» (живые, потом архив) или «Замечания» (карточки «дефект» из
+    «+ В базу» и отметки фото вместе, новые первыми). С запросом — обе базы сразу, чтобы не искать деталь дважды:
+    сначала типы, потом архивные типы, потом замечания по дате.
+    """
+    words = _words(query)
+
+    def fits(item):
+        if project_kind is not None and item.project_kind != project_kind:
+            return False
+        if device_id is not None and item.device_id != device_id:
+            return False
+        if not words:
+            return True
+        text = _db_text(item)
+        return "".join(words) in text or all(word in text for word in words)
+
+    types = select([item for item in entries if item.kind == KIND_TYPE and fits(item)])
+    problems = [item for item in entries if item.kind != KIND_TYPE and fits(item)] + [item for item in remarks if fits(item)]
+    problems.sort(key=lambda item: str(item.created_at), reverse=True)
+    if words:
+        return types + problems
+    return types if tab == TAB_TYPES else problems
 
 
 def device_summary(entries, device_id):

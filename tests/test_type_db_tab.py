@@ -252,7 +252,7 @@ def _add(app):
 
 def test_tab_exists_and_shows_a_card_added_from_compare(app):
     screen = app.type_db.screen
-    assert "База типов" in app.window.tab_titles()
+    assert "БД" in app.window.tab_titles() and screen.tab == logic.TAB_TYPES  # «БД», внутри по умолчанию «База типов»
     app.qtbot.waitUntil(lambda: "В базу типов" in screen.message.text(), timeout=5000)
     _add(app)
     app.qtbot.waitUntil(lambda: len(screen.visible_ids) == 1, timeout=5000)

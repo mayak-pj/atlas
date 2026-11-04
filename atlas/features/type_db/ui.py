@@ -23,6 +23,7 @@ PANEL_KEY = "type_db"
 EVENT_TYPE_ADDED = "type.added"
 EVENT_TYPE_ARCHIVED = "type.archived"
 EVENT_TYPE_RESTORED = "type.restored"
+EVENT_TYPE_DELETED = "type.deleted"
 MESSAGE_MS = 15000
 STOP_WAIT_S = 5.0  # запись картинок на сетевой диск; дольше закрытие программы не держим
 DEFAULT_DIR = "var/type_db"  # TODO(OPEN_ITEMS №12): настоящая папка на сетевом диске
@@ -37,10 +38,15 @@ TEXT_SAVED = "Добавлено в базу типов: {}"
 TEXT_ARCHIVE_FAILED = "Не удалось изменить архив: база недоступна, попробуйте ещё раз"
 TEXT_ARCHIVED = "В архиве: {}"
 TEXT_RESTORED = "Возвращено из архива: {}"
+TEXT_DELETED = "Удалено из БД: {}"
+TEXT_DELETE_FAILED = "Не удалось удалить: база недоступна, попробуйте ещё раз"
+TEXT_DELETE_ASK = "Удалить «{}» из БД насовсем? Фото карточки тоже удалятся. Вернуть будет нельзя (для этого есть архив)."
 
 
 class _Signals(QObject):
-    loaded = pyqtSignal(object)  # [Entry] или None, если база недоступна
+    loaded = pyqtSignal(object)  # ([Entry], [RemarkEntry]) или None, если база недоступна
+    deleted = pyqtSignal(int, object)  # id записи, TypeRecord или None (уже удалена)
+    delete_failed = pyqtSignal(int)
     archived = pyqtSignal(int, bool, object, int)  # запись, в архиве ли, время из базы, деталь
     archive_failed = pyqtSignal(int)
     prepared = pyqtSignal(object)  # _Draft
@@ -79,6 +85,8 @@ class TypeDbFeature(Feature):
         self.signals.prepared.connect(self._on_prepared)
         self.signals.saved.connect(self._on_saved)
         self.signals.failed.connect(self._on_failed)
+        self.signals.deleted.connect(self._on_deleted)
+        self.signals.delete_failed.connect(self._on_delete_failed)
         data = self.ctx.paths.data
         self._pattern = load_pattern(data)
         self.repo = Repo(self.ctx.db)
@@ -108,6 +116,7 @@ class TypeDbFeature(Feature):
         self.screen = TypeDbScreen(cache, self._root, kinds, animations=bool(self.ctx.config.get("ui.animations", True)))
         self.screen.shown.connect(self.refresh)
         self.screen.archive_toggled.connect(self._on_archive_toggled)
+        self.screen.delete_requested.connect(self._on_delete_requested)
         self.refresh()
         return self.screen
 
@@ -163,6 +172,38 @@ class TypeDbFeature(Feature):
         self.ctx.bus.publish(EVENT_TYPE_ARCHIVED if archived else EVENT_TYPE_RESTORED, {"type_id": type_id, "part_id": part_id})
         self.refresh()
 
+    # --- удаление (крестик на карточке) ---------------------------------------------------
+    def _on_delete_requested(self, type_id):
+        entry = self.screen.entry(type_id) if self.screen is not None else None
+        if entry is None or not self.ask_delete(entry):
+            return
+        self._run(self._delete_work, type_id)
+
+    def ask_delete(self, entry):
+        """Подтверждение. Подменяется в тестах."""
+        from PyQt5.QtWidgets import QMessageBox
+
+        text = TEXT_DELETE_ASK.format("{}, {}".format(entry.part_name, entry.label))
+        return QMessageBox.question(self.screen, "Atlas", text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
+
+    def _delete_work(self, type_id):
+        try:
+            record = self.store.delete(type_id)
+        except Exception:  # нет сети, база занята
+            log.exception("Не удалось удалить запись %s", type_id)
+            self.signals.delete_failed.emit(type_id)
+            return
+        self.signals.deleted.emit(type_id, record)
+
+    def _on_deleted(self, type_id, record):
+        if record is not None:
+            self.ctx.bus.publish(EVENT_TYPE_DELETED, {"type_id": type_id, "part_id": record.part_id})
+            self._say(TEXT_DELETED.format(logic.label(record.kind, record.type_no)))
+        self.refresh()
+
+    def _on_delete_failed(self, type_id):
+        self._say(TEXT_DELETE_FAILED)
+
     def _on_archive_failed(self, type_id):
         if self.screen is not None:
             self.screen.archive_failed(type_id)
@@ -184,11 +225,30 @@ class TypeDbFeature(Feature):
 
     def _read_for_screen(self):
         try:
-            entries = self._read()
+            entries = (self._read(), self._read_remarks())
         except Exception as exc:  # нет сети, база занята: остаётся прежний список
             log.warning("Не удалось прочитать базу типов: %s", exc)
             entries = None
         self.signals.loaded.emit(entries)
+
+    def _read_remarks(self):
+        """Все замечания с фото — отметки в «Сравнении», свежие первыми. Своей таблицы нет: это отметки фото ядра."""
+        services = self.ctx.services
+        parts = {part.id: part for part in services.get("parts").all()}
+        if not parts:
+            return []
+        folders = services.get("folders")
+        names = {user.id: user.name for user, _ in services.get("users").all()}
+        paths = {}
+        result = []
+        for marked in folders.problem_marks(list(parts)):
+            if marked.folder_id not in paths:
+                folder = folders.get(marked.folder_id)
+                paths[marked.folder_id] = folder.path if folder is not None else None
+            part, folder_path = parts.get(marked.part_id), paths[marked.folder_id]
+            if part is not None and folder_path is not None:
+                result.append(logic.remark_entry_of(marked, part, folder_path, names.get(marked.marked_by)))
+        return result
 
     def _read(self):
         services = self.ctx.services
@@ -211,7 +271,7 @@ class TypeDbFeature(Feature):
         if entries is None:
             self.screen.show_failure()
         else:
-            self.screen.set_entries(entries)
+            self.screen.set_entries(*entries)
         if self._reload_again:
             self._reload_again = False
             self.refresh()

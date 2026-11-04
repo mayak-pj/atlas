@@ -329,3 +329,43 @@ def test_angle_button_warns_when_folder_has_no_such_angle(tmp_path, qtbot):
         assert app.screen.marks_status.text() == ""
     finally:
         app.stop()
+
+
+# --- рядом на диске, когда в Atlas нет (для тестов, 04.11.2026) ------------------------------
+def test_reference_found_next_to_folder_on_disk_when_not_in_atlas(app):
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 2, names=["э1.jpg", "э2.jpg"])
+    _photos(app.path.parent / "Другая деталь", 1, names=["д.jpg"])  # не та деталь — не подходит
+    _find(app)
+    screen = app.screen
+    assert screen.model.has_reference_folder and screen.model.reference_window
+    assert [photo.name for photo in screen.model.ref_photos] == ["э1.jpg", "э2.jpg"]
+    assert all(photo.id is None for photo in screen.model.ref_photos)  # в Atlas не добавлена
+    assert "на диске" in app.window.statusBar().currentMessage()
+    assert app.ctx.services.get("folders").latest_for_part(PART, exclude_folder_id=app.folder.id) is None  # не добавлена
+
+
+def test_disk_search_can_be_turned_off_and_atlas_wins(app):
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    app.ctx.config.app["compare"]["disk_search"] = False
+    _find(app)
+    assert not app.screen.model.has_reference_folder
+    app.ctx.config.app["compare"]["disk_search"] = True
+    _add_folder(app, "A", "Орион-24", "N15", "2026-10-30", ["в базе.jpg"])
+    _find(app)
+    assert [photo.name for photo in app.screen.model.ref_photos] == ["в базе.jpg"]  # сначала Atlas, диск — только если нет
+
+
+def test_disk_candidates_prefer_nearest_level_and_skip_empty(tmp_path):
+    from atlas.features.compare.disk_find import candidates
+
+    part = tmp_path / "Проект" / "Плата USB"
+    current = part / "2026-11-04"
+    _photos(current, 1, names=["1.jpg"])
+    _photos(part / "2026-10-01", 1, names=["старая.jpg"])  # другая дата той же детали — соседи открытой папки
+    (part / "2026-09-01").mkdir()  # пустая
+    _photos(tmp_path / "Проект" / "Плата USB - Эталон", 1, names=["э.jpg"])
+    assert [item.name for item, _ in candidates(current, "2026")] == ["2026-10-01"]
+    assert [item.name for item, _ in candidates(current, "плата usb")] == ["Плата USB - Эталон"]
+    assert candidates(current, "") == []

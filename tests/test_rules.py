@@ -355,7 +355,7 @@ def test_rule_older_than_two_weeks_can_only_be_archived(app):
     app.rules.delete(item.id)  # и сервис не даёт: окно могло быть открыто давно
     app.wait_idle()
     assert app.rules.repo.all(app.petrov.id)
-    card.archive_button.click()
+    screen.cards[item.id].archive_button.click()  # карточка могла перестроиться после перечитывания
     app.qtbot.waitUntil(lambda: not screen._animating and any(r.archived for r in app.rules.rules), timeout=5000)
     app.wait_idle()
     from PyQt5.QtWidgets import QLabel

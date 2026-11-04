@@ -31,6 +31,8 @@ TEXT_FOLDER_GONE = "Папка не найдена"
 TEXT_NOT_FOUND = "Такой же детали нет в других проверках"
 TEXT_NOT_FOUND_NEIGHBORS = "Такой же детали нет ни в этом проекте, ни в соседних проектах"
 TEXT_FIND_FAILED = "Не удалось найти такую же деталь"
+TEXT_DISK_FOUND = "В Atlas такой детали нет — взята папка рядом на диске: {}"
+TEXT_DISK_NOTE = "папка рядом на диске, не в Atlas: {}"
 TEXT_MARK_FAILED = "Отметка не сохранена: база недоступна, попробуйте ещё раз"
 TEXT_ROTATION_FAILED = "Поворот не сохранён: при следующем открытии фото будет как раньше"
 
@@ -48,7 +50,8 @@ class _Signals(QObject):
 
 
 class FindResult:
-    """Чужая папка для эталона. source: own — тот же проект, neighbor — соседний проект, given — задана вызывающим."""
+    """Чужая папка для эталона. source: own — тот же проект, neighbor — соседний проект, given — задана вызывающим,
+    disk — не в Atlas, а рядом на диске (folder — путь, part — None)."""
 
     def __init__(self, source, folder, part, photos):
         self.source = source
@@ -282,7 +285,17 @@ class CompareFeature(Feature):
                 part.name, kind=part.kind, exclude_project_id=part.project_id, since=self._neighbor_since()
             )
             source = "neighbor"
-        return self._result(source, found) if found is not None else None
+        if found is not None:
+            return self._result(source, found)
+        if not bool(self.ctx.config.get("compare.disk_search", True)):
+            return None
+        from atlas.features.compare import disk_find
+
+        nearby = disk_find.candidates(folder.path, part.name)
+        if not nearby:
+            return None
+        path, paths = nearby[0]
+        return FindResult("disk", path, None, [logic.PhotoItem(None, item) for item in paths])
 
     def _given(self, folder_id):
         folder = self.ctx.services.get("folders").get(folder_id)
@@ -306,6 +319,12 @@ class CompareFeature(Feature):
         if not result.photos:
             if shell is not None:
                 shell.show_message(TEXT_NOT_FOUND, SHELL_MESSAGE_MS)
+            return
+        if result.source == "disk":
+            note = TEXT_DISK_NOTE.format(result.folder.name)
+            if shell is not None:
+                shell.show_message(TEXT_DISK_FOUND.format(result.folder), SHELL_MESSAGE_MS)
+            self.screen.set_reference_folder(result.photos, note, True)
             return
         part = result.part
         where = "{}, {}".format(part.project if part else "?", result.folder.folder_date)

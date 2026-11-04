@@ -25,7 +25,8 @@
   },
   "compare": {
     "neighbor_search_year_only": true,
-    "neighbor_search_days": 0
+    "neighbor_search_days": 0,
+    "disk_search": true
   },
   "presence": {
     "heartbeat_s": 30,

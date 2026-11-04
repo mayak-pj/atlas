@@ -188,9 +188,9 @@ def test_screen_filters_and_form_follow_open_folder(app):
     app.rules.repo.add(logic.checked(logic.draft_for("general", None, "Общее", "")), app.ivanova.id)
     app.open(part, folder)
     assert screen.scope_buttons["part"].isEnabled()
-    assert screen.list.count() == 3  # две карточки и растяжка
+    assert len(screen.cards) == 2  # две карточки в сетке
     screen.filter_buttons["general"].click()
-    assert screen.list.count() == 2
+    assert list(screen.cards) == [r.id for r in screen.rules if r.scope == "general"]
     screen.filter_buttons["all"].click()
     screen.title_edit.setText("")
     screen.publish()
@@ -245,3 +245,92 @@ def test_form_shows_previews_and_can_drop_photos(app, tmp_path):
     assert screen.previews_layout.count() == 2 and not screen.drop_button.isHidden()
     screen.drop_photos()
     assert screen.previews_layout.count() == 0 and screen.drop_button.isHidden()
+
+
+# --- карточки: архив, удаление, изменение (04.11.2026) -----------------------------------------
+def _published(app, title="Сверяем ножки", photos=1):
+    app.window.select_tab("rules")  # анимация играет только на видимой карточке
+    paths = [photo(app.tmp / "{}_{}.jpg".format(title, number)) for number in range(photos)]
+    app.publish(logic.draft_for("general", None, title, "Считать по схеме", paths))
+    return next(rule for rule in app.rules.rules if rule.title == title)
+
+
+def test_archive_plays_stamp_then_rule_goes_down_and_is_not_counted(app):
+    first = _published(app, "Первое")
+    _published(app, "Второе")
+    screen = app.rules.screen
+    assert list(screen.cards) == [r.id for r in app.rules.rules]
+    app.ctx.user = app.ivanova  # для неё оба новые
+    app.rules.refresh()
+    app.wait_idle()
+    assert app.rules.badge() == 2
+    card = screen.cards[first.id]
+    card.archive_button.click()
+    app.qtbot.waitUntil(lambda: first.id in screen._animating, timeout=3000)
+    assert card.animating
+    app.qtbot.waitUntil(lambda: not screen._animating, timeout=5000)
+    app.wait_idle()
+    rules = app.rules.rules
+    assert [r.title for r in logic.filtered(rules, logic.FILTER_ALL)] == ["Второе", "Первое"]  # архив — внизу
+    assert next(r for r in rules if r.id == first.id).archived
+    assert app.rules.badge() == 1  # архивное непрочитанным не считается
+    screen.cards[first.id].archive_button.click()  # вернуть
+    app.qtbot.waitUntil(lambda: not screen._animating and not next(r for r in app.rules.rules if r.id == first.id).archived,
+                        timeout=5000)
+
+
+def test_archived_rule_is_not_shown_for_the_part():
+    archived = rule("kind", kind="A", archived_at="2026-11-01 10:00:00")
+    assert logic.for_part([rule("kind", kind="A"), archived], PART) == [rule("kind", kind="A")]
+    assert logic.unread_count([rule("general", read=False), rule("general", read=False, archived_at="x")]) == 1
+
+
+def test_delete_asks_burns_the_card_and_removes_photos(app):
+    item = _published(app, photos=2)
+    files = list((app.tmp / "правила").iterdir())
+    assert len(files) == 4  # две копии и две миниатюры
+    screen = app.rules.screen
+    screen.ask_delete = lambda rule_: False
+    screen.cards[item.id].delete_button.click()
+    assert app.rules.repo.all(app.petrov.id)
+    screen.ask_delete = lambda rule_: True
+    screen.cards[item.id].delete_button.click()
+    app.qtbot.waitUntil(lambda: item.id in screen._animating, timeout=3000)
+    app.qtbot.waitUntil(lambda: not screen._animating, timeout=5000)
+    app.wait_idle()
+    assert app.rules.repo.all(app.petrov.id) == [] and not list((app.tmp / "правила").iterdir())
+    assert item.id not in screen.cards
+
+
+def test_edit_changes_text_and_photos_keeps_scope(app):
+    item = _published(app, photos=2)
+    screen = app.rules.screen
+    screen.cards[item.id].edit_button.click()
+    assert screen.editing.id == item.id and screen.title_edit.text() == item.title
+    assert screen.publish_button.text() == "Сохранить изменения" and not screen.scope_buttons["general"].isEnabled()
+    screen.keep_rels = screen.keep_rels[:1]  # одно фото убрали
+    screen.attach([photo(app.tmp / "новое.jpg")])
+    screen.title_edit.setText("Сверяем ножки по схеме")
+    screen.publish()
+    app.qtbot.waitUntil(lambda: screen.editing is None, timeout=5000)
+    app.wait_idle()
+    changed = next(r for r in app.rules.rules if r.id == item.id)
+    assert changed.title == "Сверяем ножки по схеме" and changed.updated_at and changed.scope == "general"
+    assert len(changed.photos) == 2 and changed.photos[0] == item.photos[0] and item.photos[1] not in changed.photos
+    assert not (app.tmp / "правила" / item.photos[1]).exists()
+    assert screen.publish_button.text() == "Опубликовать"
+
+
+def test_card_shows_author_tag_cover_and_body_in_text_color(app):
+    item = _published(app, photos=3)
+    app.rules.screen.open_photo = lambda rels, index: None  # окно фото модальное: в тесте не открываем
+    app.rules.screen._render()
+    card = app.rules.screen.cards[item.id]
+    assert card.tag is not None and card.tag.name == "Петров" and card.tag.isChecked()
+    assert card.cover is not None and card.cover.more == 2 and card.cover.image is not None
+    opened = []
+    card.photo_clicked.connect(lambda rels, index: opened.append((rels, index)))
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtTest import QTest
+    QTest.mouseClick(card.cover, Qt.LeftButton)
+    assert opened == [(item.photos, 0)]

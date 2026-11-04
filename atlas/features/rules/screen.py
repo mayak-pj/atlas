@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QEvent, QPointF, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QImageReader, QPainter, QPalette, QPixmap
 from PyQt5.QtWidgets import (
     QButtonGroup, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 )
 
 from atlas.features.rules import logic
+from atlas.features.rules.cards import RuleTile
 from atlas.shared.widgets.flow import FlowLayout
 from atlas.shared.widgets.icons import set_icon
 
@@ -20,6 +21,13 @@ TEXT_READ_ALL = "Отметить все прочитанными"
 TEXT_EMPTY = "Правил пока нет"
 TEXT_EMPTY_FILTER = "По этому фильтру правил нет"
 TEXT_FORM = "Новое правило"
+TEXT_FORM_EDIT = "Изменить правило"
+TEXT_SAVE_EDIT = "Сохранить изменения"
+TEXT_CANCEL_EDIT = "Отмена"
+TEXT_EDIT_SCOPE = "Область не меняется: {}"
+TEXT_DELETE_ASK = "Удалить правило «{}» насовсем? Фото правила тоже удалятся. Чтобы убрать, но сохранить, — «В архив»."
+CARD_MIN_WIDTH = 360
+GRID_SPACING = 12
 TEXT_TITLE = "Заголовок"
 TEXT_TITLE_HINT = "Коротко, что проверять"
 TEXT_SCOPE = "Относится к"
@@ -311,12 +319,22 @@ class RulesScreen(QWidget):
     read_requested = pyqtSignal(list)
     read_all_requested = pyqtSignal()
     shown = pyqtSignal()
+    archive_requested = pyqtSignal(int, bool)  # правило, True — в архив
+    delete_requested = pyqtSignal(int)
+    update_requested = pyqtSignal(int, str, str, tuple, tuple)  # правило, заголовок, текст, оставленные фото, новые
 
-    def __init__(self, root, kinds, today=None, parent=None):
+    def __init__(self, root, kinds, today=None, animations=True, parent=None):
         super().__init__(parent)
         self.root = Path(root)
         self.today = today
-        self.rules, self.names, self.part = [], {}, None
+        self.animations = animations
+        self.rules, self.names, self.part, self.colors = [], {}, None, {}
+        self.cards = {}
+        self._columns = 0
+        self._animating = set()
+        self._pending = None  # данные, пришедшие во время анимации
+        self.editing = None  # правило, которое сейчас меняют в форме
+        self.keep_rels = []  # его фото, которые оставляем
         self.filter_key = logic.FILTER_ALL
         self.photo_paths = []
         outer = QHBoxLayout(self)
@@ -350,11 +368,14 @@ class RulesScreen(QWidget):
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         body = QWidget()
         body.setProperty("role", "plain")
-        self.list = QVBoxLayout(body)
-        self.list.setContentsMargins(0, 0, 0, 0)
-        self.list.setSpacing(10)
-        self.list.addStretch(1)
+        self.grid = QGridLayout(body)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(GRID_SPACING)
+        self.grid.setAlignment(Qt.AlignTop)
+        self.grid_holder = body
+        self.empty_label = _label("", "muted")
         self.scroll.setWidget(body)
+        self.scroll.viewport().installEventFilter(self)
         left.addWidget(self.scroll, 1)
         outer.addLayout(left, 1)
         outer.addWidget(self._build_form())
@@ -369,7 +390,8 @@ class RulesScreen(QWidget):
         column = QVBoxLayout(form)
         column.setContentsMargins(16, 16, 16, 16)
         column.setSpacing(10)
-        column.addWidget(_label(TEXT_FORM, "caption"))
+        self.form_title = _label(TEXT_FORM, "caption")
+        column.addWidget(self.form_title)
         column.addWidget(_label(TEXT_TITLE, "muted"))
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText(TEXT_TITLE_HINT)
@@ -415,6 +437,11 @@ class RulesScreen(QWidget):
         self.publish_button.setFocusPolicy(Qt.NoFocus)
         self.publish_button.clicked.connect(lambda _=False: self.publish())
         column.addWidget(self.publish_button)
+        self.cancel_edit_button = QPushButton(TEXT_CANCEL_EDIT)
+        self.cancel_edit_button.setFocusPolicy(Qt.NoFocus)
+        self.cancel_edit_button.clicked.connect(lambda _=False: self.finish_edit())
+        self.cancel_edit_button.hide()
+        column.addWidget(self.cancel_edit_button)
         self.error_label = _label("", "warn")
         column.addWidget(self.error_label)
         column.addWidget(_label(TEXT_NOTE, "muted"))
@@ -429,6 +456,16 @@ class RulesScreen(QWidget):
 
     def _refresh_form(self):
         has_part = self.part is not None
+        if self.editing is not None:  # область правила не меняется: она привязана к детали, открытой при создании
+            for scope, button in self.scope_buttons.items():
+                button.setEnabled(False)
+                button.setChecked(scope == self.editing.scope)
+            self.scope_note.setText(TEXT_EDIT_SCOPE.format(logic.scope_text(self.editing)))
+            count = len(self.keep_rels) + len(self.photo_paths)
+            self.photos_label.setText(TEXT_PHOTOS.format(count) if count else "")
+            self.drop_button.setVisible(bool(count))
+            self._render_previews()
+            return
         for scope, button in self.scope_buttons.items():
             button.setEnabled(scope == logic.SCOPE_GENERAL or has_part)
         if not has_part and self.current_scope() != logic.SCOPE_GENERAL:
@@ -450,7 +487,8 @@ class RulesScreen(QWidget):
                 widget.hide()
                 widget.setParent(None)
                 widget.deleteLater()
-        for path in self.photo_paths:
+        paths = [str(self.root / logic.thumb_rel(rel)) for rel in self.keep_rels] if self.editing is not None else []
+        for path in paths + list(self.photo_paths):
             reader = QImageReader(path)  # JPEG читается сразу уменьшенным: GUI не ждёт полного декодирования
             reader.setAutoTransform(True)
             size = reader.size()
@@ -468,17 +506,30 @@ class RulesScreen(QWidget):
 
     def drop_photos(self):
         self.photo_paths = []
+        self.keep_rels = []
         self._refresh_form()
 
     def attach(self, paths=None):
         if paths is None:
             paths, _ = QFileDialog.getOpenFileNames(self, TEXT_ATTACH, "", IMAGE_FILTER)
         for path in paths:
-            if path not in self.photo_paths and len(self.photo_paths) < logic.MAX_PHOTOS:
+            if path not in self.photo_paths and len(self.photo_paths) + len(self.keep_rels) < logic.MAX_PHOTOS:
                 self.photo_paths.append(path)
         self._refresh_form()
 
     def publish(self):
+        if self.editing is not None:
+            draft = logic.Draft(logic.SCOPE_GENERAL, self.title_edit.text(), self.body_edit.toPlainText())
+            try:
+                logic.checked(draft)
+            except logic.RuleError as exc:
+                self.show_error(str(exc))
+                return
+            self.show_error("")
+            self.set_busy(True)
+            self.update_requested.emit(self.editing.id, self.title_edit.text(), self.body_edit.toPlainText(),
+                                       tuple(self.keep_rels), tuple(self.photo_paths))
+            return
         draft = logic.draft_for(self.current_scope(), self.part, self.title_edit.text(), self.body_edit.toPlainText(),
                                 self.photo_paths)
         try:
@@ -491,7 +542,34 @@ class RulesScreen(QWidget):
 
     def set_busy(self, busy):
         self.publish_button.setEnabled(not busy)
-        self.publish_button.setText(TEXT_PUBLISHING if busy else TEXT_PUBLISH)
+        idle = TEXT_SAVE_EDIT if self.editing is not None else TEXT_PUBLISH
+        self.publish_button.setText(TEXT_PUBLISHING if busy else idle)
+
+    def edit_rule(self, rule_id):
+        """Правило — в форму справа: заголовок, текст, его фото (можно убрать и добавить). Область — прежняя."""
+        rule = next((item for item in self.rules if item.id == rule_id), None)
+        if rule is None:
+            return
+        self.editing = rule
+        self.keep_rels = list(rule.photos)
+        self.photo_paths = []
+        self.title_edit.setText(rule.title)
+        self.body_edit.setPlainText(rule.body)
+        self.form_title.setText(TEXT_FORM_EDIT)
+        self.cancel_edit_button.show()
+        self.show_error("")
+        self.set_busy(False)
+        self._refresh_form()
+        self.title_edit.setFocus()
+
+    def finish_edit(self):
+        """Изменение сохранено или отменено: форма снова для нового правила."""
+        self.editing = None
+        self.keep_rels = []
+        self.form_title.setText(TEXT_FORM)
+        self.cancel_edit_button.hide()
+        self.clear_form()
+        self.set_busy(False)
 
     def show_error(self, text):
         self.error_label.setText(text)
@@ -508,8 +586,11 @@ class RulesScreen(QWidget):
         super().showEvent(event)
         self.shown.emit()
 
-    def set_data(self, rules, names, part):
-        self.rules, self.names, self.part = rules, names, part
+    def set_data(self, rules, names, part, colors=None):
+        if self._animating:
+            self._pending = (rules, names, part, colors)  # перестройка оборвала бы печать или «сгорание»
+            return
+        self.rules, self.names, self.part, self.colors = rules, names, part, dict(colors or {})
         self._refresh_form()
         self._render()
 
@@ -518,17 +599,103 @@ class RulesScreen(QWidget):
         self._render()
 
     def _render(self):
-        _clear(self.list)
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None and widget is not self.empty_label:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        self.cards = {}
         shown = logic.filtered(self.rules, self.filter_key)
         if not shown:
-            text = TEXT_EMPTY if not self.rules else TEXT_EMPTY_FILTER
-            self.list.insertWidget(0, _label(text, "muted"))
-        for index, rule in enumerate(shown):
-            card = RuleCard(rule, self.names.get(rule.author_id, ""), self.root, self.today)
+            self.empty_label.setText(TEXT_EMPTY if not self.rules else TEXT_EMPTY_FILTER)
+            self.grid.addWidget(self.empty_label, 0, 0)
+            self.empty_label.show()
+        else:
+            self.empty_label.hide()
+        columns = self._columns_for(self.scroll.viewport().width())
+        self._columns = columns
+        for number, rule in enumerate(shown):
+            card = RuleTile(rule, self.names.get(rule.author_id, ""), self.colors.get(rule.author_id), self.root,
+                            self.today, self.grid_holder)
             card.read_clicked.connect(lambda rule_id: self.read_requested.emit([rule_id]))
             card.photo_clicked.connect(self.open_photo)
-            self.list.insertWidget(index, card)
+            card.edit_clicked.connect(self.edit_rule)
+            card.archive_clicked.connect(self._on_archive_clicked)
+            card.delete_clicked.connect(self._on_delete_clicked)
+            card.animation_done.connect(self._on_animation_done)
+            self.cards[rule.id] = card
+            self.grid.addWidget(card, number // columns, number % columns, Qt.AlignTop)
+        for column in range(max(columns, 1)):
+            self.grid.setColumnStretch(column, 1)
         self.read_all_button.setEnabled(logic.unread_count(self.rules) > 0)
+
+    @staticmethod
+    def _columns_for(width):
+        return max(1, (max(1, width) + GRID_SPACING) // (CARD_MIN_WIDTH + GRID_SPACING))
+
+    def eventFilter(self, watched, event):
+        if watched is self.scroll.viewport() and event.type() == QEvent.Resize and not self._animating:
+            if self._columns_for(event.size().width()) != self._columns:
+                self._render()
+        return False
+
+    def _on_archive_clicked(self, rule_id, archived):
+        card = self.cards.get(rule_id)
+        if card is not None:
+            card.set_buttons_enabled(False)  # пока база отвечает, второй раз нажать нельзя
+        self.archive_requested.emit(rule_id, archived)
+
+    def _on_delete_clicked(self, rule_id):
+        rule = next((item for item in self.rules if item.id == rule_id), None)
+        if rule is None or not self.ask_delete(rule):
+            return
+        card = self.cards.get(rule_id)
+        if card is not None:
+            card.set_buttons_enabled(False)
+        self.delete_requested.emit(rule_id)
+
+    def ask_delete(self, rule):
+        """Подтверждение. Подменяется в тестах."""
+        from PyQt5.QtWidgets import QMessageBox
+
+        return QMessageBox.question(self, "Atlas", TEXT_DELETE_ASK.format(rule.title),
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
+
+    def play_archive(self, rule_id, archived):
+        """База подтвердила архив: печать на карточке, по её концу — перечитать (`shown`)."""
+        self._play(rule_id, lambda card: card.play_archive(archived))
+
+    def play_delete(self, rule_id):
+        if self.editing is not None and self.editing.id == rule_id:
+            self.finish_edit()
+        self._play(rule_id, lambda card: card.play_delete())
+
+    def _play(self, rule_id, start):
+        card = self.cards.get(rule_id)
+        if card is None or not self.animations or not card.isVisible():
+            self.shown.emit()
+            return
+        self._animating.add(rule_id)
+        start(card)
+
+    def _on_animation_done(self, rule_id):
+        self._animating.discard(rule_id)
+        if self._animating:
+            return
+        pending, self._pending = self._pending, None
+        if pending is not None:
+            self.set_data(*pending)
+        self.shown.emit()  # перечитать: архивная уходит вниз, удалённая пропадает
+
+    def action_failed(self, rule_id, text):
+        card = self.cards.get(rule_id)
+        if card is not None:
+            card.set_buttons_enabled(True)
+        if self.editing is not None:
+            self.set_busy(False)
+        self.show_error(text)
 
     def open_photo(self, rels, index):
         PhotoDialog(self.root, rels, index, self).exec_()

@@ -40,8 +40,14 @@ class Rule:
     body: str
     author_id: Optional[int]
     created_at: str
+    archived_at: Optional[str] = None  # миграция 002: архив, изменение (04.11.2026)
+    updated_at: Optional[str] = None
     read: bool = True
     photos: Tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def archived(self):
+        return self.archived_at is not None
 
 
 @dataclass(frozen=True)
@@ -98,7 +104,7 @@ def applies(rule, part):
 
 def for_part(rules, part):
     """Правила к детали: всё, что названо про неё, её устройство, проект или вид; общие не входят."""
-    return [rule for rule in rules if rule.scope != SCOPE_GENERAL and applies(rule, part)]
+    return [rule for rule in rules if rule.scope != SCOPE_GENERAL and not rule.archived and applies(rule, part)]
 
 
 def matches_filter(rule, key):
@@ -114,11 +120,13 @@ def matches_filter(rule, key):
 
 
 def filtered(rules, key):
-    return [rule for rule in rules if matches_filter(rule, key)]
+    """По фильтру; архивные — внизу, внутри групп порядок прежний (свежие первыми)."""
+    found = [rule for rule in rules if matches_filter(rule, key)]
+    return [rule for rule in found if not rule.archived] + [rule for rule in found if rule.archived]
 
 
 def unread_count(rules):
-    return sum(1 for rule in rules if not rule.read)
+    return sum(1 for rule in rules if not rule.read and not rule.archived)
 
 
 def scope_text(rule):

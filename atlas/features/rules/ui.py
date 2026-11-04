@@ -23,12 +23,18 @@ STOP_WAIT_S = 3.0
 MESSAGE_MS = 8000
 TEXT_PUBLISHED = "Правило опубликовано"
 TEXT_FAILED = "Не удалось записать правило: база недоступна, попробуйте ещё раз"
+TEXT_UPDATED = "Правило изменено"
+TEXT_ACTION_FAILED = "Не удалось: база недоступна, попробуйте ещё раз"
 
 
 class _Signals(QObject):
     loaded = pyqtSignal(object)  # (rules, names, part) или None, если база недоступна
     published = pyqtSignal(int, object)  # номер правила, Draft
     failed = pyqtSignal(str)
+    archived = pyqtSignal(int, bool)  # правило, в архиве ли теперь — после ответа базы
+    deleted = pyqtSignal(int)
+    updated = pyqtSignal(int)
+    action_failed = pyqtSignal(int, str)  # правило, причина
 
 
 class RulesFeature(Feature):
@@ -50,6 +56,11 @@ class RulesFeature(Feature):
         self.signals.loaded.connect(self._on_loaded)
         self.signals.published.connect(self._on_published)
         self.signals.failed.connect(self._on_failed)
+        self.signals.archived.connect(self._on_archived)
+        self.signals.deleted.connect(self._on_deleted)
+        self.signals.updated.connect(self._on_updated)
+        self.signals.action_failed.connect(self._on_action_failed)
+        self.colors = {}
         config = self.ctx.config
         configured = str(config.get("rules.dir", DEFAULT_DIR))
         self._root = self.ctx.paths.resolve(configured)
@@ -68,8 +79,12 @@ class RulesFeature(Feature):
             self.ctx.shell.add_panel(SLOT_RIGHT, self.panel, key=PANEL_KEY, order=20)
 
     def create_tab(self):
-        self.screen = RulesScreen(self._root, self.ctx.services.get("parts").kinds)
+        self.screen = RulesScreen(self._root, self.ctx.services.get("parts").kinds,
+                                  animations=bool(self.ctx.config.get("ui.animations", True)))
         self.screen.publish_requested.connect(self.publish)
+        self.screen.archive_requested.connect(self.archive)
+        self.screen.delete_requested.connect(self.delete)
+        self.screen.update_requested.connect(self.update)
         self.screen.read_requested.connect(self.mark_read)
         self.screen.read_all_requested.connect(self.mark_all_read)
         self.screen.shown.connect(self.refresh)
@@ -127,7 +142,9 @@ class RulesFeature(Feature):
     def _read(self, user_id, part_id):
         try:
             rules = self.repo.all(user_id)
-            names = {user.id: user.name for user, _ in self.ctx.services.get("users").all()}
+            users = [user for user, _ in self.ctx.services.get("users").all()]
+            names = {user.id: user.name for user in users}
+            self.colors = {user.id: user.color for user in users}
             part = self.ctx.services.get("parts").get(part_id) if part_id is not None else None
             result = (rules, names, part)
         except Exception as exc:  # нет сети, база занята: остаётся прежнее
@@ -143,7 +160,7 @@ class RulesFeature(Feature):
         if result is not None:
             self.rules, self.names, self.part = result
             if self.screen is not None:
-                self.screen.set_data(self.rules, self.names, self.part)
+                self.screen.set_data(self.rules, self.names, self.part, self.colors)
             self.panel.show_rules(logic.for_part(self.rules, self.part) if self.part is not None else [], self.names)
             if self.ctx.shell is not None and hasattr(self.ctx.shell, "refresh_badges"):
                 self.ctx.shell.refresh_badges()
@@ -191,6 +208,64 @@ class RulesFeature(Feature):
         if self.screen is not None:
             self.screen.set_busy(False)
             self.screen.show_error(text)
+
+    # --- архив, удаление, изменение (04.11.2026) -------------------------------------------
+    def archive(self, rule_id, archived):
+        self._spawn(self._action, rule_id, lambda: self.repo.set_archived(rule_id, archived, self._user_id() or None),
+                    lambda _result: self.signals.archived.emit(rule_id, archived))
+
+    def delete(self, rule_id):
+        def work():
+            self.store.discard_rels(self.repo.delete(rule_id))  # файлы — после базы: правило уже не ссылается на них
+        self._spawn(self._action, rule_id, work, lambda _result: self.signals.deleted.emit(rule_id))
+
+    def update(self, rule_id, title, body, keep_rels, new_paths):
+        def work():
+            draft = logic.checked(logic.Draft(logic.SCOPE_GENERAL, title, body))  # та же проверка текста, что у нового
+            rels = self.store.save(list(new_paths))
+            try:
+                removed = self.repo.update(rule_id, draft.title, draft.body, list(keep_rels), rels, self._user_id() or None)
+            except Exception:
+                self.store.discard_rels(rels)
+                raise
+            self.store.discard_rels(removed)
+        self._spawn(self._action, rule_id, work, lambda _result: self.signals.updated.emit(rule_id))
+
+    def _action(self, rule_id, work, done):
+        try:
+            result = work()
+        except (logic.RuleError, StoreError) as exc:
+            self.signals.action_failed.emit(rule_id, str(exc))
+            return
+        except Exception as exc:  # база занята, нет сети
+            log.warning("Правило %s: не удалось — %s", rule_id, exc)
+            self.signals.action_failed.emit(rule_id, TEXT_ACTION_FAILED)
+            return
+        done(result)
+
+    def _on_archived(self, rule_id, archived):
+        if self.screen is not None:
+            self.screen.play_archive(rule_id, archived)  # анимация, по её концу — перечитать
+        else:
+            self.refresh()
+
+    def _on_deleted(self, rule_id):
+        if self.screen is not None:
+            self.screen.play_delete(rule_id)
+        else:
+            self.refresh()
+
+    def _on_updated(self, rule_id):
+        if self.screen is not None:
+            self.screen.finish_edit()
+        if self.ctx.shell is not None:
+            self.ctx.shell.show_message(TEXT_UPDATED, MESSAGE_MS)
+        self.refresh()
+
+    def _on_action_failed(self, rule_id, text):
+        if self.screen is not None:
+            self.screen.action_failed(rule_id, text)
+        self.refresh()
 
     def mark_read(self, rule_ids):
         self._spawn(self._mark, list(rule_ids), False)

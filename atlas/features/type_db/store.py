@@ -25,6 +25,7 @@ class SaveRequest:
     shapes: tuple
     sn: Optional[str]
     user_id: Optional[int]
+    created_at: Optional[str] = None  # «+ Добавить из файла…»: дата карточки, а не время записи
 
 
 class TypeStore:
@@ -63,7 +64,7 @@ class TypeStore:
                 render.save_jpeg(image, target, self.quality)
             return self.repo.add(
                 part.id, card.kind, card.type_no, card.description, card.article or part.article, photo_rel, crop_rel,
-                request.photo_path, request.sn, request.user_id,
+                request.photo_path, request.sn, request.user_id, request.created_at,
             )
         except Exception as exc:  # диск или база: после себя ничего не оставляем
             for target in written:

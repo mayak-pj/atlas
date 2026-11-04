@@ -34,13 +34,15 @@ class Repo:
     def __init__(self, db):
         self.db = db
 
-    def add(self, part_id, kind, type_no, description, article, photo_rel, crop_rel, source_photo, source_sn, user_id):
+    def add(self, part_id, kind, type_no, description, article, photo_rel, crop_rel, source_photo, source_sn, user_id,
+            created_at=None):
+        """created_at — «ГГГГ-ММ-ДД ЧЧ:ММ:СС»; None — сейчас. Старые фото, внесённые вручную, получают свою дату."""
         def work(conn):
             cur = conn.execute(
                 "INSERT INTO types (part_id, kind, type_no, description, article, photo_rel, crop_rel, source_photo, "
                 "source_sn, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (part_id, kind, type_no, description, article or None, photo_rel, crop_rel, source_photo,
-                 source_sn or None, user_id, now_text()),
+                 source_sn or None, user_id, created_at or now_text()),
             )
             return cur.lastrowid
 

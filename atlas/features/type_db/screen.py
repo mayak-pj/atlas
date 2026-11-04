@@ -33,6 +33,8 @@ TEXT_SEARCH_BOTH = "Ищу в обеих базах"
 TEXT_EMPTY_REMARKS = "Замечаний пока нет: они появляются сами, когда фото отмечают «Замечание» на экране сравнения"
 TEXT_KIND_NONE = "Вид не указан"
 TEXT_DELETE = "Удалить из БД насовсем"
+TEXT_ADD_FILE = "Добавить из файла…"
+TIP_ADD_FILE = "Внести в базу типов фото с диска, без экрана сравнения: старые типы, накопленные раньше"
 TEXT_ALL = "Все проекты"
 TEXT_ARCHIVE_NOTE = "Архив — всегда внизу"
 TEXT_EMPTY = "В базе типов пока ничего нет: добавьте тип кнопкой «+ В базу типов» на экране сравнения"
@@ -402,6 +404,7 @@ class TypeDbScreen(QWidget):
     shown = pyqtSignal()  # вкладку открыли: данные могли измениться у коллег
     archive_toggled = pyqtSignal(int, bool)  # запись, True — в архив / False — вернуть: записать в базу
     delete_requested = pyqtSignal(int)  # крестик на карточке: спросить и удалить
+    add_file_requested = pyqtSignal()  # «+ Добавить из файла…»
 
     def __init__(self, cache, root, kinds, animations=True, parent=None):
         super().__init__(parent)
@@ -432,6 +435,12 @@ class TypeDbScreen(QWidget):
         search_row = QHBoxLayout()
         search_row.addWidget(self.search, 1)
         search_row.addWidget(self.found)
+        self.add_file_button = QPushButton(TEXT_ADD_FILE)
+        self.add_file_button.setToolTip(TIP_ADD_FILE)
+        set_icon(self.add_file_button, "folder-plus", "text")
+        self.add_file_button.setFocusPolicy(Qt.NoFocus)
+        self.add_file_button.clicked.connect(lambda _=False: self.add_file_requested.emit())
+        search_row.addWidget(self.add_file_button)
 
         # Две базы внутри «БД»: по умолчанию «База типов». С запросом вкладки прячутся: ищется сразу в обеих
         self.tabs = QTabBar()
@@ -595,6 +604,12 @@ class TypeDbScreen(QWidget):
     def _on_tab(self, index):
         self._tab = logic.TAB_TYPES if index == 0 else logic.TAB_REMARKS
         self._refilter()
+
+    def known_names(self):
+        """Уже известные проекты, устройства и детали — подсказки в окне «Добавить из файла»."""
+        items = list(self._entries) + list(self._remarks)
+        return {"project": [item.project for item in items], "device": [item.device for item in items],
+                "part": [item.part_name for item in items]}
 
     def entry(self, entry_id):
         """Запись types по id или None."""

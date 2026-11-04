@@ -46,6 +46,8 @@ TEXT_DELETE_ASK = "Удалить «{}» из БД насовсем? Фото к
 class _Signals(QObject):
     loaded = pyqtSignal(object)  # ([Entry], [RemarkEntry]) или None, если база недоступна
     deleted = pyqtSignal(int, object)  # id записи, TypeRecord или None (уже удалена)
+    manual_saved = pyqtSignal(str, int, int)  # подпись («Тип 2»), запись, деталь
+    manual_failed = pyqtSignal(str)
     delete_failed = pyqtSignal(int)
     archived = pyqtSignal(int, bool, object, int)  # запись, в архиве ли, время из базы, деталь
     archive_failed = pyqtSignal(int)
@@ -86,6 +88,10 @@ class TypeDbFeature(Feature):
         self.signals.saved.connect(self._on_saved)
         self.signals.failed.connect(self._on_failed)
         self.signals.deleted.connect(self._on_deleted)
+        self.signals.manual_saved.connect(self._on_manual_saved)
+        self.signals.manual_failed.connect(self._on_manual_failed)
+        self._users = []  # [(id, имя)] — читается вместе с выдачей вкладки, окну «Добавить из файла» не ходить в базу
+        self.manual_dialog = None
         self.signals.delete_failed.connect(self._on_delete_failed)
         data = self.ctx.paths.data
         self._pattern = load_pattern(data)
@@ -117,6 +123,7 @@ class TypeDbFeature(Feature):
         self.screen.shown.connect(self.refresh)
         self.screen.archive_toggled.connect(self._on_archive_toggled)
         self.screen.delete_requested.connect(self._on_delete_requested)
+        self.screen.add_file_requested.connect(self.open_manual)
         self.refresh()
         return self.screen
 
@@ -204,6 +211,45 @@ class TypeDbFeature(Feature):
     def _on_delete_failed(self, type_id):
         self._say(TEXT_DELETE_FAILED)
 
+    # --- «+ Добавить из файла…» ---------------------------------------------------------------
+    def open_manual(self):
+        from atlas.features.type_db.manual import ManualDialog
+
+        kinds = self.ctx.services.get("parts").kinds
+        self.manual_dialog = ManualDialog(kinds, self._users, self._user_id(), self.screen.known_names(), self.screen)
+        self.manual_dialog.save_requested.connect(lambda card: self._run(self._manual_work, card))
+        self.manual_dialog.show()
+        return self.manual_dialog
+
+    def _manual_work(self, card):
+        from datetime import datetime
+
+        try:
+            part = self.ctx.services.get("parts").ensure(card.kind, card.project, card.device, card.part, card.article or None)
+            parsed = parse_photo_name(Path(card.photo).name, self._pattern)
+            created = "{} {}".format(card.day, datetime.now().strftime("%H:%M:%S"))
+            request = SaveRequest(part, logic.CardData(logic.KIND_TYPE, card.type_no, card.description, card.article),
+                                  card.photo, 0, (), parsed.sn if parsed is not None else None, card.user_id, created)
+            record_id = self.store.save(request)
+        except (StoreError, logic.CardError, ValueError) as exc:
+            self.signals.manual_failed.emit(str(exc))
+            return
+        except Exception as exc:  # нет сети, база занята
+            log.exception("Не удалось добавить из файла")
+            self.signals.manual_failed.emit("Не удалось сохранить: {}".format(exc))
+            return
+        self.signals.manual_saved.emit(logic.label(logic.KIND_TYPE, card.type_no), record_id, part.id)
+
+    def _on_manual_saved(self, label, record_id, part_id):
+        if self.manual_dialog is not None:
+            self.manual_dialog.saved(label)
+        self.ctx.bus.publish(EVENT_TYPE_ADDED, {"type_id": record_id, "part_id": part_id})
+        self.refresh()
+
+    def _on_manual_failed(self, text):
+        if self.manual_dialog is not None:
+            self.manual_dialog.failed(text)
+
     def _on_archive_failed(self, type_id):
         if self.screen is not None:
             self.screen.archive_failed(type_id)
@@ -226,6 +272,7 @@ class TypeDbFeature(Feature):
     def _read_for_screen(self):
         try:
             entries = (self._read(), self._read_remarks())
+            self._users = [(user.id, user.name) for user, _ in self.ctx.services.get("users").all()]
         except Exception as exc:  # нет сети, база занята: остаётся прежний список
             log.warning("Не удалось прочитать базу типов: %s", exc)
             entries = None

@@ -115,3 +115,58 @@ def test_card_without_description_is_saved(app):  # noqa: F811
     app.type_db.add_button.click()
     app.qtbot.waitUntil(lambda: not app.type_db.busy and bool(app.type_db.repo.all()), timeout=5000)
     assert app.type_db.repo.all()[0].description == ""
+
+
+# --- «+ Добавить из файла…» -------------------------------------------------------------
+def test_manual_card_is_checked(tmp_path):
+    from atlas.features.type_db.manual import ManualCard, ManualError, checked
+    from tests.test_type_db import make_jpeg
+
+    photo = make_jpeg(tmp_path / "старое фото.jpg")
+    good = ManualCard(str(photo), "A", " Орион ", "", "Плата  USB", "", 2, "", "2026-03-15", 7)
+    card = checked(good)
+    assert (card.project, card.device, card.part) == ("Орион", "Без устройства", "Плата USB")
+    import dataclasses
+    for change, text in (({"photo": ""}, "фото"), ({"photo": str(tmp_path / "нет.jpg")}, "Нет такого"),
+                         ({"project": " "}, "проект"), ({"part": ""}, "детали"), ({"user_id": None}, "кто добавил")):
+        try:
+            checked(dataclasses.replace(good, **change))
+        except ManualError as exc:
+            assert text in str(exc)
+        else:
+            raise AssertionError(change)
+
+
+def test_add_from_file_saves_a_type_with_its_date_and_author(app, tmp_path):  # noqa: F811
+    from tests.test_type_db import make_jpeg
+
+    users = app.ctx.services.get("users")
+    author = users.add("Сидоров", lambda count: "#7DB4FF")
+    type_db = app.type_db
+    type_db.refresh()
+    app.qtbot.waitUntil(lambda: any(name == "Сидоров" for _, name in type_db._users), timeout=5000)
+    events = []
+    app.ctx.bus.subscribe("type.added", events.append)
+    dialog = type_db.open_manual()
+    app.qtbot.addWidget(dialog)
+    photo = make_jpeg(tmp_path / "архив" / "0402290000836_1_XZ79070.jpg")
+    dialog.photo.setText(str(photo))
+    dialog.project.setText("Вега")
+    dialog.part.setText("Плата дисплея")
+    dialog.article.setText("BY22091")
+    dialog.number.setValue(3)
+    from PyQt5.QtCore import QDate
+    dialog.day.setDate(QDate(2026, 3, 15))
+    dialog.user.setCurrentIndex(dialog.user.findData(author.id))
+    dialog.save_button.click()
+    app.qtbot.waitUntil(lambda: "Добавлено" in dialog.status.text(), timeout=5000)
+    assert dialog.photo.text() == "" and dialog.part.text() == "Плата дисплея"  # следующее фото той же детали
+    (record,) = type_db.repo.all()
+    assert (record.type_no, record.created_by, record.source_sn) == (3, author.id, "XZ79070")
+    assert record.created_at.startswith("2026-03-15")
+    part = app.ctx.services.get("parts").get(record.part_id)
+    assert (part.project, part.device, part.name, part.article) == ("Вега", "Без устройства", "Плата дисплея", "BY22091")
+    assert (type_db.store.root / record.photo_rel).is_file()
+    assert events == [{"type_id": record.id, "part_id": part.id}]
+    dialog.save_button.click()  # файл не выбран
+    assert "Выберите фото" in dialog.status.text()

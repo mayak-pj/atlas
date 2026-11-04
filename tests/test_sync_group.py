@@ -119,16 +119,52 @@ def test_other_proportions_look_at_same_place_and_clamp_alone(cache, make_view):
     assert group.state == pytest.approx(tall.state())  # край чужого фото не меняет общее место
 
 
-def test_off_means_independent_and_on_aligns_to_last_touched(pair):
+def test_off_means_independent_and_on_keeps_the_adjustment(pair):
+    """Замечание 04.11.2026: включил «Синхронно» снова — окна не выравниваются, а двигаются вместе с подгонкой."""
     group, first, second = pair
     group.set_enabled(False)
     first.set_state(1, 0.5, 0.5)
     second.zoom_by(5)
     assert first.state()[0] == 1.0
     group.set_enabled(True)
-    assert first.state() == pytest.approx(second.state())
+    assert first.state()[0] == 1.0 and second.state()[0] == pytest.approx(5.0)  # никто не прыгнул
     first.zoom_by(1.2)
-    assert second.state()[0] == pytest.approx(6.0)
+    assert second.state()[0] == pytest.approx(6.0)  # 5 × 1,2: разница сохранилась
+
+
+def test_adjusted_window_keeps_its_shift_when_others_move_and_new_photo_comes(pair, make_view):
+    group, first, second = pair
+    first.set_state(4, 0.5, 0.5)
+    group.set_enabled(False)
+    second.set_state(4, 0.6, 0.5)  # подогнал второе окно вбок
+    shift = second.state()[1] - first.state()[1]
+    assert shift == pytest.approx(0.1)
+    group.set_enabled(True)
+    first.zoom_by(1.2)
+    assert second.state()[1] - first.state()[1] == pytest.approx(shift)
+    assert second.state()[2] == pytest.approx(first.state()[2])
+    second.photo_shown.emit("следующее.jpg")  # листание второго окна: подгонка остаётся
+    assert second.state()[1] - first.state()[1] == pytest.approx(shift)
+
+
+def test_fit_removes_the_adjustment(pair):
+    group, first, second = pair
+    group.set_enabled(False)
+    second.zoom_by(3)
+    group.set_enabled(True)
+    group.fit()
+    first.zoom_by(2)
+    assert second.state() == pytest.approx(first.state())
+
+
+def test_offset_turns_with_the_photo(pair):
+    group, first, second = pair
+    first.set_state(4, 0.5, 0.5)
+    group.set_enabled(False)
+    second.set_state(4, 0.6, 0.5)
+    group.set_enabled(True)
+    group.rotate(90, [(first, 90), (second, 90)])
+    assert second.state()[1:] == pytest.approx((first.state()[1], first.state()[2] + 0.1))
 
 
 def test_fit_applies_to_all_even_without_sync(pair):
@@ -298,7 +334,9 @@ def test_demo_sync_button_toggles(demo, qtbot):
     demo.views[1].zoom_by(2)
     assert demo.views[0].state()[0] == 1.0
     qtbot.mouseClick(demo.sync_button, Qt.LeftButton)
-    assert demo.views[0].state()[0] == pytest.approx(2)
+    assert demo.views[0].state()[0] == 1.0  # включение не выравнивает: подгонка сохраняется
+    demo.views[0].zoom_by(2)
+    assert demo.views[1].state()[0] == pytest.approx(4)
 
 
 def test_show_photos_one_cancel_many_views(make_view, cache):

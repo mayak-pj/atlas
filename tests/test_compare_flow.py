@@ -883,3 +883,26 @@ def test_found_reference_takes_first_window_and_currents_keep_their_photos(app, 
     visible = screen._visible_views()
     assert visible[0] is screen.views[0] and screen.group.reference is screen.views[0]
     assert [Path(view.path).name for view in visible[1:]] == kept  # окна 1–3 остались, четвёртое отдано эталону
+
+
+def test_sync_on_again_keeps_second_window_adjustment_and_new_folder_resets(app):
+    """Замечание 04.11.2026: настроил два окна, выключил «Синхронно», подогнал второе, включил — подгонка не пропадает."""
+    app.wait_open()
+    screen = app.screen
+    screen.set_layout(2)
+    app.wait_shown()
+    first, second = screen._visible_views()
+    first.zoom_by(3.0)
+    screen.sync_button.click()
+    second.zoom_by(1.5)
+    adjusted = second.state()[0] / first.state()[0]
+    screen.sync_button.click()
+    assert second.state()[0] / first.state()[0] == pytest.approx(adjusted)
+    QTest.mouseClick(second, Qt.LeftButton)
+    app.press(Qt.Key_Right)  # пошли фото со второго фотоаппарата: листаем второе окно
+    app.wait_shown()
+    assert second.state()[0] / first.state()[0] == pytest.approx(adjusted)
+    first.zoom_by(1.2)
+    assert second.state()[0] / first.state()[0] == pytest.approx(adjusted)
+    app.feature.open_folder(app.folder.id)  # новая папка — подгонка снимается
+    app.qtbot.waitUntil(lambda: screen.group.offsets == {}, timeout=5000)

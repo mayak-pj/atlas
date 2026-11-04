@@ -127,6 +127,8 @@ class CompareScreen(QWidget):
         self._compare_states = {}  # то же в «Сравнении»: при выключенной синхронности окна тоже стоят по-разному
         self._compare_group_state = FIT_STATE
         self._angle_group_state = FIT_STATE
+        self._compare_offsets = {}  # подгонка окон друг к другу (SyncGroup.offsets) — у каждого режима своя
+        self._angle_offsets = {}
         self._sync_by_mode = {False: True, True: False}  # «Синхронно» у каждого режима своя: стороны платы по месту не совпадают
         self._reference_note = ""  # подпись найденной папки: проект, дата
         self._reference_tag = TAG_REFERENCE
@@ -501,6 +503,8 @@ class CompareScreen(QWidget):
         """Новая папка: раскладка, зум и режим синхронности сохраняются."""
         self._end_flicker()
         self.model.set_photos(photos)
+        self.group.reset_offsets()  # подгонка была под фото прошлой папки
+        self._compare_offsets, self._angle_offsets = {}, {}
         self.angles.set_photos(self.model.photos, self._name_pattern)
         self._fill_angle_toggles()
         self._orientation_known = False
@@ -632,6 +636,7 @@ class CompareScreen(QWidget):
         if on:
             self._compare_states = states
             self._compare_group_state = self.group.state
+            self._compare_offsets = self.group.offsets
             self.model.set_reference_active(False)
             self.angles.show_all()  # «нажимаю «Ракурсы» — включены все»
             self._fill_angle_toggles()
@@ -640,6 +645,7 @@ class CompareScreen(QWidget):
         else:
             self._angle_states = states
             self._angle_group_state = self.group.state
+            self._angle_offsets = self.group.offsets
             number = self.angles.active_photo()
             if number is not None:
                 self.model.go(number)
@@ -652,7 +658,8 @@ class CompareScreen(QWidget):
         self.sync_button.blockSignals(True)
         self.sync_button.setChecked(sync)
         self.sync_button.blockSignals(False)
-        self.group.set_enabled(sync)
+        self.group.set_enabled(sync, measure=False)
+        self.group.set_offsets(self._angle_offsets if on else self._compare_offsets)
         if sync:
             self.group.set_state(*(self._angle_group_state if on else self._compare_group_state))
         self._apply_layout()

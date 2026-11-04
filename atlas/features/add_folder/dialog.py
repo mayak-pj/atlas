@@ -42,7 +42,8 @@ def scan_folder(path):
 
 
 class AddFolderDialog(QDialog):
-    def __init__(self, kinds, parts=(), no_device=logic.DEFAULT_NO_DEVICE, today=None, scan=scan_folder, parent=None):
+    def __init__(self, kinds, parts=(), no_device=logic.DEFAULT_NO_DEVICE, today=None, scan=scan_folder, parent=None,
+                 tails=logic.DEFAULT_PART_TAILS):
         """kinds — виды проектов; parts — уже внесённые детали (подсказки в списках); scan(путь) → (фото, ошибка)."""
         super().__init__(parent)
         self.setWindowTitle(TITLE)
@@ -50,6 +51,7 @@ class AddFolderDialog(QDialog):
         self.setMinimumWidth(560)
         self._kinds = tuple(kinds)
         self._no_device = no_device
+        self._tails = tuple(tails)
         self._today = today
         self._scan = scan
         self._options = logic.known_options(parts)
@@ -150,7 +152,7 @@ class AddFolderDialog(QDialog):
             self._request += 1
             self._refresh()
             return
-        self._apply_suggestion(logic.suggest(text, self._kinds, self._no_device, self._today))
+        self._apply_suggestion(logic.suggest(text, self._kinds, self._no_device, self._today, self._tails))
         self._request += 1
         threading.Thread(target=self._work, args=(self._request, text), daemon=True).start()
         self._refresh()

@@ -257,3 +257,17 @@ def test_error_message_is_in_warning_role_and_hint_is_not(qtbot):
     assert dialog.status.property("role") == "warn"
     dialog.set_path("")
     assert dialog.status.property("role") == "muted"
+
+
+def test_suggestion_drops_reference_tail_from_part_name():
+    """04.11.2026: папка «… - Эталон» лежит рядом с проверяемой; такая же деталь ищется по точному названию."""
+    from atlas.features.add_folder import logic as add_logic
+
+    for name, wanted in (("Накопитель SSD 256GB - 2 типа по 50 - Эталон", "Накопитель SSD 256GB - 2 типа по 50"),
+                         ("Плата (эталон)", "Плата"), ("Плата_ЭТАЛОН", "Плата"), ("Эталон", "Эталон"),
+                         ("Плата эталонная", "Плата эталонная")):
+        assert add_logic.strip_tails(name, ("Эталон",)) == wanted
+    assert add_logic.suggest("/диск/Проект/Плата - Эталон").part == "Плата"
+    assert add_logic.suggest("/диск/Проект/Плата - Эталон", tails=()).part == "Плата - Эталон"
+    from pathlib import Path
+    assert add_logic.load_part_tails(Path(__file__).resolve().parent.parent / "data") == ("Эталон",)

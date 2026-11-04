@@ -164,7 +164,7 @@ class CommentCard(QFrame):
         head.addWidget(_label(when, "muted", wrap=False))
         column.addLayout(head)
         if item.body:
-            column.addWidget(_label(item.body, "dim"))
+            column.addWidget(_label(item.body))  # обычным цветом текста: это само сообщение, а не служебная строка
         if item.photos:
             photos = QWidget()
             photos.setProperty("role", "plain")

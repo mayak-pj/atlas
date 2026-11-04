@@ -54,8 +54,10 @@ class ThumbView(QWidget):
     """Картинка по пути: уровень L1 из общего кэша, читается в фоне; рисуется по центру с сохранением пропорций."""
     open_requested = pyqtSignal(str)  # двойной клик: открыть это фото большим
 
-    def __init__(self, cache, height, parent=None):
+    def __init__(self, cache, height, parent=None, fill=False):
+        """fill — заполнить окно целиком, лишнее по краям обрезать (миниатюры в сетке); иначе фото целиком с полями."""
         super().__init__(parent)
+        self.fill = fill
         self.setObjectName("PhotoView")  # тот же фон и скругление, что у окна просмотра
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedHeight(height)
@@ -123,18 +125,29 @@ class ThumbView(QWidget):
             painter.drawText(self.rect(), Qt.AlignCenter, TEXT_NO_FILE if self._failed else "")
             return
         area = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        scale = min(area.width() / self._image.width(), area.height() / self._image.height())
-        width, height = self._image.width() * scale, self._image.height() * scale
-        target = QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
-        painter.drawImage(target, self._image)
+        target, source = self._placement(area)
+        painter.drawImage(target, self._image, source)
         frame = self._frame
         if frame.gray > 0:
             painter.setOpacity(frame.gray)
-            painter.drawImage(target, self._gray_image())
+            painter.drawImage(target, self._gray_image(), source)
             painter.setOpacity(frame.gray * stamp_math.DIM)
             painter.fillRect(target, theme.current().qcolor("photo_bg"))
             painter.setOpacity(1.0)
         stamp_math.paint_stamp(painter, QRectF(self.rect()), frame, theme.current().qcolor("defect"))
+
+    def _placement(self, area):
+        """(куда рисовать, какую часть картинки). fill — без чёрных полос: середина фото на всё окно."""
+        image_w, image_h = float(self._image.width()), float(self._image.height())
+        if self.fill:
+            scale = max(area.width() / image_w, area.height() / image_h)
+            source_w, source_h = area.width() / scale, area.height() / scale
+            source = QRectF((image_w - source_w) / 2, (image_h - source_h) / 2, source_w, source_h)
+            return area, source
+        scale = min(area.width() / image_w, area.height() / image_h)
+        width, height = image_w * scale, image_h * scale
+        target = QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
+        return target, QRectF(0, 0, image_w, image_h)
 
     def _gray_image(self):
         key = self._image.cacheKey()
@@ -160,7 +173,7 @@ class TypeCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT)
+        self.thumb = ThumbView(cache, THUMB_HEIGHT, fill=True)  # без полос по бокам; целиком — справа и по двойному клику
         self.thumb.set_path(root / (entry.crop_rel or entry.photo_rel))  # вырезка, если есть: так виден сам тип
         self.thumb.show_frame(stamp_math.final_frame(entry.archived))
         layout.addWidget(self.thumb)
@@ -246,7 +259,7 @@ class RemarkCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT)
+        self.thumb = ThumbView(cache, THUMB_HEIGHT, fill=True)  # без полос по бокам; целиком — справа и по двойному клику
         self.thumb.set_path(entry.path)
         layout.addWidget(self.thumb)
         body = QVBoxLayout()

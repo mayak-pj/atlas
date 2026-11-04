@@ -194,6 +194,10 @@ class CompareFeature(Feature):
         """Окно, в котором сейчас работает человек, или None."""
         return self.screen.active_view() if self.screen is not None else None
 
+    def active_photo(self):
+        """PhotoItem фото текущей папки в активном окне — с отметкой, SN, видом — или None. Из GUI-потока."""
+        return self.screen.active_photo() if self.screen is not None else None
+
     # --- чтение базы в фоне ---------------------------------------------------
     def _run(self, work, *args):
         self._request += 1

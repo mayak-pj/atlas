@@ -238,12 +238,14 @@ class TypeDbFeature(Feature):
         shapes = tuple(annotations.shapes(view.path)) if annotations is not None else ()
         parsed = parse_photo_name(Path(str(view.path).replace("\\", "/")).name, self._pattern)
         base = (str(view.path), view.rotation, shapes, parsed.sn if parsed is not None else None)
+        photo = compare.active_photo() if hasattr(compare, "active_photo") else None
+        mark = photo.mark if photo is not None and str(photo.path) == str(view.path) else None
         self.busy = True
-        self._run(self._prepare, folder.part_id, base)
+        self._run(self._prepare, folder.part_id, base, mark)
 
-    def _prepare(self, part_id, base):
+    def _prepare(self, part_id, base, mark=None):
         part = self.ctx.services.get("parts").get(part_id)
-        number = logic.default_type_no(self.repo.numbers(part_id))
+        number = logic.default_type_no(self.repo.numbers(part_id), mark)
         self.signals.prepared.emit(_Draft(part, number, base))
 
     def _on_prepared(self, draft):

@@ -65,6 +65,10 @@ def test_stem_and_numbers():
     assert logic.file_stem("type", 2, NOW, "ab12cd") == "Тип 2_20261101_153012_ab12cd"
     assert logic.file_stem("defect", None, NOW, "ab12cd").startswith("Дефект_")
     assert logic.default_type_no([]) == 1 and logic.default_type_no([1, 3, None]) == 4 and logic.default_type_no([99]) == 99
+    # фото уже отмечено «Тип N» — в окне стоит N (замечание 04.11.2026)
+    assert logic.default_type_no([1, 3], "type:2") == 2 and logic.default_type_no([], "type:5") == 5
+    assert logic.default_type_no([1], "remark") == 2 and logic.default_type_no([1], "type:x") == 2
+    assert logic.default_type_no([1], "type:100") == 2
 
 
 def test_under_folder_ignores_case_and_slashes():
@@ -270,3 +274,14 @@ def test_dialog_saves_without_description_and_defect_has_no_number(qtbot):
     assert (card.kind, card.type_no, card.description, card.article) == ("type", 3, "  третий чип ", "512-XS-A")
     dialog.kind.setCurrentIndex(1)
     assert not dialog.number.isEnabled() and dialog.card().kind == "defect" and dialog.card().type_no is None
+
+
+def test_card_offers_the_type_the_photo_is_marked_with(app):
+    """Отметил фото «Тип 2» — в окне карточки уже стоит 2, а не следующий номер детали."""
+    screen = app.screen
+    screen.mark_buttons["type:2"].click()
+    app.qtbot.waitUntil(lambda: screen.model.photos[screen.model.active_index].mark == "type:2", timeout=3000)
+    app.type_db.add_button.click()
+    app.qtbot.waitUntil(lambda: not app.type_db.busy and bool(app.type_db.asked), timeout=5000)
+    assert app.type_db.asked[-1].number == 2
+

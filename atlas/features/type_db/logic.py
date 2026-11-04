@@ -71,10 +71,26 @@ def crop_rel(directory, stem):
     return "{}/{}_crop.jpg".format(directory, stem)
 
 
-def default_type_no(existing):
-    """Следующий номер типа детали: существующие номера → максимум + 1 (нет типов — 1)."""
+def default_type_no(existing, mark=None):
+    """Номер типа в окне карточки. Фото уже отмечено «Тип N» — N (это и хотят сохранить);
+    иначе следующий номер детали: существующие → максимум + 1 (нет типов — 1)."""
+    marked = marked_type_no(mark)
+    if marked is not None:
+        return marked
     numbers = [int(number) for number in existing if number is not None]
     return min(MAX_TYPE_NO, max(numbers) + 1) if numbers else 1
+
+
+def marked_type_no(mark):
+    """«type:2» → 2; другая отметка или её нет — None."""
+    text = str(mark or "")
+    if not text.startswith("type:"):
+        return None
+    try:
+        number = int(text[len("type:"):])
+    except ValueError:
+        return None
+    return number if 1 <= number <= MAX_TYPE_NO else None
 
 
 def under_folder(photo_path, folder_path):

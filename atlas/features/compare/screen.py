@@ -968,6 +968,13 @@ class CompareScreen(QWidget):
             return False
         return model.photos[number].id is not None and self.active_view().is_current_shown
 
+    def active_photo(self):
+        """Фото текущей папки в активном окне (с отметкой) или None: эталон, «мигалка», пустое окно."""
+        if not self.model.photos or self.model.reference_active or self._flicker is not None:
+            return None
+        number = self._marked_number()
+        return self.model.photos[number] if number is not None else None
+
     def _marked_number(self):
         """Номер фото активного окна в папке; None — в окне нет фото (у SN нет этого ракурса)."""
         return self.angles.active_photo() if self._angles_on else self.model.active_index

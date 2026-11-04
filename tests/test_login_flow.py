@@ -119,3 +119,29 @@ def test_dialog_screenshot_renders(qtbot, tmp_path):
     assert len(dialog._tags) == 6
     assert dialog.grab().width() > 0
     registry.stop_all()
+
+
+def test_remove_person_from_list_keeps_their_name_for_records(qtbot, tmp_path):
+    """04.11.2026: «удалить человека» — из списка входа; подписи «кто сделал» остаются; та же фамилия — вернуть."""
+    from atlas.features.login.dialog import LoginDialog
+
+    ctx, registry = _start(tmp_path)
+    login = ctx.services.get("login")
+    petrov = login.repo.add("Петров", [])
+    login.repo.add("Иванова", [])
+    dialog = LoginDialog(login.repo, [])
+    qtbot.addWidget(dialog)
+    dialog._select(petrov.id)
+    dialog.ask_remove = lambda user: False
+    dialog.remove_button.click()
+    assert [tag.name for tag in dialog._tags] == ["Иванова", "Петров"]
+    dialog.ask_remove = lambda user: True
+    dialog._select(petrov.id)
+    dialog.remove_button.click()
+    assert [tag.name for tag in dialog._tags] == ["Иванова"]
+    users = ctx.services.get("users")
+    assert [user.name for user, _ in users.active()] == ["Иванова"]
+    assert "Петров" in [user.name for user, _ in users.all()]  # для подписей старых отметок
+    again = login.repo.add("петров", [])
+    assert again.id == petrov.id and [user.name for user, _ in users.active()] == ["Иванова", "Петров"]
+    registry.stop_all()

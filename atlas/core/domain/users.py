@@ -9,8 +9,19 @@ class UsersService:
     def __init__(self, db):
         self.db = db
 
+    def active(self):
+        """[(User, last_login_at)] — кого показывать в списке входа и выбора: без убранных."""
+        rows = self.db.read(lambda conn: conn.execute(
+            "SELECT id, name, color, last_login_at FROM users WHERE hidden_at IS NULL ORDER BY name_key").fetchall())
+        return [(User(row["id"], row["name"], row["color"]), row["last_login_at"]) for row in rows]
+
+    def hide(self, user_id):
+        """Убрать из списка. Отметки, правила и типы человека остаются с его фамилией."""
+        self.db.write(lambda conn: conn.execute(
+            "UPDATE users SET hidden_at = ? WHERE id = ? AND hidden_at IS NULL", (now_text(), user_id)))
+
     def all(self):
-        """[(User, last_login_at)] — по фамилии."""
+        """[(User, last_login_at)] — по фамилии, все, в том числе убранные из списка: для подписей «кто сделал»."""
         rows = self.db.read(
             lambda conn: conn.execute("SELECT id, name, color, last_login_at FROM users ORDER BY name_key").fetchall()
         )
@@ -29,6 +40,7 @@ class UsersService:
         def work(conn):
             row = conn.execute("SELECT id, name, color FROM users WHERE name_key = ?", (key,)).fetchone()
             if row is not None:
+                conn.execute("UPDATE users SET hidden_at = NULL WHERE id = ?", (row["id"],))  # убранного — вернуть
                 return User(row["id"], row["name"], row["color"])
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             color = color_for(count)

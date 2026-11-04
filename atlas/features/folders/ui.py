@@ -20,6 +20,7 @@ DEFAULT_REFRESH_S = 60  # чужие папки появляются без со
 STOP_WAIT_S = 2.0  # сеть могла пропасть: дольше не держим закрытие программы
 TITLE_NEW = "Новые — не проверены"
 TITLE_DONE = "Проверено на этой неделе"
+TITLE_WORK = "В работе"
 TEXT_EMPTY_NEW = "Новых папок нет"
 TEXT_EMPTY_DONE = "На этой неделе ничего не проверено"
 TEXT_COMPARE_OFF = "Экран сравнения выключен"
@@ -125,12 +126,19 @@ class FoldersPanel(QFrame):
         self.cards = []
         self._header(TITLE_NEW, snapshot.new_total)
         self._cards(snapshot.new, selected_id, workers, TEXT_EMPTY_NEW)
-        separator = QFrame()
-        separator.setProperty("role", "hsep")
-        self.column.insertWidget(self.column.count() - 1, separator)
+        if snapshot.in_work:  # пустой раздел не показываем: обычно папок в работе одна-две
+            self._separator()
+            self._header(TITLE_WORK, len(snapshot.in_work))
+            self._cards(snapshot.in_work, selected_id, workers, "")
+        self._separator()
         self._header(TITLE_DONE, None)
         self._cards(snapshot.done, selected_id, workers, TEXT_EMPTY_DONE)
         QTimer.singleShot(0, lambda: bar.setValue(position))
+
+    def _separator(self):
+        separator = QFrame()
+        separator.setProperty("role", "hsep")
+        self.column.insertWidget(self.column.count() - 1, separator)
 
     def _add(self, widget):
         self.column.insertWidget(self.column.count() - 1, widget)
@@ -226,7 +234,8 @@ class FoldersFeature(Feature):
 
     # --- удаление папки из Atlas (04.11.2026) -------------------------------------------------
     def _on_delete_requested(self, folder_id):
-        entry = next((item for item in self.snapshot.new + self.snapshot.done if item.folder_id == folder_id), None)
+        entry = next((item for item in self.snapshot.new + self.snapshot.in_work + self.snapshot.done
+                      if item.folder_id == folder_id), None)
         title = entry.title if entry is not None else str(folder_id)
         if not self.ask_delete(title):
             return
@@ -284,8 +293,9 @@ class FoldersFeature(Feature):
         days = self.ctx.config.get("folders.done_days", logic.DEFAULT_DONE_DAYS)
         now = datetime.now()
         new = folders.recent(limit, status="new")
+        in_work = folders.recent(limit, status="in_work")
         done = [item for item in folders.recent(limit, status="done") if logic.is_recent(item.status_at, now, days)]
-        counts = folders.counts([item.id for item in new + done])
+        counts = folders.counts([item.id for item in new + in_work + done])
         names = {user.id: user.name for user, _ in services.get("users").all()}
         cache = {}
 
@@ -298,6 +308,7 @@ class FoldersFeature(Feature):
             [logic.new_entry(item, part_of(item), counts.get(item.id)) for item in new],
             len(new),
             [logic.done_entry(item, part_of(item), counts.get(item.id), names.get(item.status_by, "")) for item in done],
+            [logic.work_entry(item, part_of(item), counts.get(item.id), names.get(item.status_by, "")) for item in in_work],
         )
 
     def _on_loaded(self, snapshot):

@@ -1,7 +1,7 @@
 """Панель папок: что показать в карточках. Без Qt и БД."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -27,6 +27,7 @@ class Snapshot:
     new: List[Entry]
     new_total: int
     done: List[Entry]
+    in_work: List[Entry] = field(default_factory=list)  # отметки уже есть, письмо ещё не отправлено (04.11.2026)
 
 
 def plural(number, one, few, many):
@@ -89,6 +90,14 @@ def new_entry(folder, part, counts):
     total = (counts or {}).get("total", 0)
     subtitle = " · ".join(item for item in (where_text(part), "{} фото".format(total)) if item)
     return Entry(folder.id, part_title(part, folder), subtitle, "скопировано " + short_time(folder.created_at))
+
+
+def work_entry(folder, part, counts, user_name):
+    """Папка в работе: итог отметок на сейчас и кто последним менял статус."""
+    text, token = summary(counts)
+    who = " · ".join(item for item in ("начато " + short_date(folder.status_at) if folder.status_at else "", user_name)
+                     if item)
+    return Entry(folder.id, part_title(part, folder), where_text(part), who, text, token)
 
 
 def done_entry(folder, part, counts, user_name):

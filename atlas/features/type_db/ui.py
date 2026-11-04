@@ -272,7 +272,7 @@ class TypeDbFeature(Feature):
     def _read_for_screen(self):
         try:
             entries = (self._read(), self._read_remarks())
-            self._users = [(user.id, user.name) for user, _ in self.ctx.services.get("users").all()]
+            self._users = [(user.id, user.name) for user, _ in self.ctx.services.get("users").active()]  # без убранных
         except Exception as exc:  # нет сети, база занята: остаётся прежний список
             log.warning("Не удалось прочитать базу типов: %s", exc)
             entries = None

@@ -196,3 +196,18 @@ def test_cross_deletes_open_folder_and_it_can_be_added_again(app):
     again = folders.add(folder.part_id, folder.path, "2026-10-31")  # тот же путь — снова как новая
     assert again.id != folder.id and folders.add_photos(again.id, ["0.jpg"]) == 1
     assert folders.delete(folder.id) is None  # уже нет
+
+
+def test_folder_in_work_is_listed_and_can_be_reopened(app):
+    """04.11.2026: папку с отметками не было видно нигде — ни в «Новых», ни в «Проверено»."""
+    folder = app.add_folder("SSD XS-2280")
+    folders = app.svc.get("folders")
+    folders.mark_photo(folders.photos(folder.id)[0].id, "type:1")
+    folders.set_status(folder.id, "in_work")
+    app.reload()
+    feature = app.feature("folders")
+    assert folder.id in [entry.folder_id for entry in feature.snapshot.in_work]
+    card = next(item for item in feature.panel.cards if item.entry.folder_id == folder.id)
+    QTest.mouseClick(card, Qt.LeftButton)
+    compare = app.feature("compare")
+    app.qtbot.waitUntil(lambda: compare.folder is not None and compare.folder.id == folder.id, timeout=5000)

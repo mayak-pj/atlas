@@ -88,6 +88,12 @@ class LoginDialog(QDialog):
         row.addWidget(self.go_button)
         row.addWidget(self.last_label)
         row.addStretch(1)
+        self.remove_button = QPushButton("Убрать из списка")
+        self.remove_button.setObjectName("login_remove")
+        self.remove_button.setToolTip("Человек больше не работает: его фамилии не будет в списке. "
+                                      "Его отметки, правила и типы останутся с подписью")
+        self.remove_button.clicked.connect(self._remove_selected)
+        row.addWidget(self.remove_button)
         column.addLayout(row)
 
         self.summary_host = _panel("panel-alt")
@@ -163,6 +169,7 @@ class LoginDialog(QDialog):
         self.selected = self._users.get(user_id)
         for tag in self._tags:
             tag.setChecked(self.selected is not None and tag.name == self.selected.name)
+        self.remove_button.setEnabled(self.selected is not None)
         if self.selected is None:
             self.go_button.setText("Войти")
             self.go_button.setEnabled(False)
@@ -184,6 +191,19 @@ class LoginDialog(QDialog):
             return
         user = self.repo.add(name, self.colors)
         self._reload(select_name=user.name)
+
+    def _remove_selected(self):
+        user = self.selected
+        if user is None or not self.ask_remove(user):
+            return
+        self.repo.hide(user.id)
+        self._reload()
+
+    def ask_remove(self, user):
+        """Подтверждение. Подменяется в тестах."""
+        text = ("Убрать «{}» из списка?\n\nЕго отметки, правила и типы останутся с его фамилией. "
+                "Вернуть — «+ Добавить себя» с той же фамилией.").format(user.name)
+        return QMessageBox.question(self, "Atlas", text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
 
     def _accept(self):
         if self.selected is not None:

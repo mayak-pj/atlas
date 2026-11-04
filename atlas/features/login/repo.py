@@ -9,8 +9,11 @@ class UserRepo:
         self.users = users
 
     def all(self):
-        """[(User, last_login_at)] — по фамилии."""
-        return self.users.all()
+        """[(User, last_login_at)] — по фамилии, без убранных из списка."""
+        return self.users.active() if hasattr(self.users, "active") else self.users.all()
+
+    def hide(self, user_id):
+        self.users.hide(user_id)
 
     def add(self, name, colors):
         """Добавляет человека; при гонке двух машин (то же имя) возвращает уже созданного."""

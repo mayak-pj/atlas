@@ -24,6 +24,7 @@ MESSAGE_MS = 8000
 TEXT_PUBLISHED = "Правило опубликовано"
 TEXT_FAILED = "Не удалось записать правило: база недоступна, попробуйте ещё раз"
 TEXT_UPDATED = "Правило изменено"
+TEXT_LOCKED = "Правило старше {} дней: изменить и удалить нельзя, только в архив"
 TEXT_ACTION_FAILED = "Не удалось: база недоступна, попробуйте ещё раз"
 
 
@@ -80,7 +81,7 @@ class RulesFeature(Feature):
 
     def create_tab(self):
         self.screen = RulesScreen(self._root, self.ctx.services.get("parts").kinds,
-                                  animations=bool(self.ctx.config.get("ui.animations", True)))
+                                  animations=bool(self.ctx.config.get("ui.animations", True)), edit_days=self._edit_days())
         self.screen.publish_requested.connect(self.publish)
         self.screen.archive_requested.connect(self.archive)
         self.screen.delete_requested.connect(self.delete)
@@ -214,13 +215,24 @@ class RulesFeature(Feature):
         self._spawn(self._action, rule_id, lambda: self.repo.set_archived(rule_id, archived, self._user_id() or None),
                     lambda _result: self.signals.archived.emit(rule_id, archived))
 
+    def _edit_days(self):
+        return int(self.ctx.config.get("rules.edit_days", logic.EDIT_DAYS))
+
+    def _check_unlocked(self, rule_id):
+        """Сервис тоже проверяет срок: окно могло быть открыто с позавчера."""
+        rule = next((item for item in self.rules if item.id == rule_id), None)
+        if rule is not None and logic.locked(rule, days=self._edit_days()):
+            raise logic.RuleError(TEXT_LOCKED.format(self._edit_days()))
+
     def delete(self, rule_id):
         def work():
+            self._check_unlocked(rule_id)
             self.store.discard_rels(self.repo.delete(rule_id))  # файлы — после базы: правило уже не ссылается на них
         self._spawn(self._action, rule_id, work, lambda _result: self.signals.deleted.emit(rule_id))
 
     def update(self, rule_id, title, body, keep_rels, new_paths):
         def work():
+            self._check_unlocked(rule_id)
             draft = logic.checked(logic.Draft(logic.SCOPE_GENERAL, title, body))  # та же проверка текста, что у нового
             rels = self.store.save(list(new_paths))
             try:

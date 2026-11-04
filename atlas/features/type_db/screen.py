@@ -175,7 +175,7 @@ class TypeCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT, fill=True)  # без полос по бокам; целиком — справа и по двойному клику
+        self.thumb = ThumbView(cache, THUMB_HEIGHT)  # фото целиком: обрезка по краям 04.11 не понравилась, вернули
         self.thumb.set_path(root / (entry.crop_rel or entry.photo_rel))  # вырезка, если есть: так виден сам тип
         self.thumb.show_frame(stamp_math.final_frame(entry.archived))
         layout.addWidget(self.thumb)
@@ -261,7 +261,7 @@ class RemarkCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT, fill=True)  # без полос по бокам; целиком — справа и по двойному клику
+        self.thumb = ThumbView(cache, THUMB_HEIGHT)  # фото целиком: обрезка по краям 04.11 не понравилась, вернули
         self.thumb.set_path(entry.path)
         layout.addWidget(self.thumb)
         body = QVBoxLayout()

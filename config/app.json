@@ -38,7 +38,8 @@
   },
   "rules": {
     "dir": "var/rules",
-    "refresh_s": 60
+    "refresh_s": 60,
+    "edit_days": 14
   },
   "comments": {
     "dir": "var/comments",

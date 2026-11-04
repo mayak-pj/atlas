@@ -5,7 +5,7 @@ from atlas.core.domain.text import now_text
 from atlas.features.rules.logic import Rule
 
 _COLUMNS = ("id, scope, kind, project_id, device_id, part_id, name_key, scope_label, title, body, author_id, created_at, "
-            "archived_at, updated_at")
+            "archived_at, updated_at, archived_by")
 
 
 class Repo:

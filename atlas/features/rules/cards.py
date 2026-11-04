@@ -24,6 +24,8 @@ DESTROY_MS = 650
 TEXT_NEW = "НОВОЕ"
 TEXT_READ = "Прочитано"
 TEXT_ARCHIVED = "В архиве"
+TEXT_ARCHIVED_BY = "В архиве · {}"
+TIP_LOCKED = "Изменить и удалить можно в течение {} дней после добавления; дальше — только в архив"
 TEXT_EDITED = "изменено {}"
 TIP_EDIT = "Изменить заголовок, текст и фото"
 TIP_ARCHIVE = "В архив: правило остаётся внизу списка, но к детали не показывается"
@@ -129,7 +131,7 @@ class RuleTile(QFrame):
     delete_clicked = pyqtSignal(int)
     animation_done = pyqtSignal(int)
 
-    def __init__(self, rule, author, color, root, today=None, parent=None):
+    def __init__(self, rule, author, color, root, today=None, parent=None, archiver="", edit_days=logic.EDIT_DAYS):
         super().__init__(parent)
         self.rule = rule
         self.setProperty("role", "type-card")
@@ -162,6 +164,11 @@ class RuleTile(QFrame):
         self.delete_button.clicked.connect(lambda _=False: self.delete_clicked.emit(rule.id))
         for button in (self.edit_button, self.archive_button, self.delete_button):
             head.addWidget(button)
+        self.locked = logic.locked(rule, today, edit_days)
+        if self.locked:  # прошло больше edit_days: правило — уже обоснование, только архив
+            for button in (self.edit_button, self.delete_button):
+                button.setEnabled(False)
+                button.setToolTip(TIP_LOCKED.format(edit_days))
         body.addLayout(head)
         body.addWidget(_label(rule.title, "heading"))
         if rule.body:
@@ -181,7 +188,8 @@ class RuleTile(QFrame):
         foot.addWidget(_label(when, "muted", wrap=False))
         foot.addStretch(1)
         if rule.archived:
-            foot.addWidget(_label(TEXT_ARCHIVED, "caption", wrap=False))
+            who = ", ".join(part for part in (archiver, logic.short_date(rule.archived_at, today)) if part)
+            foot.addWidget(_label(TEXT_ARCHIVED_BY.format(who) if who else TEXT_ARCHIVED, "caption", wrap=False))
         elif not rule.read:
             read = QPushButton(TEXT_READ)
             read.setFocusPolicy(Qt.NoFocus)
@@ -189,6 +197,7 @@ class RuleTile(QFrame):
             foot.addWidget(read)
         body.addLayout(foot)
         outer.addLayout(body)
+        self._outer = outer
         self._stamp = StampAnimation(self, self._on_frame, lambda: self.animation_done.emit(self.rule.id))
         self._destroy = None
         self._effect = None
@@ -198,20 +207,19 @@ class RuleTile(QFrame):
         return self._stamp.running or self._destroy is not None
 
     def set_buttons_enabled(self, enabled):
-        for button in (self.edit_button, self.archive_button, self.delete_button):
-            button.setEnabled(enabled)
+        self.archive_button.setEnabled(enabled)
+        for button in (self.edit_button, self.delete_button):
+            button.setEnabled(enabled and not self.locked)
 
     def play_archive(self, archived):
         """Печать «В АРХИВЕ» (или обратно в цвет), как в «БД». Без фото — сразу конец."""
         self.set_buttons_enabled(False)
-        if self.cover is None:
-            self.animation_done.emit(self.rule.id)
-            return
-        self._stamp.start(restoring=not archived)
+        self._stamp.start(restoring=not archived)  # без фото печати не видно, но «удар» есть
 
     def _on_frame(self, frame):
         if self.cover is not None:
             self.cover.show_frame(frame)
+        self._outer.setContentsMargins(0, int(round(frame.thud)), 0, 0)  # «удар» печати: карточка вздрагивает, как в «БД»
 
     def play_delete(self):
         """«Уничтожение»: фото краснеет, карточка сжимается и тает; в конце — animation_done."""

@@ -202,7 +202,7 @@ class PhotoDialog(QDialog):
         bar = QHBoxLayout()
         self.prev_button = QPushButton("Назад")
         self.next_button = QPushButton("Вперёд")
-        self.fit_button = QPushButton("Сбросить")
+        self.fit_button = QPushButton("В кадр")
         set_icon(self.fit_button, "scan", "text")
         self.fit_button.setToolTip("Всё фото целиком")
         self.count_label = _label("", "muted", wrap=False)
@@ -323,8 +323,9 @@ class RulesScreen(QWidget):
     delete_requested = pyqtSignal(int)
     update_requested = pyqtSignal(int, str, str, tuple, tuple)  # правило, заголовок, текст, оставленные фото, новые
 
-    def __init__(self, root, kinds, today=None, animations=True, parent=None):
+    def __init__(self, root, kinds, today=None, animations=True, parent=None, edit_days=logic.EDIT_DAYS):
         super().__init__(parent)
+        self.edit_days = edit_days
         self.root = Path(root)
         self.today = today
         self.animations = animations
@@ -548,7 +549,7 @@ class RulesScreen(QWidget):
     def edit_rule(self, rule_id):
         """Правило — в форму справа: заголовок, текст, его фото (можно убрать и добавить). Область — прежняя."""
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None:
+        if rule is None or logic.locked(rule, self.today, self.edit_days):
             return
         self.editing = rule
         self.keep_rels = list(rule.photos)
@@ -618,7 +619,8 @@ class RulesScreen(QWidget):
         self._columns = columns
         for number, rule in enumerate(shown):
             card = RuleTile(rule, self.names.get(rule.author_id, ""), self.colors.get(rule.author_id), self.root,
-                            self.today, self.grid_holder)
+                            self.today, self.grid_holder, archiver=self.names.get(rule.archived_by, ""),
+                            edit_days=self.edit_days)
             card.read_clicked.connect(lambda rule_id: self.read_requested.emit([rule_id]))
             card.photo_clicked.connect(self.open_photo)
             card.edit_clicked.connect(self.edit_rule)
@@ -649,7 +651,7 @@ class RulesScreen(QWidget):
 
     def _on_delete_clicked(self, rule_id):
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None or not self.ask_delete(rule):
+        if rule is None or logic.locked(rule, self.today, self.edit_days) or not self.ask_delete(rule):
             return
         card = self.cards.get(rule_id)
         if card is not None:

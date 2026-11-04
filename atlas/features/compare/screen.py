@@ -335,7 +335,7 @@ class CompareScreen(QWidget):
         plus = self._button("+", lambda: self.group.zoom_by(BUTTON_ZOOM))
         plus.setProperty("role", "square")
         row.addWidget(plus)
-        self.reset_button = self._button("Сбросить", self.fit)
+        self.reset_button = self._button("В кадр", self.fit)
         set_icon(self.reset_button, "scan", "text")
         self.reset_button.setToolTip(TIP_RESET)
         row.addWidget(self.reset_button)

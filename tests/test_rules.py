@@ -334,3 +334,40 @@ def test_card_shows_author_tag_cover_and_body_in_text_color(app):
     from PyQt5.QtTest import QTest
     QTest.mouseClick(card.cover, Qt.LeftButton)
     assert opened == [(item.photos, 0)]
+
+
+def test_rule_older_than_two_weeks_can_only_be_archived(app):
+    from datetime import datetime, timedelta
+
+    item = _published(app, "Старое")
+    old = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d %H:%M:%S")
+    app.ctx.db.write(lambda conn: conn.execute("UPDATE rules SET created_at = ? WHERE id = ?", (old, item.id)))
+    app.rules.refresh()
+    app.wait_idle()
+    screen = app.rules.screen
+    card = screen.cards[item.id]
+    assert card.locked and not card.edit_button.isEnabled() and not card.delete_button.isEnabled()
+    assert card.archive_button.isEnabled() and "14 дней" in card.edit_button.toolTip()
+    screen.ask_delete = lambda rule_: True
+    screen._on_delete_clicked(item.id)  # кнопка выключена, но и сам вызов не удаляет
+    screen.edit_rule(item.id)
+    assert screen.editing is None
+    app.rules.delete(item.id)  # и сервис не даёт: окно могло быть открыто давно
+    app.wait_idle()
+    assert app.rules.repo.all(app.petrov.id)
+    card.archive_button.click()
+    app.qtbot.waitUntil(lambda: not screen._animating and any(r.archived for r in app.rules.rules), timeout=5000)
+    app.wait_idle()
+    from PyQt5.QtWidgets import QLabel
+    archived = screen.cards[item.id]
+    assert any(label.text().startswith("В архиве · Петров") for label in archived.findChildren(QLabel))
+
+
+def test_archived_card_says_who_archived_it(qtbot):
+    from atlas.features.rules.cards import RuleTile
+    from PyQt5.QtWidgets import QLabel
+
+    card = RuleTile(rule("general", archived_at="2026-11-04 10:00:00", archived_by=2), "Петров", "#7DB4FF", "/правила",
+                    archiver="Иванова")
+    qtbot.addWidget(card)
+    assert any(label.text().startswith("В архиве · Иванова") for label in card.findChildren(QLabel))

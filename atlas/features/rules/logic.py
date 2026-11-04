@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 SCOPE_GENERAL = "general"
@@ -42,6 +42,7 @@ class Rule:
     created_at: str
     archived_at: Optional[str] = None  # миграция 002: архив, изменение (04.11.2026)
     updated_at: Optional[str] = None
+    archived_by: Optional[int] = None
     read: bool = True
     photos: Tuple[str, ...] = field(default_factory=tuple)
 
@@ -117,6 +118,21 @@ def matches_filter(rule, key):
     if key.startswith(FILTER_KIND_PREFIX):
         return rule.kind == key[len(FILTER_KIND_PREFIX):]
     return True
+
+
+EDIT_DAYS = 14  # настройка rules.edit_days
+
+
+def locked(rule, today=None, days=EDIT_DAYS):
+    """Изменить и удалить можно только первые days суток; дальше — только архив (решение пользователя 04.11.2026).
+
+    Правило — обоснование работы: если к человеку претензия, видно, по какому правилу он делал.
+    """
+    try:
+        created = datetime.strptime(str(rule.created_at)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return True
+    return (today or datetime.now()) - created > timedelta(days=days)
 
 
 def filtered(rules, key):

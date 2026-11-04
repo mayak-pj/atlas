@@ -51,6 +51,8 @@ TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
+TEXT_CLEAR_REFERENCE = "Убрать эталон"
+TIP_CLEAR_REFERENCE = "Сравнил — эталон больше не нужен: его окно снова показывает фото этой папки"
 TIP_RESET = ("Всё фото целиком во всех окнах; подгонка окон друг к другу снимается.\n"
              "Двойной клик по фото — целиком только это окно")
 TIP_KINDS_EDIT = "Виды замечаний: добавить, исправить, удалить"
@@ -384,6 +386,10 @@ class CompareScreen(QWidget):
         self._angle_row.setSpacing(6)
         row.addLayout(self._angle_row)
         row.addStretch(1)
+        self.clear_reference_button = self._button(TEXT_CLEAR_REFERENCE, self.clear_reference)
+        set_icon(self.clear_reference_button, "x", "text")
+        self.clear_reference_button.setToolTip(TIP_CLEAR_REFERENCE)
+        row.addWidget(self.clear_reference_button)
         self._angle_buttons = {}
         self.reference_bar.hide()
         return self.reference_bar
@@ -560,6 +566,19 @@ class CompareScreen(QWidget):
         self._reference_tag = TAG_OTHER_PROJECT if other_project else TAG_REFERENCE
         self._fill_reference_bar()
         self._apply_layout()
+
+    def clear_reference(self):
+        """«Убрать эталон»: найденная деталь больше не нужна; окно эталона снова — фото этой папки."""
+        if not self.model.has_reference_folder and self.model.reference is None:
+            return
+        self._end_flicker()
+        self.model.set_reference(None)
+        self._strip_source = None  # лента снова показывает эту папку
+        self.marks_status.setText("")
+        self._sync_extra()
+        self._fill_reference_bar()
+        self._apply_layout()
+        self.group.touch(self.active_view())
 
     def _fill_reference_bar(self):
         for button in self._angle_buttons.values():
@@ -779,7 +798,8 @@ class CompareScreen(QWidget):
         has_photos = bool(self.model.photos)
         angles = self._angles_on
         has_content = bool(self.angles.plan.sets) if angles else has_photos
-        self.reference_bar.setVisible(not angles and has_photos and self.model.has_reference_folder and self.model.reference_window)
+        # И при одном окне: эталон там в «мигалке», а убрать его нужно уметь всегда
+        self.reference_bar.setVisible(not angles and has_photos and self.model.has_reference_folder)
         texts = angle_notes(self.angles.plan) if angles else []
         self.angles_label.setText(" · ".join(texts))
         self.angles_bar.setVisible(bool(texts))

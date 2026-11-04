@@ -244,7 +244,7 @@ def test_layout_1_hides_reference_and_it_returns(app):
     _find(app)
     _click(app.screen.views[0])
     app.screen.set_layout(1)
-    assert not app.screen.model.reference_active and not app.screen.reference_bar.isVisible()
+    assert not app.screen.model.reference_active and app.screen.reference_bar.isVisible()  # строка остаётся: в ней «Убрать эталон»
     app.screen.set_layout(3)
     _wait_shown(app)
     assert _windows(app)[0] == "r1.jpg" and app.screen.reference_bar.isVisible()
@@ -369,3 +369,29 @@ def test_disk_candidates_prefer_nearest_level_and_skip_empty(tmp_path):
     assert [item.name for item, _ in candidates(current, "2026")] == ["2026-10-01"]
     assert [item.name for item, _ in candidates(current, "плата usb")] == ["Плата USB - Эталон"]
     assert candidates(current, "") == []
+
+
+def test_clear_reference_frees_its_window(app):
+    """04.11.2026: сравнил с найденной деталью — «Убрать эталон», окно снова показывает фото этой папки."""
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    app.screen.set_layout(2)
+    _find(app)
+    screen = app.screen
+    assert screen.model.reference_window and not screen.reference_bar.isHidden()
+    screen.clear_reference_button.click()
+    assert screen.model.reference is None and not screen.model.has_reference_folder
+    assert screen.group.reference is None and screen.reference_bar.isHidden()
+    assert screen.model.currents_count == 2  # оба окна — эта папка
+    _wait_shown(app)
+    assert all("Эталон" not in str(view.path) for view in screen._visible_views())
+
+
+def test_reference_bar_with_clear_button_is_shown_in_single_window_too(app):
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    _find(app)  # из одного окна поиск открывает раскладку «2»
+    app.screen.set_layout(1)
+    assert not app.screen.reference_bar.isHidden()
+    app.screen.clear_reference_button.click()
+    assert app.screen.model.reference is None

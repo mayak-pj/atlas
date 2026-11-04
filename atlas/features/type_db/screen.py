@@ -56,10 +56,15 @@ class ThumbView(QWidget):
     """Картинка по пути: уровень L1 из общего кэша, читается в фоне; рисуется по центру с сохранением пропорций."""
     open_requested = pyqtSignal(str)  # двойной клик: открыть это фото большим
 
-    def __init__(self, cache, height, parent=None, fill=False):
-        """fill — заполнить окно целиком, лишнее по краям обрезать (миниатюры в сетке); иначе фото целиком с полями."""
+    def __init__(self, cache, height, parent=None, fill=False, landscape=False):
+        """fill — заполнить окно целиком, лишнее по краям обрезать; иначе фото целиком с полями.
+
+        landscape — вертикальное фото показывать повёрнутым на 90°: карточка альбомная, и фото занимает её почти
+        без полей (просьба пользователя 04.11.2026). Настоящее положение — в панели справа и в большом окне.
+        """
         super().__init__(parent)
         self.fill = fill
+        self.landscape = landscape
         self.setObjectName("PhotoView")  # тот же фон и скругление, что у окна просмотра
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedHeight(height)
@@ -92,7 +97,7 @@ class ThumbView(QWidget):
         if path is not None:
             hit = self._cache.get(path, L1)
             if hit is not None:
-                self._image = hit.image
+                self._image = self._shown(hit.image)
         self.update()
 
     @property
@@ -103,9 +108,16 @@ class ThumbView(QWidget):
     def failed(self):
         return self._failed
 
+    def _shown(self, image):
+        if self.landscape and image is not None and image.height() > image.width():
+            from PyQt5.QtGui import QTransform
+
+            return image.transformed(QTransform().rotate(90))
+        return image
+
     def _on_ready(self, path, level, image):
         if path == self._path and (self._image is None or level >= L1):
-            self._image = image
+            self._image = self._shown(image)
             self._failed = False
             self.update()
 
@@ -175,7 +187,7 @@ class TypeCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT)  # фото целиком: обрезка по краям 04.11 не понравилась, вернули
+        self.thumb = ThumbView(cache, THUMB_HEIGHT, landscape=True)  # целиком; вертикальное — повёрнуто: карточка альбомная
         self.thumb.set_path(root / (entry.crop_rel or entry.photo_rel))  # вырезка, если есть: так виден сам тип
         self.thumb.show_frame(stamp_math.final_frame(entry.archived))
         layout.addWidget(self.thumb)
@@ -261,7 +273,7 @@ class RemarkCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.thumb = ThumbView(cache, THUMB_HEIGHT)  # фото целиком: обрезка по краям 04.11 не понравилась, вернули
+        self.thumb = ThumbView(cache, THUMB_HEIGHT, landscape=True)  # целиком; вертикальное — повёрнуто: карточка альбомная
         self.thumb.set_path(entry.path)
         layout.addWidget(self.thumb)
         body = QVBoxLayout()

@@ -87,6 +87,7 @@ class CompareFeature(Feature):
         self.signals.find_failed.connect(self._on_find_failed)
         self.signals.kinds_loaded.connect(self._on_kinds)
         self.ctx.bus.subscribe("defect_kinds.changed", lambda data: self._on_kinds(data.get("kinds", [])))
+        self.ctx.bus.subscribe("folder.deleted", self._on_folder_deleted)
         self._find_request = 0
         # Отметки и повороты пишутся одной очередью: два быстрых нажатия не должны прийти в базу в обратном порядке
         self._mark_queue = queue.Queue()
@@ -141,6 +142,15 @@ class CompareFeature(Feature):
         """Открыть папку в сравнении. Чтение базы — в фоне; из GUI-потока."""
         self._run(self._load, folder_id)
         self._load_kinds()  # заодно подхватить виды, добавленные на другом ПК
+
+    def _on_folder_deleted(self, payload):
+        """Открытую папку удалили из Atlas: её фото больше нет в базе — экран пустеет, отметки ставить некуда."""
+        if self.folder is None or payload.get("folder_id") != self.folder.id:
+            return
+        self._request += 1  # ответы на её чтение больше не нужны
+        self.folder = None
+        if self.screen is not None:
+            self.screen.set_photos([])
 
     # --- виды замечаний ------------------------------------------------------------
     def _load_kinds(self):

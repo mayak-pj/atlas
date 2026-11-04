@@ -371,3 +371,21 @@ def test_archived_card_says_who_archived_it(qtbot):
                     archiver="Иванова")
     qtbot.addWidget(card)
     assert any(label.text().startswith("В архиве · Иванова") for label in card.findChildren(QLabel))
+
+
+def test_wheel_zoom_is_gentle_on_touchpad(qtbot):
+    from PyQt5.QtCore import QPoint, QPointF, Qt
+    from PyQt5.QtGui import QPixmap, QWheelEvent
+    from atlas.features.rules.screen import ZoomView
+
+    view = ZoomView()
+    qtbot.addWidget(view)
+    view.resize(400, 300)
+    pixmap = QPixmap(800, 600)
+    pixmap.fill()
+    view.set_pixmap(pixmap)
+    start = view.zoom
+    small = QWheelEvent(QPointF(200, 150), QPointF(200, 150), QPoint(0, 0), QPoint(0, 12), Qt.NoButton, Qt.NoModifier,
+                        Qt.ScrollUpdate, False)
+    view.wheelEvent(small)  # одно мелкое событие тачпада — десятая доля шага
+    assert view.zoom / start == pytest.approx(1.2 ** 0.1)

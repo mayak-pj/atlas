@@ -170,3 +170,20 @@ def test_add_from_file_saves_a_type_with_its_date_and_author(app, tmp_path):  # 
     assert events == [{"type_id": record.id, "part_id": part.id}]
     dialog.save_button.click()  # файл не выбран
     assert "Выберите фото" in dialog.status.text()
+
+
+def test_portrait_photo_on_card_is_shown_landscape(qtbot):
+    from PyQt5.QtGui import QImage
+    from atlas.features.type_db.screen import ThumbView
+
+    card = ThumbView(FakeCache(), 240, landscape=True)
+    qtbot.addWidget(card)
+    portrait = QImage(200, 300, QImage.Format_RGB32)
+    card.set_path("/a.jpg")
+    card._on_ready("/a.jpg", 1, portrait)
+    assert (card._image.width(), card._image.height()) == (300, 200)
+    detail = ThumbView(FakeCache(), 240)  # панель справа — как есть
+    qtbot.addWidget(detail)
+    detail.set_path("/a.jpg")
+    detail._on_ready("/a.jpg", 1, portrait)
+    assert (detail._image.width(), detail._image.height()) == (200, 300)

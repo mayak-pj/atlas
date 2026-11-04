@@ -71,6 +71,12 @@ class MarkedPhoto:
     marked_at: str
 
 
+def _next_id(table):
+    """SQL-выражение номера новой строки: выше и живых, и когда-либо удалённых (таблица id_floor, миграция 005)."""
+    return ("(SELECT MAX(top) + 1 FROM (SELECT COALESCE(MAX(id), 0) AS top FROM {0} "
+            "UNION ALL SELECT COALESCE(MAX(max_id), 0) FROM id_floor WHERE tbl = '{0}'))").format(table)
+
+
 def path_key(path):
     """Один и тот же сетевой путь: регистр, вид косой черты и хвостовая черта не важны."""
     text = str(path).strip().replace("/", "\\").rstrip("\\")
@@ -105,8 +111,8 @@ class FoldersService:
 
         def work(conn):
             conn.execute(
-                "INSERT OR IGNORE INTO folders (part_id, path, path_key, folder_date, created_by, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO folders (id, part_id, path, path_key, folder_date, created_by, created_at) "
+                "VALUES ({}, ?, ?, ?, ?, ?, ?)".format(_next_id("folders")),
                 (part_id, text, key, folder_date, created_by, now_text()),
             )
             return Folder(
@@ -178,7 +184,8 @@ class FoldersService:
 
         def work(conn):
             before = conn.total_changes
-            conn.executemany("INSERT OR IGNORE INTO photos (folder_id, rel_path, rel_key) VALUES (?, ?, ?)", rows)
+            conn.executemany("INSERT OR IGNORE INTO photos (id, folder_id, rel_path, rel_key) VALUES ({}, ?, ?, ?)".format(
+                _next_id("photos")), rows)
             return conn.total_changes - before
 
         return self.db.write(work)
@@ -190,6 +197,26 @@ class FoldersService:
             ).fetchall()
         )
         return [Photo(*row) for row in rows]
+
+    def delete(self, folder_id):
+        """Папку — из базы вместе с её фото, отметками и поворотами. Файлы на диске не трогаются.
+
+        → (сколько фото, сколько с отметкой) или None, если папки уже нет. Нужна, чтобы добавить папку заново.
+        """
+        def work(conn):
+            if conn.execute("SELECT 1 FROM folders WHERE id = ?", (folder_id,)).fetchone() is None:
+                return None
+            photos, marked, top_photo = conn.execute(
+                "SELECT COUNT(*), COUNT(mark), MAX(id) FROM photos WHERE folder_id = ?", (folder_id,)).fetchone()
+            for table, top in (("folders", folder_id), ("photos", top_photo)):
+                if top is not None:  # номера удалённых больше не выдаются: см. миграцию 005
+                    conn.execute("INSERT INTO id_floor (tbl, max_id) VALUES (?, ?) ON CONFLICT (tbl) DO UPDATE "
+                                 "SET max_id = MAX(max_id, excluded.max_id)", (table, top))
+            conn.execute("DELETE FROM photos WHERE folder_id = ?", (folder_id,))
+            conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+            return photos, marked
+
+        return self.db.write(work)
 
     def mark_photo(self, photo_id, mark, sn=None, user_id=None, defect_kind=None):
         """mark: "type:N", "defect", "remark" или None (снять отметку).

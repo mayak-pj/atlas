@@ -159,3 +159,40 @@ def test_compare_works_without_folders(tmp_path, qtbot):
         qtbot.waitUntil(lambda: app.svc.get("compare").current_folder() is not None, timeout=5000)
     finally:
         app.stop()
+
+
+# --- удалить папку из Atlas (04.11.2026) -------------------------------------------------------
+def test_cross_deletes_open_folder_and_it_can_be_added_again(app):
+    folder = app.add_folder("SSD XS-2280", photos=3)
+    folders = app.svc.get("folders")
+    photo = folders.photos(folder.id)[0]
+    folders.mark_photo(photo.id, "remark", defect_kind="Сбит элемент")
+    app.reload()
+    compare = app.feature("compare")
+    compare.open_folder(folder.id)
+    app.qtbot.waitUntil(lambda: compare.folder is not None, timeout=5000)
+    presence = app.feature("presence")
+    presence.beat() if hasattr(presence, "beat") else None
+    user = app.svc.get("users").add("Петров", lambda count: "#7DB4FF")
+    app.ctx.db.write(lambda conn: conn.execute(  # коллега «работает» над этой папкой: ссылка не мешает удалению
+        "INSERT OR REPLACE INTO presence (user_id, folder_id, beat, seen_at) VALUES (?, ?, 1, '2026-11-04 10:00:00')",
+        (user.id, folder.id)))
+    feature = app.feature("folders")
+    asked = []
+    feature.ask_delete = lambda title: asked.append(title) or False
+    card = next(item for item in feature.panel.cards if item.entry.folder_id == folder.id)
+    card.delete_button.click()
+    assert asked and folders.get(folder.id) is not None  # передумал
+    feature.ask_delete = lambda title: True
+    events = []
+    app.ctx.bus.subscribe("folder.deleted", events.append)
+    card.delete_button.click()
+    app.qtbot.waitUntil(lambda: events == [{"folder_id": folder.id}], timeout=5000)
+    assert folders.get(folder.id) is None and folders.photos(folder.id) == []
+    assert compare.folder is None and compare.screen.model.photos == []
+    assert app.ctx.db.read(lambda conn: conn.execute(
+        "SELECT folder_id FROM presence WHERE user_id = ?", (user.id,)).fetchone()[0]) is None
+    app.qtbot.waitUntil(lambda: folder.id not in [c.entry.folder_id for c in feature.panel.cards], timeout=5000)
+    again = folders.add(folder.part_id, folder.path, "2026-10-31")  # тот же путь — снова как новая
+    assert again.id != folder.id and folders.add_photos(again.id, ["0.jpg"]) == 1
+    assert folders.delete(folder.id) is None  # уже нет

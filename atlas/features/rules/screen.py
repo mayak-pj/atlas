@@ -162,7 +162,8 @@ class ZoomView(QWidget):
     def wheelEvent(self, event):
         if self.pixmap.isNull():
             return
-        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
+        # Шаг колеса — 1,2, как в «Сравнении»; тачпад шлёт много мелких событий, и каждое — своя доля шага
+        factor = 1.2 ** (event.angleDelta().y() / 120.0)
         new_zoom = max(0.05, min(self.zoom * factor, 8.0))
         factor = new_zoom / self.zoom
         center = QPointF(self.width() / 2.0, self.height() / 2.0)

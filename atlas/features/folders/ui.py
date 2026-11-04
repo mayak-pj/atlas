@@ -5,11 +5,12 @@ import threading
 from datetime import datetime
 
 from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from atlas.core import theme
 from atlas.core.feature import Feature
 from atlas.features.folders import logic
+from atlas.shared.widgets.icons import set_icon
 
 log = logging.getLogger("atlas.folders")
 
@@ -22,17 +23,26 @@ TITLE_DONE = "Проверено на этой неделе"
 TEXT_EMPTY_NEW = "Новых папок нет"
 TEXT_EMPTY_DONE = "На этой неделе ничего не проверено"
 TEXT_COMPARE_OFF = "Экран сравнения выключен"
-REFRESH_EVENTS = ("folder.copied", "folder.opened", "folder.done", "photo.marked")
+REFRESH_EVENTS = ("folder.copied", "folder.opened", "folder.done", "photo.marked", "folder.deleted")
+EVENT_DELETED = "folder.deleted"
+TIP_DELETE = "Удалить папку из Atlas, чтобы добавить заново. Файлы на диске не трогаются"
+TEXT_DELETE_ASK = ("Удалить папку «{}» из Atlas?\n\nФайлы на диске не трогаются. Из программы пропадут её фото, "
+                   "отметки и повороты — после этого папку можно добавить заново.")
+TEXT_DELETED = "Папка удалена из Atlas: {} (фото: {}, отметок: {})"
+TEXT_DELETE_FAILED = "Не удалось удалить папку: база недоступна, попробуйте ещё раз"
 
 
 class _Signals(QObject):
     loaded = pyqtSignal(object)  # Snapshot или None, если база недоступна
+    deleted = pyqtSignal(int, str, object)  # папка, её название, (фото, отметок) или None
+    delete_failed = pyqtSignal()
 
 
 class FolderCard(QFrame):
     """Карточка папки; клик открывает её. Состояния — свойства Qt для QSS."""
 
     clicked = pyqtSignal(int)
+    delete_clicked = pyqtSignal(int)
 
     def __init__(self, entry, selected, worker_text, parent=None):
         super().__init__(parent)
@@ -55,6 +65,13 @@ class FolderCard(QFrame):
             pill.setProperty("role", "pill")
             pill.setProperty("tone", entry.pill_token)
             head.addWidget(pill)
+        self.delete_button = QPushButton("")
+        self.delete_button.setProperty("role", "square")
+        set_icon(self.delete_button, "x", "text_dim")
+        self.delete_button.setToolTip(TIP_DELETE)
+        self.delete_button.setFocusPolicy(Qt.NoFocus)  # стрелки и пробел принадлежат экрану сравнения
+        self.delete_button.clicked.connect(lambda _=False: self.delete_clicked.emit(self.entry.folder_id))
+        head.addWidget(self.delete_button, 0, Qt.AlignTop)
         layout.addLayout(head)
         for text, role in ((entry.subtitle, "dim"), (entry.note, "muted")):
             if text:
@@ -75,6 +92,7 @@ class FolderCard(QFrame):
 
 class FoldersPanel(QFrame):
     folder_chosen = pyqtSignal(int)
+    delete_requested = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -143,6 +161,7 @@ class FoldersPanel(QFrame):
         for entry in entries:
             card = FolderCard(entry, entry.folder_id == selected_id, workers.get(entry.folder_id, ""))
             card.clicked.connect(self.folder_chosen)
+            card.delete_clicked.connect(self.delete_requested)
             self.cards.append(card)
             self._add(card)
 
@@ -158,8 +177,12 @@ class FoldersFeature(Feature):
         self._again = False
         self.signals = _Signals()
         self.signals.loaded.connect(self._on_loaded)
+        self.signals.deleted.connect(self._on_deleted)
+        self.signals.delete_failed.connect(self._on_delete_failed)
+        self._workers_threads = []
         self.panel = FoldersPanel()
         self.panel.folder_chosen.connect(self._on_chosen)
+        self.panel.delete_requested.connect(self._on_delete_requested)
         self.timer = QTimer()
         self.timer.setInterval(int(self.ctx.config.get("folders.refresh_s", DEFAULT_REFRESH_S) * 1000))
         self.timer.timeout.connect(self.refresh)
@@ -179,6 +202,8 @@ class FoldersFeature(Feature):
             unsubscribe()
         if self._thread is not None:
             self._thread.join(STOP_WAIT_S)
+        for thread in self._workers_threads:
+            thread.join(STOP_WAIT_S)
 
     # --- события --------------------------------------------------------------
     def _on_event(self, _payload):
@@ -198,6 +223,41 @@ class FoldersFeature(Feature):
                 self.ctx.shell.show_message(TEXT_COMPARE_OFF, 5000)
             return
         compare.open_folder(folder_id)
+
+    # --- удаление папки из Atlas (04.11.2026) -------------------------------------------------
+    def _on_delete_requested(self, folder_id):
+        entry = next((item for item in self.snapshot.new + self.snapshot.done if item.folder_id == folder_id), None)
+        title = entry.title if entry is not None else str(folder_id)
+        if not self.ask_delete(title):
+            return
+        thread = threading.Thread(target=self._delete_work, args=(folder_id, title), daemon=True)
+        self._workers_threads.append(thread)
+        thread.start()
+
+    def ask_delete(self, title):
+        """Подтверждение. Подменяется в тестах."""
+        return QMessageBox.question(self.panel, "Atlas", TEXT_DELETE_ASK.format(title),
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes
+
+    def _delete_work(self, folder_id, title):
+        try:
+            result = self.ctx.services.get("folders").delete(folder_id)
+        except Exception:  # база занята, нет сети
+            log.exception("Не удалось удалить папку %s", folder_id)
+            self.signals.delete_failed.emit()
+            return
+        self.signals.deleted.emit(folder_id, title, result)
+
+    def _on_deleted(self, folder_id, title, result):
+        if self.selected_id == folder_id:
+            self.selected_id = None
+        if result is not None and self.ctx.shell is not None:
+            self.ctx.shell.show_message(TEXT_DELETED.format(title, *result), 10000)
+        self.ctx.bus.publish(EVENT_DELETED, {"folder_id": folder_id})  # «Сравнение» закроет её, панель перечитается
+
+    def _on_delete_failed(self):
+        if self.ctx.shell is not None:
+            self.ctx.shell.show_message(TEXT_DELETE_FAILED, 10000)
 
     # --- чтение базы: в фоне и по одному запросу ------------------------------
     def refresh(self):

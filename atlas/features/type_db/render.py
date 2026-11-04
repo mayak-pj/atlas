@@ -7,8 +7,8 @@ from typing import Optional
 from PyQt5.QtCore import QPointF, QRect, Qt
 from PyQt5.QtGui import QImage, QPainter, QTransform
 
-from atlas.shared.annotate.model import Crop
-from atlas.shared.annotate.paint import paint_shapes
+from atlas.shared.annotate.model import Crop, to_screen
+from atlas.shared.annotate.paint import paint_shapes, rect_of
 from atlas.shared.viewer.decode import decode_file
 from atlas.shared.viewer.levels import L3
 
@@ -21,15 +21,17 @@ class RenderError(Exception):
 
 
 class _PixelMapper:
-    """Доли неповёрнутого фото → пиксели картинки."""
+    """Доли неповёрнутого фото → пиксели картинки, уже повёрнутой на rotation (как фото стояло на экране)."""
 
-    def __init__(self, width, height):
+    def __init__(self, width, height, rotation=0):
         self._w = width
         self._h = height
+        self._rotation = rotation % 360
         self.unit = float(min(width, height))
 
     def point(self, x, y):
-        return QPointF(x * self._w, y * self._h)
+        sx, sy = to_screen(x, y, self._rotation)
+        return QPointF(sx * self._w, sy * self._h)
 
 
 @dataclass
@@ -44,17 +46,20 @@ def render(path, shapes, rotation, colors, max_side=DEFAULT_MAX_SIDE):
 
     Рамка «ножниц» на картинки не рисуется и фото не затемняет: она только задаёт область вырезки.
     """
-    image = decode_file(path, L3).convertToFormat(QImage.Format_RGB32)
+    image = _rotated(decode_file(path, L3).convertToFormat(QImage.Format_RGB32), rotation)
+    # Сначала поворот, потом фигуры: подпись на экране всегда горизонтальна и стоит в своей точке — так и в файле.
+    # Раньше фигуры рисовались на неповёрнутом фото и поворачивались вместе с ним: подпись уходила боком (04.11.2026).
+    mapper = _PixelMapper(image.width(), image.height(), rotation)
     drawn = [shape for shape in shapes if not isinstance(shape, Crop)]
     crop_shape = next((shape for shape in shapes if isinstance(shape, Crop)), None)
     if drawn:
         painter = QPainter(image)
-        paint_shapes(painter, drawn, _PixelMapper(image.width(), image.height()), colors)
+        paint_shapes(painter, drawn, mapper, colors)
         painter.end()
     crop = None
     if crop_shape is not None:
-        crop = image.copy(_pixel_rect(crop_shape, image.width(), image.height()))
-    return Rendered(_finish(image, rotation, max_side), _finish(crop, rotation, max_side) if crop is not None else None, len(drawn))
+        crop = image.copy(rect_of(crop_shape, mapper).toAlignedRect())
+    return Rendered(_finish(image, max_side), _finish(crop, max_side) if crop is not None else None, len(drawn))
 
 
 def save_jpeg(image, path, quality=JPEG_QUALITY):
@@ -62,15 +67,13 @@ def save_jpeg(image, path, quality=JPEG_QUALITY):
         raise RenderError("Не удалось записать файл: {}".format(path))
 
 
-def _pixel_rect(shape, width, height):
-    left, top = int(round(shape.x0 * width)), int(round(shape.y0 * height))
-    right, bottom = int(round(shape.x1 * width)), int(round(shape.y1 * height))
-    return QRect(left, top, max(1, right - left), max(1, bottom - top))
-
-
-def _finish(image, rotation, max_side):
+def _rotated(image, rotation):
     if rotation % 360:
-        image = image.transformed(QTransform().rotate(rotation % 360), Qt.SmoothTransformation)
+        return image.transformed(QTransform().rotate(rotation % 360), Qt.SmoothTransformation)
+    return image
+
+
+def _finish(image, max_side):
     if max(image.width(), image.height()) > max_side:
         image = image.scaled(max_side, max_side, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     return image

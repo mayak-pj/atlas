@@ -285,3 +285,23 @@ def test_card_offers_the_type_the_photo_is_marked_with(app):
     app.qtbot.waitUntil(lambda: not app.type_db.busy and bool(app.type_db.asked), timeout=5000)
     assert app.type_db.asked[-1].number == 2
 
+
+
+def test_label_on_rotated_photo_is_saved_upright_where_it_was_on_screen(tmp_path):
+    """04.11.2026: подпись на повёрнутом фото сохранялась боком и не на своём месте."""
+    from atlas.shared.annotate.model import Label, to_screen
+
+    path = make_jpeg(tmp_path / "a.jpg")  # 400×600, вертикальное
+    label = Label(0.1, 0.8, "ТИП 2")
+    plain = render.render(path, (), 90, COLORS).photo
+    marked = render.render(path, (label,), 90, COLORS).photo
+    assert (marked.width(), marked.height()) == (600, 400)
+    # где подпись на экране: левый верхний угол текста — в точке подписи после поворота
+    sx, sy = to_screen(label.x, label.y, 90)
+    x0, y0 = int(sx * marked.width()), int(sy * marked.height())
+    changed = [(x, y) for x in range(marked.width()) for y in range(0, marked.height(), 2)
+               if marked.pixelColor(x, y) != plain.pixelColor(x, y)]
+    assert changed
+    xs, ys = [x for x, _ in changed], [y for _, y in changed]
+    assert min(xs) >= x0 - 4 and min(ys) >= y0 - 4  # текст начинается в своей точке и идёт вправо-вниз от неё
+    assert (max(xs) - min(xs)) > (max(ys) - min(ys))  # строка горизонтальна: шире, чем выше

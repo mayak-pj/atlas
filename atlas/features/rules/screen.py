@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
 
 from atlas.features.rules import logic
 from atlas.shared.widgets.flow import FlowLayout
+from atlas.shared.widgets.icons import set_icon
 
 TEXT_NEW = "НОВОЕ"
 TEXT_READ = "Прочитано"
@@ -193,7 +194,9 @@ class PhotoDialog(QDialog):
         bar = QHBoxLayout()
         self.prev_button = QPushButton("Назад")
         self.next_button = QPushButton("Вперёд")
-        self.fit_button = QPushButton("Вписать")
+        self.fit_button = QPushButton("Сбросить")
+        set_icon(self.fit_button, "scan", "text")
+        self.fit_button.setToolTip("Всё фото целиком")
         self.count_label = _label("", "muted", wrap=False)
         for button in (self.prev_button, self.next_button, self.fit_button):
             button.setFocusPolicy(Qt.NoFocus)
@@ -205,7 +208,7 @@ class PhotoDialog(QDialog):
         bar.addWidget(self.fit_button)
         bar.addWidget(self.count_label)
         bar.addStretch(1)
-        bar.addWidget(_label("Колесо — приблизить, мышь — двигать, двойной клик — вписать", "muted", wrap=False))
+        bar.addWidget(_label("Колесо — приблизить, мышь — двигать, двойной клик — фото целиком", "muted", wrap=False))
         layout.addLayout(bar)
         self.resize(1000, 760)
         self.show_index(index)

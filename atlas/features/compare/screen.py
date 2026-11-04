@@ -34,8 +34,8 @@ PANEL_ICONS = {"left": "panel-left", "top": "wrench", "bottom": "gallery-horizon
 MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_SHOW_UI = "Показать всё"
-HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — листать · пробел — эталон"
-HINT_ANGLES = "Колесо — зум · перетаскивание — сдвиг · двойной клик — вписать · стрелки — следующий SN · клик — активное окно"
+HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — фото целиком · стрелки — листать · пробел — эталон"
+HINT_ANGLES = "Колесо — зум · перетаскивание — сдвиг · двойной клик — фото целиком · стрелки — следующий SN · клик — активное окно"
 STRIP_SETTLE_MS = 150  # миниатюры — после остановки: при удержании стрелки чтение нужно текущему фото
 TEXT_NO_FOLDER = "Папка не открыта"
 TEXT_NO_PHOTOS = "В папке нет фото"
@@ -51,6 +51,8 @@ TAG_OTHER_PROJECT = "ЭТАЛОН · ДРУГОЙ ПРОЕКТ"
 TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
+TIP_RESET = ("Всё фото целиком во всех окнах; подгонка окон друг к другу снимается.\n"
+             "Двойной клик по фото — целиком только это окно")
 TIP_KINDS_EDIT = "Виды замечаний: добавить, исправить, удалить"
 TIP_ANGLE_TOGGLE = "Ракурс {}: показать или убрать окно"
 TEXT_ANGLE_LIMIT = "Окон не больше 4: сначала выключите другой ракурс"
@@ -333,7 +335,10 @@ class CompareScreen(QWidget):
         plus = self._button("+", lambda: self.group.zoom_by(BUTTON_ZOOM))
         plus.setProperty("role", "square")
         row.addWidget(plus)
-        row.addWidget(self._button("Вписать", self.fit))  # первый ряд без значков: с ними он не помещается в окно шириной 1024
+        self.reset_button = self._button("Сбросить", self.fit)
+        set_icon(self.reset_button, "scan", "text")
+        self.reset_button.setToolTip(TIP_RESET)
+        row.addWidget(self.reset_button)
         self.sync_button = self._button("Синхронно", self._on_sync_toggled, checkable=True)
         self.sync_button.setChecked(True)
         self.sync_button.setToolTip(

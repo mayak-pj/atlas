@@ -43,7 +43,6 @@ class AddFolderFeature(Feature):
         self.signals.saved.connect(self._on_saved)
         self.signals.failed.connect(self._on_failed)
         self._no_device = logic.load_no_device(self.ctx.paths.data)
-        self._tails = logic.load_part_tails(self.ctx.paths.data)
         self.button = QPushButton(TEXT_BUTTON)
         self.button.setFocusPolicy(Qt.NoFocus)  # стрелки и пробел принадлежат экрану сравнения
         set_icon(self.button, "folder-plus")
@@ -67,8 +66,7 @@ class AddFolderFeature(Feature):
 
     def ask_folder(self, parts):
         """Окно выбора; FolderData или None. В тестах подменяется."""
-        dialog = AddFolderDialog(self.ctx.services.get("parts").kinds, parts, self._no_device, parent=self.button.window(),
-                                 tails=self._tails)
+        dialog = AddFolderDialog(self.ctx.services.get("parts").kinds, parts, self._no_device, parent=self.button.window())
         if dialog.exec_() != dialog.Accepted:
             return None
         return dialog.data()

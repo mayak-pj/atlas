@@ -49,32 +49,6 @@ def load_no_device(data_dir):
     return value or DEFAULT_NO_DEVICE
 
 
-DEFAULT_PART_TAILS = ("Эталон",)
-
-
-def load_part_tails(data_dir):
-    """Приписки к имени папки, которые не часть названия детали («… - Эталон»): data/add_folder.json → part_name_tails."""
-    try:
-        with open(str(data_dir / "add_folder.json"), encoding="utf-8") as stream:
-            value = json.load(stream).get("part_name_tails", DEFAULT_PART_TAILS)
-    except (OSError, ValueError, AttributeError):
-        return DEFAULT_PART_TAILS
-    return tuple(str(item).strip() for item in value if str(item).strip()) if isinstance(value, list) else DEFAULT_PART_TAILS
-
-
-def strip_tails(name, tails):
-    """«Накопитель SSD - Эталон» → «Накопитель SSD»: такая же деталь ищется по точному названию (шаг 5.1).
-
-    Приписка — в конце, через тире, в скобках или просто пробелом; регистр не важен. Папка на диске не меняется.
-    """
-    text = str(name).strip()
-    for tail in tails:
-        match = re.search(r"[\s\-–—_(\[]+{}[)\]]?\s*$".format(re.escape(tail)), text, flags=re.IGNORECASE)
-        if match and match.start() > 0:
-            text = text[:match.start()].rstrip(" -–—_")
-    return text
-
-
 def clean_path(text):
     """Путь из поля: без пробелов и кавычек по краям (проводник копирует путь в кавычках)."""
     return str(text).strip().strip(_QUOTES).strip()
@@ -121,7 +95,7 @@ def split_path(text):
     return anchor, parts[1:] if anchor else parts
 
 
-def suggest(text, kinds=(), no_device=DEFAULT_NO_DEVICE, today=None, tails=DEFAULT_PART_TAILS):
+def suggest(text, kinds=(), no_device=DEFAULT_NO_DEVICE, today=None):
     """Что подставить в поля по пути `ДИСК/Однотипность/Проект/[Устройство/]Деталь/дата`.
 
     Подсказка, а не истина: уровней может быть три или четыре, поэтому человек всё равно видит и правит поля.
@@ -130,7 +104,7 @@ def suggest(text, kinds=(), no_device=DEFAULT_NO_DEVICE, today=None, tails=DEFAU
     anchor, names = split_path(text)
     when = find_date(names[-1], today) if names else None
     folders = names[:-1] if when else names
-    part = strip_tails(folders[-1], tails) if folders else ""
+    part = folders[-1] if folders else ""
     if len(folders) >= 4:
         device, project = folders[-2], folders[-3]
     elif len(folders) >= 2:

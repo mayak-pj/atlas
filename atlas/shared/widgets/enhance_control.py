@@ -30,7 +30,7 @@ class EnhanceControl(QPushButton):
         set_icon(self, "eye", "text")
         self._ids = [mode["id"] for mode in modes]
         labels = {n: mode["title"] for n, mode in enumerate(modes, 1)}
-        hints = {n: "{}. {}".format(mode["weight"].capitalize(), mode.get("tip", "")).strip() for n, mode in enumerate(modes, 1)}
+        hints = {n: "Время: {}".format(mode["weight"]) for n, mode in enumerate(modes, 1)}  # без описаний, только «вес»
         self.drum = NumberDrum(TEXT_DRUM_TITLE, 1, max(1, len(modes)), TEXT_OFF, self, labels=labels, hints=hints)
         self.drum.chosen.connect(self._on_chosen)
         self.drum.cleared.connect(lambda: self.set_active(False, emit=True))

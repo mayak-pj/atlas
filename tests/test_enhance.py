@@ -128,10 +128,10 @@ def test_compare_screen_has_quality_button(qtbot, qapp):
     qtbot.addWidget(screen)
     control = screen.enhance_control
     assert control.text() == "Качество" and control.active_mode() is None and control.mode == "deblur"
-    assert control.drum.labels == {1: "Лёгкая", 2: "Снять размытие", 3: "Максимум"}
+    assert control.drum.labels == {1: "+ Qt", 2: "++ OpenCV", 3: "+++ OpenCV NLM"}
     control.drum.chosen.emit(3)  # выбрали на барабане «Максимум»
     assert control.active_mode() == "max" and control.isChecked()
-    assert control.text() == "Качество: Максимум"
+    assert control.text() == "Качество: +++ OpenCV NLM"
     assert all(view.enhance_mode == "max" for view in screen.views)
     control.drum.cleared.emit()  # «Выключить»
     assert control.active_mode() is None and control.text() == "Качество"

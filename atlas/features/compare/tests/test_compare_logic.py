@@ -237,3 +237,8 @@ def test_new_folder_and_single_reference_forget_found_folder():
     model.set_reference_active(True)
     model.set_photos([PhotoItem(7, "/новая/7.jpg")])
     assert not model.has_reference_folder and not model.reference_active and model.reference is None
+
+
+def test_strip_label_spells_type_out():
+    from atlas.features.compare.logic import strip_label
+    assert [strip_label(m) for m in ("type:2", "type:12", "remark", "", None)] == ["ТИП 2", "ТИП 12", "", "", ""]

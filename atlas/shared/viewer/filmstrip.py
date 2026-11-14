@@ -26,6 +26,7 @@ class FilmItem:
     path: str
     mark_color: Optional[QColor] = None
     rotation: int = 0  # градусы по часовой стрелке
+    mark_text: str = ""  # надпись отметки на миниатюре вместо точки («ТИП 2»), 14.11.2026
 
 
 def visible_range(current, total, fits):
@@ -62,9 +63,9 @@ class Filmstrip(QWidget):
         self._thumbs = {}
         self.update()
 
-    def set_mark(self, index, color):
-        """Новая отметка у фото: точка меняется сразу, без перечитывания папки."""
-        self._items[index] = replace(self._items[index], mark_color=color)
+    def set_mark(self, index, color, text=""):
+        """Новая отметка у фото: точка (или надпись) меняется сразу, без перечитывания папки."""
+        self._items[index] = replace(self._items[index], mark_color=color, mark_text=text or "")
         self.update()
 
     def set_rotations(self, rotations):
@@ -147,6 +148,29 @@ class Filmstrip(QWidget):
         for offset, index in enumerate(range(first, last)):
             self._paint_cell(painter, QRectF(offset * (self._cell_width + GAP), 0, self._cell_width, CELL_HEIGHT), index)
 
+    def _paint_label(self, painter, rect, item):
+        """Надпись отметки сверху миниатюры на цвете отметки: номер фото внизу не путают с номером типа."""
+        painter.save()
+        font = painter.font()
+        font.setBold(True)
+        size = max(6.0, font.pointSizeF() - 1 if font.pointSizeF() > 0 else 8.0)
+        font.setPointSizeF(size)
+        painter.setFont(font)
+        room = rect.width() - 6
+        while painter.fontMetrics().horizontalAdvance(item.mark_text) + 6 > room and size > 5.0:
+            size -= 0.5  # узкая (вертикальная) миниатюра: надпись мельче, но целиком
+            font.setPointSizeF(size)
+            painter.setFont(font)
+        metrics = painter.fontMetrics()
+        width = min(room, metrics.horizontalAdvance(item.mark_text) + 6)
+        back = QRectF(rect.left() + 3, rect.top() + 3, width, metrics.height())
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(item.mark_color)
+        painter.drawRoundedRect(back, 3, 3)
+        painter.setPen(QColor("#10141A"))  # тёмный текст на светлых цветах отметок читается в обеих темах
+        painter.drawText(back, Qt.AlignCenter, item.mark_text)
+        painter.restore()
+
     def _paint_cell(self, painter, rect, index):
         colors = self._colors
         item = self._items[index]
@@ -166,7 +190,9 @@ class Filmstrip(QWidget):
         painter.drawRoundedRect(back, 3, 3)
         painter.setPen(colors["text"])
         painter.drawText(back, Qt.AlignCenter, text)
-        if item.mark_color is not None:
+        if item.mark_color is not None and item.mark_text:
+            self._paint_label(painter, rect, item)
+        elif item.mark_color is not None:
             painter.setPen(QPen(colors["text_bg"], 1))
             painter.setBrush(item.mark_color)
             painter.drawEllipse(QRectF(rect.right() - _DOT - 4, rect.top() + 4, _DOT, _DOT))

@@ -13,6 +13,7 @@ from atlas.core.domain.photo_names import parse_photo_name
 from atlas.features.compare.angles import AnglesModel, notes as angle_notes, set_mark as angle_set_mark
 from atlas.features.compare.logic import (
     DEFAULT_HOTKEYS, DEFAULT_MARK_KEYS, MAX_WINDOWS, ROTATE_STEP, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
+    strip_label,
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.widgets import FlowLayout
@@ -896,7 +897,8 @@ class CompareScreen(QWidget):
         if source != self._strip_source:  # лента показывает то, что листается
             self._strip_source = source
             self.strip.set_items(self._angle_film_items() if self._angles_on else [
-                FilmItem(photo.path, self._mark_color(photo.mark), photo.rotation) for photo in model.shown_photos
+                FilmItem(photo.path, self._mark_color(photo.mark), photo.rotation, strip_label(photo.mark))
+                for photo in model.shown_photos
             ])
         self._update_marks()
         index, total = self._position()
@@ -908,12 +910,16 @@ class CompareScreen(QWidget):
         """В «Ракурсах» одна миниатюра на SN: листание идёт по SN."""
         photos = self.model.photos
         return [
-            FilmItem(photos[item.first_photo].path, self._angle_set_color(item), photos[item.first_photo].rotation)
+            FilmItem(photos[item.first_photo].path, self._angle_set_color(item), photos[item.first_photo].rotation,
+                     self._angle_set_label(item))
             for item in self.angles.plan.sets
         ]
 
     def _angle_set_color(self, angle_set):
         return self._mark_color(angle_set_mark(angle_set, self.model.photos, self.angles.plan.views))
+
+    def _angle_set_label(self, angle_set):
+        return strip_label(angle_set_mark(angle_set, self.model.photos, self.angles.plan.views))
 
     def _after_show(self):
         """show_photo отменил очередь: соседей просим сразу, миниатюры — когда листание остановится."""
@@ -1108,9 +1114,10 @@ class CompareScreen(QWidget):
         if self._angles_on:
             place = self.angles.set_of_photo(index)
             if place is not None:
-                self.strip.set_mark(place, self._angle_set_color(self.angles.plan.sets[place]))
+                angle_set = self.angles.plan.sets[place]
+                self.strip.set_mark(place, self._angle_set_color(angle_set), self._angle_set_label(angle_set))
         else:
-            self.strip.set_mark(index, self._mark_color(mark))
+            self.strip.set_mark(index, self._mark_color(mark), strip_label(mark))
         self.marks_status.setText("")
         self._sync_extra()
         self._update_marks()

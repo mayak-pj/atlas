@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from atlas.core.app_context import AppContext
@@ -101,6 +102,10 @@ def _run_check_command(args):
         from atlas.publish import run as run_publish
 
         return run_publish(AppPaths.discover(), _option(args, "--publish"))
+    if "--photoinfo" in args:
+        from atlas.photoinfo import run as run_photoinfo
+
+        return run_photoinfo(AppPaths.discover(), _option(args, "--photoinfo"))
     if "--addfolder" in args:
         from atlas.addfolder import run as run_addfolder
 
@@ -146,6 +151,9 @@ def main(argv=None):
     code = _run_check_command(list(argv if argv is not None else sys.argv)[1:])
     if code is not None:
         return code
+    from atlas.core.startup import StartupTimer
+
+    timer = StartupTimer()
     from PyQt5.QtWidgets import QApplication, QMessageBox
 
     paths = AppPaths.discover()
@@ -154,6 +162,7 @@ def main(argv=None):
     log.info("Atlas %s, папка программы %s", current_version(), paths.root)
     prepare()
     app = QApplication(list(argv if argv is not None else sys.argv))
+    timer.mark("Qt")
     from atlas.core.theme import apply_theme
 
     from atlas.core import ui_state
@@ -165,11 +174,15 @@ def main(argv=None):
         log.exception("Не удалось запустить программу")
         QMessageBox.critical(None, "Atlas", str(exc))
         return 2
+    timer.mark("база и ядро")
     registry = start_features(ctx)
+    timer.mark("функции")
     app.aboutToQuit.connect(registry.stop_all)
     app.aboutToQuit.connect(ctx.services.get("image_cache").stop)
     window = build_window(registry)
     _connect_theme_choice(window, paths)
+    timer.mark("окно")
+    timer.log()  # до окна входа: дальше ждём человека
     try:
         proceed = run_login(ctx, window)
     except Exception as exc:  # база недоступна и т. п.
@@ -179,4 +192,8 @@ def main(argv=None):
     if not proceed:
         return 0
     window.show()
+    from PyQt5.QtCore import QTimer
+
+    began = time.monotonic()
+    QTimer.singleShot(0, lambda: log.info("Окно программы после входа: %.1f с", time.monotonic() - began))
     return app.exec_()

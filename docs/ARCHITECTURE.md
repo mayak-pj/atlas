@@ -12,6 +12,7 @@ atlas/
   viewbench.py                # --viewbench: скорость просмотра фото, сетевой диск только читается
   publish.py                  # --publish: положить эту версию в папку установки на сетевом диске
   addfolder.py                # --addfolder: внести настоящую папку с фото в базу, пока нет импорта из письма (6.x)
+  photoinfo.py                # --photoinfo: отчёт о метке EXIF, размере и повороте Atlas по фото папки (14.11.2026)
   core/                       # ядро: ничего не знает о конкретных функциях
     app_context.py            # AppContext: config, db, bus, services, user, paths
     feature.py                # FeatureSpec, Feature (базовый класс)
@@ -22,6 +23,8 @@ atlas/
     config.py                 # config/*.json + локальные настройки машины (config/local.json, не в git); AppPaths: root (файлы версии) и home (настройки, данные)
     release.py                # раскладка установки, version.txt, версия программы
     roles.py                  # роли людей: «разработчик» (`roles.developers` в local.json) — 14.11.2026
+    startup.py                # замер запуска в журнал: до Python, Qt, база, функции, окно (14.11.2026)
+    process_start_win.py      # сколько секунд назад создан процесс (GetProcessTimes)
     domain/                   # таблицы ядра (users, projects, devices, parts, folders, photos) и сервисы к ним;
                               # photo_names.py — разбор имени фото (артикул, ракурс, SN), шаблон в data/photo_names.json
     logging_setup.py          # журнал в logs/, сбор ошибок

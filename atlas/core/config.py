@@ -8,11 +8,31 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from atlas.core.release import RELEASE_DIR, home_of
+from atlas.core.release import RELEASE_DIR, VERSION_FILE, home_of
+
+HOME_ENV = "ATLAS_HOME"  # Atlas_local.bat: программа — копия на этом ПК, установка — на сетевом диске (14.11.2026)
 
 
 class ConfigError(Exception):
     """Настройки не прочитать. Текст показывается пользователю."""
+
+
+def home_from_env(environ):
+    """Папка установки из ATLAS_HOME, если там действительно установка (есть release\\version.txt); иначе None.
+
+    Так запускает Atlas_local.bat: программа скопирована на этот ПК (быстрее, чем с сетевого диска), а настройки,
+    база, журналы и обновления — по-прежнему в установке на сетевом диске.
+    """
+    raw = (environ.get(HOME_ENV) or "").strip().strip('"')
+    if not raw:
+        return None
+    home = Path(raw)
+    try:
+        if (home / RELEASE_DIR / VERSION_FILE).is_file():
+            return home
+    except OSError:
+        pass
+    return None
 
 
 @dataclass(frozen=True)
@@ -29,7 +49,7 @@ class AppPaths:
     def discover(cls):
         if getattr(sys, "frozen", False):
             program = Path(sys.executable).parent
-            return cls(program, home_of(program))
+            return cls(program, home_from_env(os.environ) or home_of(program))
         return cls(Path(__file__).resolve().parents[2])
 
     @property

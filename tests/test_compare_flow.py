@@ -523,6 +523,8 @@ def test_marks_come_from_database(app):
     assert strip._items[0].mark_color is None
     assert strip._items[1].mark_color.name() == "#f2a93b"
     assert strip._items[2].mark_color.name() == "#ff5a5f"
+    assert (strip._items[1].mark_text, strip._items[2].mark_text) == ("ТИП 2", "")  # тип — надписью, остальное — точкой
+    strip.grab()  # рисуется без ошибок
 
 
 def test_neighbors_reach_memory_ahead_of_flipping(app):
@@ -593,7 +595,7 @@ def test_mark_key_saves_and_updates_everything(app):
     _wait_db(app, lambda photos: photos[1].mark == "type:2")
     screen = app.screen
     app.qtbot.waitUntil(lambda: screen.strip._items[1].mark_color is not None, timeout=5000)
-    assert screen.strip._items[1].mark_color.name() == "#f2a93b"
+    assert screen.strip._items[1].mark_color.name() == "#f2a93b" and screen.strip._items[1].mark_text == "ТИП 2"
     assert screen.mark_buttons["type:2"].isChecked() and not screen.mark_buttons["type:1"].isChecked()
     assert "Тип 2: 1" in screen.counts_label.text() and "Без отметки: 5" in screen.counts_label.text()
     assert _marked_events(app) == [{"photo_id": _db_photos(app)[1].id, "mark": "type:2", "sn": None}]

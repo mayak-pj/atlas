@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional
@@ -16,6 +17,7 @@ from atlas.core.db import MigrationRunner
 log = logging.getLogger("atlas.registry")
 
 EVENT_FAILED = "feature.failed"
+SLOW_START_S = 0.3
 
 
 @dataclass(frozen=True)
@@ -41,11 +43,19 @@ class FeatureRegistry:
         self.failures = []  # type: List[FeatureFailure]
         self._modules = {}
         self._tab_orders = {}
+        self.timings = {}  # функция → секунд на миграции и запуск (замер запуска, 14.11.2026)
 
     def start_all(self):
         specs = self._import_enabled()
         for spec in self._sorted(specs):
+            began = time.monotonic()
             self._start(spec, specs)
+            self.timings[spec.id] = time.monotonic() - began
+        slow = sorted(((seconds, feature_id) for feature_id, seconds in self.timings.items() if seconds >= SLOW_START_S),
+                      reverse=True)
+        if slow:
+            log.info("Дольше всех запускались: %s",
+                     ", ".join("{} {:.1f} с".format(feature_id, seconds) for seconds, feature_id in slow))
 
     def tabs(self):
         """Запущенные функции с вкладкой, в порядке вкладок."""

@@ -92,8 +92,26 @@ jobs:
           $out = Join-Path $PWD "ci_reports\published"
           $run = Start-Process -FilePath "$home_dir\release\$version\atlas.exe" -Wait -PassThru -ArgumentList "--selfcheck", $out
           Get-Content -Encoding UTF8 "$out\selfcheck.txt"
+          if ($run.ExitCode -ne 0) { Remove-SmbShare -Name atlas_install -Force; throw "опубликованная версия: код $($run.ExitCode)" }
+          # Atlas_local.bat: программа — копия на этом ПК, установка — по ATLAS_HOME на сетевом диске
+          $local = Join-Path $PWD "build\Локальная копия\$version"
+          Copy-Item -Recurse "$home_dir\release\$version" $local
+          $env:ATLAS_HOME = "$home_dir\"
+          $out = Join-Path $PWD "ci_reports\local_copy"
+          $run = Start-Process -FilePath "$local\atlas.exe" -Wait -PassThru -ArgumentList "--selfcheck", $out
+          Remove-Item Env:ATLAS_HOME
+          $text = Get-Content -Raw -Encoding UTF8 "$out\selfcheck.txt"
+          $text
+          if ($run.ExitCode -ne 0) { Remove-SmbShare -Name atlas_install -Force; throw "локальная копия: код $($run.ExitCode)" }
+          if (-not $text.Contains("Папка установки: $home_dir")) { Remove-SmbShare -Name atlas_install -Force; throw "локальная копия не нашла установку по ATLAS_HOME" }
+          # --photoinfo (Atlas_photoinfo.bat): отчёт о фото папки ложится в reports установки
+          $photos = Join-Path $PWD "build\Фото для отчёта"
+          New-Item -ItemType Directory -Force $photos | Out-Null
+          $run = Start-Process -FilePath "$home_dir\release\$version\atlas.exe" -Wait -PassThru -ArgumentList "--photoinfo", "`"$photos`""
+          $info = Get-Content -Raw -Encoding UTF8 "$home_dir\reports\photoinfo.txt"
+          $info
           Remove-SmbShare -Name atlas_install -Force
-          if ($run.ExitCode -ne 0) { throw "опубликованная версия: код $($run.ExitCode)" }
+          if ($run.ExitCode -ne 0 -or -not $info.Contains("Фото: 0")) { throw "--photoinfo: код $($run.ExitCode)" }
 
       # Два процесса пишут в одну базу через SMB. Это не заменяет проверку на настоящем сетевом диске
       # (docs/WIN7_CHECK.md), но ловит грубые ошибки блокировок и путей.

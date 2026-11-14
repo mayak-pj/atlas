@@ -76,9 +76,16 @@ def _describe_system(check, paths):
     check.info("Программа: {}".format(sys.executable if getattr(sys, "frozen", False) else "из исходников"))
     check.info("Версия Atlas: {}".format(current_version()))
     check.info("Папка программы: {}".format(paths.root))
+    check.info("Папка установки: {}".format(paths.installed_home or "нет (обычная копия)"))
     check.info("ОС: {}".format(platform.platform()))
     check.info("Python {} {}. SQLite {}".format(platform.python_version(), platform.architecture()[0], sqlite3.sqlite_version))
     check.info("Плагины Qt: {}".format(plugins_dir()))
+    if sys.platform == "win32":  # замер запуска (14.11.2026): способ узнать время создания процесса работает
+        from atlas.core.startup import process_age
+
+        age = process_age()
+        check.result("время с запуска процесса", age is not None and 0 <= age < 600,
+                     "" if age is None else "{:.1f} с".format(age))
 
 
 def _describe_screen(check, app):

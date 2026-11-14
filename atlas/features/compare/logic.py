@@ -105,6 +105,13 @@ def turn_angle(photos, number, delta, pattern=None, sizes=None):
     return targets
 
 
+def strip_label(mark):
+    """Надпись на миниатюре: «type:2» → «ТИП 2» (пользователь 14.11.2026: «Т2» непонятно); у замечания — точка."""
+    if mark and mark.startswith("type:") and mark[5:].isdigit():
+        return "ТИП {}".format(int(mark[5:]))
+    return ""
+
+
 def mark_token(mark):
     """Токен цвета точки на миниатюре, как в макете; None — отметки нет."""
     if not mark:

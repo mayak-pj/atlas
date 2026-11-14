@@ -8,9 +8,10 @@ from __future__ import annotations
 import threading
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QImage, QPainter, QPainterPath, QTransform
+from PyQt5.QtGui import QImage, QPainter, QPainterPath, QPen, QTransform
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
+from atlas.core import theme
 from atlas.shared.viewer import enhance
 from atlas.shared.viewer.levels import CURRENT, L0, L1, L3, level_divisor, level_for_scale
 from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
@@ -22,6 +23,8 @@ _WHEEL_NOTCH = 120.0
 _INNER_RADIUS = 7  # скругление QWidget#PhotoView минус рамка
 _CAPTION_MARGIN = 10
 _SMOOTH_FROM = 2.0  # во сколько раз картинка больше экрана
+CURTAIN_GRAB = 10  # px по обе стороны от границы «до/после», за которые её можно схватить
+CURTAIN_HANDLE = 30  # диаметр кружка-ручки
 TEXT_LOADING = "Загрузка…"
 TEXT_FAILED = "Не удалось открыть фото"
 
@@ -91,6 +94,10 @@ class PhotoView(QWidget):
         self._enh_key = None  # для какой части и размера готова улучшенная копия
         self._enh_image = None
         self._enh_pending = None  # ключ, который сейчас считается в рабочем потоке
+        self._show_original = False  # «до»: пока держат клавишу, показываем фото без улучшения
+        self._curtain = False  # «до/после»: слева исходное, справа улучшенное, границу можно тянуть
+        self._curtain_pos = 0.5  # где граница, доля ширины окна
+        self._curtain_drag = False
         self._enhanced.connect(self._on_enhanced)
         self._settle = QTimer(self)
         self._settle.setSingleShot(True)
@@ -183,6 +190,43 @@ class PhotoView(QWidget):
     @property
     def enhance_mode(self):
         return self._enhance_mode
+
+    @property
+    def enhanced_shown(self):
+        """Улучшенная копия готова и сейчас может быть на экране."""
+        return self._enhanced_ready()
+
+    def set_show_original(self, on):
+        """«До»: пока true — исходное фото без улучшения (клавиша удерживается). Файл и расчёт не трогаются."""
+        if bool(on) != self._show_original:
+            self._show_original = bool(on)
+            self.update()
+
+    def set_curtain(self, on):
+        """«До/после»: слева исходное, справа улучшенное; границу тянут мышью. Видна, только когда улучшенная копия готова."""
+        self._curtain = bool(on)
+        self._curtain_drag = False
+        self.update()
+
+    @property
+    def curtain(self):
+        return self._curtain
+
+    def set_curtain_pos(self, pos):
+        self._curtain_pos = min(0.98, max(0.02, float(pos)))
+        self.update()
+
+    @property
+    def curtain_pos(self):
+        return self._curtain_pos
+
+    def _enhanced_ready(self):
+        job = self._enhance_job()
+        return job is not None and job[0] == self._enh_key and self._enh_image is not None
+
+    def _curtain_x(self):
+        inner = self.inner_rect()
+        return inner.left() + inner.width() * self._curtain_pos
 
     def _paint_geometry(self):
         """(target, visible) в координатах неповёрнутого фото с началом в его центре; None — рисовать нечего. Общее для рисования и улучшения."""
@@ -469,6 +513,11 @@ class PhotoView(QWidget):
         event.accept()
 
     def mousePressEvent(self, event):
+        if self._curtain and event.button() == Qt.LeftButton and self._enhanced_ready() \
+                and abs(event.pos().x() - self._curtain_x()) <= CURTAIN_GRAB:
+            self._curtain_drag = True  # тянем границу «до/после», а не фото
+            self.setCursor(Qt.SplitHCursor)
+            return
         if self._overlay is not None and self._overlay.mouse_press(self, event):
             return
         if event.button() == Qt.LeftButton:
@@ -476,6 +525,10 @@ class PhotoView(QWidget):
             self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, event):
+        if self._curtain_drag:
+            inner = self.inner_rect()
+            self.set_curtain_pos((event.pos().x() - inner.left()) / max(1.0, inner.width()))
+            return
         if self._overlay is not None and self._overlay.mouse_move(self, event):
             return
         if self._drag_from is None:
@@ -485,6 +538,10 @@ class PhotoView(QWidget):
         self._user_change(self._state.pan_by, delta.x(), delta.y())
 
     def mouseReleaseEvent(self, event):
+        if self._curtain_drag:
+            self._curtain_drag = False
+            self.refresh_cursor()
+            return
         if self._overlay is not None and self._overlay.mouse_release(self, event):
             return
         if event.button() == Qt.LeftButton:
@@ -516,24 +573,64 @@ class PhotoView(QWidget):
         # Дальше координаты неповёрнутого фото с началом в его центре: поворачивается отрисовка, а не пиксели
         left, top, width, height = self._state.target_rect()
         painter.setTransform(QTransform().translate(left + width / 2, top + height / 2).rotate(self._image_rotation))
-        job = self._enhance_job()
-        if job is not None and job[0] == self._enh_key and self._enh_image is not None:
+        ready = self._enhanced_ready() and not self._show_original
+        if ready and self._curtain:
+            line = self._curtain_x()
+            painter.save()
+            self._clip_widget_rect(painter, QRectF(inner.left(), inner.top(), line - inner.left(), inner.height()))
+            self._draw_plain(painter, target, visible)  # слева — исходное
+            painter.restore()
+            painter.save()
+            self._clip_widget_rect(painter, QRectF(line, inner.top(), inner.right() - line, inner.height()))
+            painter.drawImage(visible, self._enh_image)  # справа — улучшенное
+            painter.restore()
+        elif ready:
             painter.drawImage(visible, self._enh_image)  # улучшенная копия видимой части, шаг 12.5
         else:
-            # Только видимая часть: при зуме 12× весь прямоугольник в десятки тысяч пикселей не нужно передавать
-            image = self._paint_image(target)
-            scale_x = image.width() / target.width()
-            scale_y = image.height() / target.height()
-            offset = visible.topLeft() - target.topLeft()
-            source = QRectF(
-                QPointF(offset.x() * scale_x, offset.y() * scale_y),
-                QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
-            )
-            painter.drawImage(visible, image, source)
+            self._draw_plain(painter, target, visible)
         if self._overlay is not None:
             painter.resetTransform()
             painter.setClipping(False)
             self._overlay.paint(painter, self)
+        if self._curtain and self._enhanced_ready() and not self._show_original:
+            self._paint_curtain_line(painter)
+
+    @staticmethod
+    def _clip_widget_rect(painter, rect):
+        """Обрезать рисование прямоугольником в координатах окна, хотя painter уже повёрнут и сдвинут (поворот кратен 90°)."""
+        painter.setClipRect(painter.transform().inverted()[0].mapRect(rect), Qt.IntersectClip)
+
+    def _draw_plain(self, painter, target, visible):
+        """Обычная картинка без улучшения. Только видимая часть: при зуме 12× весь прямоугольник не нужно передавать."""
+        image = self._paint_image(target)
+        scale_x = image.width() / target.width()
+        scale_y = image.height() / target.height()
+        offset = visible.topLeft() - target.topLeft()
+        source = QRectF(
+            QPointF(offset.x() * scale_x, offset.y() * scale_y),
+            QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
+        )
+        painter.drawImage(visible, image, source)
+
+    def _paint_curtain_line(self, painter):
+        """Граница «до/после»: тонкая линия и кружок-ручка посередине. Цвета — из темы."""
+        painter.resetTransform()
+        painter.setClipping(False)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        tokens = theme.current()
+        inner = self.inner_rect()
+        x = self._curtain_x()
+        painter.setPen(QPen(tokens.qcolor("accent"), 2))
+        painter.drawLine(QPointF(x, inner.top()), QPointF(x, inner.bottom()))
+        center = QPointF(x, inner.center().y())
+        painter.setBrush(tokens.qcolor("accent"))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(center, CURTAIN_HANDLE / 2, CURTAIN_HANDLE / 2)
+        painter.setPen(QPen(tokens.qcolor("bg"), 2))
+        for sign in (-1, 1):  # две стрелочки ‹ ›, нарисованные линиями (текстовые символы в интерфейсе нельзя)
+            tip = QPointF(x + sign * 7, center.y())
+            painter.drawLine(tip, QPointF(x + sign * 3, center.y() - 4))
+            painter.drawLine(tip, QPointF(x + sign * 3, center.y() + 4))
 
     def _paint_image(self, target):
         """Билинейная отрисовка при уменьшении больше чем вдвое пропускает пиксели: тонкая царапина исчезла бы с экрана.

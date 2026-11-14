@@ -1,7 +1,8 @@
 """Улучшение фото при приближении (шаг 12.5): резкость в рабочем потоке, файл и кэш не меняются."""
 import pytest
-from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QColor, QImage, QPainter
+from PyQt5.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QMouseEvent, QColor, QImage, QPainter
 
 from atlas.core.theme import apply_theme
 from atlas.shared.viewer import enhance
@@ -212,3 +213,70 @@ def test_pro_is_mac_only(qtbot, qapp, monkeypatch):
     monkeypatch.setattr(enhance.sys, "platform", "darwin")
     assert enhance.platform_ok(pro) and enhance.usable_mode("pro") == "pro"
     assert EnhanceControl(modes, "pro").drum.rows[3].isEnabled()
+
+
+def _view_with_enhanced(qtbot, qapp, mode="light"):
+    apply_theme(qapp)
+    cache = FakeCache()
+    view = PhotoView(cache, settle_ms=10)
+    view.resize(600, 500)
+    qtbot.addWidget(view)
+    view.show()
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
+    view.set_photo("a.jpg")
+    qtbot.wait(50)
+    return view
+
+
+def test_hold_original_and_curtain(qtbot, qapp):
+    view = _view_with_enhanced(qtbot, qapp)
+    plain = view.grab().toImage()
+    view.set_enhance("light")
+    qtbot.waitUntil(lambda: view.enhanced_shown, timeout=3000)
+    enhanced = view.grab().toImage()
+    assert enhanced != plain  # улучшение видно
+    view.set_show_original(True)  # держат клавишу «до»
+    assert view.grab().toImage() == plain
+    view.set_show_original(False)
+    assert view.grab().toImage() == enhanced
+    view.set_curtain(True)  # шторка по центру: слева исходное, справа улучшенное
+    curtain = view.grab().toImage()
+    half = view.width() // 2
+    assert curtain.copy(5, 5, half - 40, view.height() - 10) == plain.copy(5, 5, half - 40, view.height() - 10)
+    assert curtain.copy(half + 40, 5, half - 50, view.height() - 10) == enhanced.copy(half + 40, 5, half - 50, view.height() - 10)
+
+
+def test_curtain_is_dragged_by_mouse_not_pan(qtbot, qapp):
+    view = _view_with_enhanced(qtbot, qapp)
+    view.set_enhance("light")
+    qtbot.waitUntil(lambda: view.enhanced_shown, timeout=3000)
+    view.set_curtain(True)
+    state = view.state()
+    line = int(view._curtain_x())
+    qtbot.mousePress(view, Qt.LeftButton, pos=QPoint(line + 3, 100))  # рядом с границей — тянем её
+    move = QMouseEvent(QEvent.MouseMove, QPointF(450, 100), Qt.NoButton, Qt.LeftButton, Qt.NoModifier)  # кнопка зажата
+    QApplication.sendEvent(view, move)
+    qtbot.mouseRelease(view, Qt.LeftButton, pos=QPoint(450, 100))
+    assert abs(view.curtain_pos - 450 / 600) < 0.03
+    assert view.state() == state  # фото не сдвинулось
+    view.set_curtain_pos(0.001)
+    assert view.curtain_pos >= 0.02  # у самого края не прячем
+
+
+def test_compare_curtain_button_and_key(qtbot, qapp):
+    from atlas.features.compare import logic
+    from atlas.features.compare.screen import CompareScreen
+    apply_theme(qapp)
+    screen = CompareScreen(FakeCache(), logic.DEFAULT_HOTKEYS)
+    qtbot.addWidget(screen)
+    assert not screen.curtain_button.isEnabled()  # без включённого «Качества» шторки нет
+    screen.set_enhance("light")
+    assert screen.curtain_button.isEnabled()
+    screen.curtain_button.click()
+    assert all(view.curtain for view in screen.views)
+    qtbot.keyPress(screen, Qt.Key_Q)
+    assert all(view._show_original for view in screen.views)
+    qtbot.keyRelease(screen, Qt.Key_Q)
+    assert not any(view._show_original for view in screen.views)
+    screen.set_enhance(None)  # выключили «Качество» — шторка тоже уходит
+    assert not any(view.curtain for view in screen.views) and not screen.curtain_button.isEnabled()

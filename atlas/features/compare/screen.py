@@ -74,6 +74,9 @@ TEXT_CLEAR_REFERENCE = "Убрать эталон"
 TEXT_ALIGN = "Выровнять"
 TIP_ALIGN = ("Плата на одном месте и в одном масштабе у всех фото: окно само находит её на тёмном фоне.\n"
              "Файл не меняется. Плата не нашлась — фото показывается целиком")
+TEXT_CURTAIN = "До / после"
+TIP_CURTAIN = ("Слева исходное фото, справа улучшенное; границу можно тянуть мышью.\n"
+               "Пока держите клавишу {} — показывается исходное фото")
 TEXT_BATCHES = "По партиям"
 TEXT_BATCHES_WAIT = "По партиям ({} из {})"
 TIP_BATCHES = ("Фото с одним положением платы — подряд: сначала одна партия (фотоаппарат, день), потом другая.\n"
@@ -153,6 +156,7 @@ class CompareScreen(QWidget):
         self._mark_keys = {mark: _key(text) for mark, text in mark_keys.items()}
         self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
         self._type_drum_key = _key(hotkeys.get("type_drum", DEFAULT_HOTKEYS["type_drum"]))
+        self._before_key = _key(hotkeys.get("quality_before", DEFAULT_HOTKEYS["quality_before"]))  # держать — «до»
         self._index_by_id = {}
         self._panel_photo = None  # фото, для которого сейчас заполнена панель отметок
         self._strip_source = None  # что сейчас на ленте: folder, reference, angles
@@ -470,6 +474,12 @@ class CompareScreen(QWidget):
         self.enhance_control = EnhanceControl(self._enhance_modes, enhance.DEFAULT_MODE)  # в этой строке: ряд выше уже полон при 1024
         self.enhance_control.changed.connect(self.set_enhance)
         self.toolbar_layout.addWidget(self.enhance_control)
+        self.curtain_button = self._button(
+            TEXT_CURTAIN, lambda _=False: self.set_curtain(self.curtain_button.isChecked()), checkable=True)
+        set_icon(self.curtain_button, "columns-2", "text")
+        self.curtain_button.setToolTip(TIP_CURTAIN.format(QKeySequence(self._before_key).toString()))
+        self.curtain_button.setEnabled(False)  # шторка нужна, только пока включено «Качество»
+        self.toolbar_layout.addWidget(self.curtain_button)
         return bar
 
     def _build_reference_bar(self):
@@ -893,10 +903,19 @@ class CompareScreen(QWidget):
         self.fit()
 
     def set_enhance(self, mode):
-        """«Улучшить» (12.5): у всех окон один режим; None — выключено. Считается в фоне, файлы не меняются."""
+        """«Качество» (12.5): у всех окон один режим; None — выключено. Считается в фоне, файлы не меняются."""
         self.enhance_control.set_active(mode is not None)
+        self.curtain_button.setEnabled(mode is not None)
+        if mode is None:
+            self.set_curtain(False)
         for view in self.views:
             view.set_enhance(mode)
+
+    def set_curtain(self, on):
+        """«До / после»: слева исходное, справа улучшенное, границу тянут мышью (у каждого окна своя)."""
+        self.curtain_button.setChecked(bool(on))
+        for view in self.views:
+            view.set_curtain(on)
 
     def set_batches(self, on):
         """Порядок «по партиям» или по именам. Рамки всех фото ищутся при прогреве; пока не готовы — ждём."""
@@ -1541,14 +1560,25 @@ class CompareScreen(QWidget):
         elif key == self._type_drum_key:
             if not event.isAutoRepeat():
                 self.open_type_drum()
+        elif key == self._before_key:
+            if not event.isAutoRepeat():
+                self._set_show_original(True)
         elif key in self._mark_by_key:
             if not event.isAutoRepeat():
                 self.request_mark(self._mark_by_key[key])
         else:
             super().keyPressEvent(event)
 
+    def _set_show_original(self, on):
+        """«До» на время, пока держат клавишу: все окна показывают исходные фото. Без включённого «Качества» ничего не меняется."""
+        for view in self.views:
+            view.set_show_original(on)
+
     def keyReleaseEvent(self, event):
-        if event.key() == self._flicker_key:
+        if event.key() == self._before_key:
+            if not event.isAutoRepeat():
+                self._set_show_original(False)
+        elif event.key() == self._flicker_key:
             if not event.isAutoRepeat():
                 self._end_flicker()
         else:

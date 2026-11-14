@@ -8,6 +8,7 @@
     "toggle_ui": "H",
     "fullscreen": "F11",
     "type_drum": "T",
+    "quality_before": "Q",
     "marks": {
       "type:1": "1",
       "type:2": "2",

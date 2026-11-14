@@ -1,81 +1,72 @@
-"""«Улучшить» (12.5): кнопка вкл/выкл и список режимов с «весом» — сколько времени займёт обработка.
+"""«Качество» (12.5): кнопка с барабаном режимов, как «Присвоить ТИП». Режим выбран — улучшение включено.
 
 Что делает режим, виджет не знает: выбранное уходит сигналом `changed(режим или None)`.
-Названия и вес режимов — `data/enhance_modes.json`.
+Названия, «вес» (сколько времени займёт обработка) и подсказки режимов — `data/enhance_modes.json`.
 """
 from __future__ import annotations
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QAction, QActionGroup, QHBoxLayout, QMenu, QPushButton, QToolButton, QWidget
+from PyQt5.QtCore import QPoint, pyqtSignal
+from PyQt5.QtWidgets import QPushButton
 
 from atlas.shared.widgets.icons import set_icon
+from atlas.shared.widgets.number_drum import NumberDrum
 
-TEXT_BUTTON = "Улучшить"
-TIP_BUTTON = ("Мелкие детали и надписи при приближении: фото вычисляется заново для видимой части, файл не меняется.\n"
-              "Ничего не дорисовывается. Работает с приближения примерно от 2×: при общем виде ничего не меняется. Режим — в списке справа")
+TEXT_BUTTON = "Качество"
+TEXT_DRUM_TITLE = "Режим"
+TEXT_OFF = "Выключить"
+TIP_BUTTON = ("Мелкие детали и надписи чётче: фото вычисляется заново для видимой части, файл не меняется.\n"
+              "Ничего не дорисовывается. Нажмите — выберите режим (в нём указано, сколько времени займёт обработка); "
+              "включённый режим работает на любом масштабе")
 
 
-class EnhanceControl(QWidget):
+class EnhanceControl(QPushButton):
     changed = pyqtSignal(object)  # id режима или None
 
     def __init__(self, modes, default_mode, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self.button = QPushButton(TEXT_BUTTON)
-        self.button.setCheckable(True)
-        self.button.setFocusPolicy(0)
-        self.button.setToolTip(TIP_BUTTON)
-        set_icon(self.button, "eye", "text")
-        self.button.clicked.connect(lambda _=False: self._emit())
-        layout.addWidget(self.button)
-        self.menu_button = QToolButton()
-        self.menu_button.setFocusPolicy(0)
-        self.menu_button.setToolTip("Режим улучшения: чем сильнее, тем дольше считается")
-        self.menu_button.setMinimumWidth(150)
-        self.menu_button.setStyleSheet("QToolButton { padding-right: 18px; }")
-        self.menu_button.setPopupMode(QToolButton.InstantPopup)
-        self.menu = QMenu(self.menu_button)
-        self.menu_button.setMenu(self.menu)
-        layout.addWidget(self.menu_button)
-        self._group = QActionGroup(self)
-        self._actions = {}
-        for mode in modes:
-            action = QAction("{} — {}".format(mode["title"], mode["weight"]), self.menu)
-            action.setCheckable(True)
-            action.setToolTip(mode.get("tip", ""))
-            action.setData(mode["id"])
-            self._group.addAction(action)
-            self.menu.addAction(action)
-            self._actions[mode["id"]] = action
-        self._group.triggered.connect(lambda _a: self._on_mode_chosen())
-        self.set_mode(default_mode if default_mode in self._actions else next(iter(self._actions), None))
+        super().__init__(TEXT_BUTTON, parent)
+        self.setCheckable(True)
+        self.setFocusPolicy(0)
+        self.setToolTip(TIP_BUTTON)
+        set_icon(self, "eye", "text")
+        self._ids = [mode["id"] for mode in modes]
+        labels = {n: mode["title"] for n, mode in enumerate(modes, 1)}
+        hints = {n: "{}. {}".format(mode["weight"].capitalize(), mode.get("tip", "")).strip() for n, mode in enumerate(modes, 1)}
+        self.drum = NumberDrum(TEXT_DRUM_TITLE, 1, max(1, len(modes)), TEXT_OFF, self, labels=labels, hints=hints)
+        self.drum.chosen.connect(self._on_chosen)
+        self.drum.cleared.connect(lambda: self.set_active(False, emit=True))
+        self._mode = default_mode if default_mode in self._ids else (self._ids[0] if self._ids else None)
+        self.clicked.connect(lambda _=False: self.open_drum())
 
     @property
     def mode(self):
-        """Выбранный режим, даже если кнопка выключена."""
-        action = self._group.checkedAction()
-        return action.data() if action is not None else None
+        """Выбранный режим, даже если улучшение выключено."""
+        return self._mode
 
     def active_mode(self):
         """Режим, если улучшение включено, иначе None."""
-        return self.mode if self.button.isChecked() else None
+        return self._mode if self.isChecked() else None
+
+    def open_drum(self):
+        self.setChecked(self.active_mode() is not None)  # клик по кнопке сам её не переключает: решает барабан
+        number = self._ids.index(self._mode) + 1 if self._mode in self._ids else 1
+        anchor = self.mapToGlobal(QPoint(self.width() // 2, 0))
+        self.drum.open_at(anchor, number, can_clear=self.active_mode() is not None)
 
     def set_mode(self, mode):
-        action = self._actions.get(mode)
-        if action is not None:
-            action.setChecked(True)
-            self.menu_button.setText(action.text().split(" — ")[0])
-            self.menu_button.setToolTip(action.toolTip() or self.menu_button.toolTip())
+        if mode in self._ids:
+            self._mode = mode
+            self._refresh_text()
 
-    def set_active(self, on):
-        self.button.setChecked(bool(on))
+    def set_active(self, on, emit=False):
+        self.setChecked(bool(on))
+        self._refresh_text()
+        if emit:
+            self.changed.emit(self.active_mode())
 
-    def _on_mode_chosen(self):
-        self.set_mode(self.mode)
-        self.button.setChecked(True)  # выбрал режим — значит, хочет видеть результат
-        self._emit()
+    def _on_chosen(self, number):
+        self._mode = self._ids[number - 1]
+        self.set_active(True, emit=True)
 
-    def _emit(self):
-        self.changed.emit(self.active_mode())
+    def _refresh_text(self):
+        title = self.drum.labels.get(self._ids.index(self._mode) + 1, "") if self._mode in self._ids else ""
+        self.setText("{}: {}".format(TEXT_BUTTON, title) if self.isChecked() and title else TEXT_BUTTON)

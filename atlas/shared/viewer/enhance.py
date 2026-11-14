@@ -22,14 +22,15 @@ try:  # opencv и numpy на целевой машине есть, но прог
 except ImportError:  # pragma: no cover
     cv2 = np = None
 
-MIN_SCALE = 0.5  # пикселей экрана на пиксель показанной картинки (L2/L3), с которого улучшаем; на L1 (общий вид) не нужно
+MIN_SCALE = 0.0  # улучшаем на любом масштабе: включённая кнопка «Качество» работает и при общем виде
 MAX_PIXELS = 4_000_000  # размер результата на экране; больше не делаем
 MODE_LIGHT, MODE_DEBLUR, MODE_MAX = "light", "deblur", "max"
 DEFAULT_MODE = MODE_DEBLUR
 _PAD = 16  # запас вокруг части фото: у деконволюции искажается край
-_MIN_SIGMA, _MAX_SIGMA = 0.7, 3.5  # меньше — фото и так резкое, больше — деконволюция вернёт в основном шум
+_MIN_SIGMA, _MAX_SIGMA = 0.5, 3.5  # меньше — фото и так резкое, больше — деконволюция вернёт в основном шум
 # отношение энергии границ после размытия σ=1 к исходной → σ размытия фото (калибровка по плате и текстуре)
 _SIGMA_BY_RATIO = ((0.30, 0.5), (0.44, 1.0), (0.60, 1.5), (0.72, 2.0), (0.86, 3.0), (0.92, 4.0))
+_SHARP_RATIO = 0.27  # у резкого кадра около 0,22, у слегка смягчённого (общий вид, L1) 0,25–0,3
 _ITERATIONS = {MODE_DEBLUR: 25, MODE_MAX: 40}
 
 _FALLBACK_MODES = (
@@ -142,6 +143,8 @@ def estimate_sigma(gray):
     if energy < 1.0:
         return None  # ровное поле: оценить нечего
     ratio = _edge_energy(cv2.GaussianBlur(gray, (0, 0), 1.0)) / energy
+    if ratio < _SHARP_RATIO:
+        return None  # граней осталось много: фото резкое, деконволюция добавила бы только шум
     if ratio <= _SIGMA_BY_RATIO[0][0]:
         sigma = _SIGMA_BY_RATIO[0][1]
     elif ratio >= _SIGMA_BY_RATIO[-1][0]:

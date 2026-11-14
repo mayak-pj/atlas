@@ -3,18 +3,20 @@
 Колесо мыши и стрелки листают номера от 1; нажатая цифра сразу встаёт на барабан и через миг выбирается
 (успели нажать вторую — «12»); Enter, пробел или щелчок по середине — выбрать; Esc или щелчок мимо — закрыть.
 Цвета — из темы; что значит номер, барабан не знает: выбранное уходит сигналом.
+С `labels` ({номер: текст}) на барабане вместо цифр названия — так выбирают режим «Качество»; `hints` — строка под барабаном.
 """
 from __future__ import annotations
 
 from PyQt5.QtCore import QRectF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPainter
-from PyQt5.QtWidgets import QFrame, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from atlas.core import theme
 
 ROW_HEIGHT = 34
 ROWS = 5  # видно: два выше, выбранный, два ниже
 DRUM_WIDTH = 96
+LABELS_WIDTH = 230  # барабан с названиями
 TYPE_DELAY_MS = 650  # пауза после цифры: успеть набрать вторую
 WHEEL_STEP = 120
 
@@ -24,11 +26,11 @@ class _Wheel(QWidget):
 
     picked = pyqtSignal()
 
-    def __init__(self, drum):
+    def __init__(self, drum, width):
         super().__init__(drum)
         self.drum = drum
         self._wheel_rest = 0
-        self.setFixedSize(DRUM_WIDTH, ROW_HEIGHT * ROWS)
+        self.setFixedSize(width, ROW_HEIGHT * ROWS)
         self.setCursor(Qt.PointingHandCursor)
 
     def wheelEvent(self, event):
@@ -63,13 +65,14 @@ class _Wheel(QWidget):
                 continue
             rect = QRectF(0, ROW_HEIGHT * (offset + ROWS // 2), self.width(), ROW_HEIGHT)
             font.setBold(offset == 0)
+            big = 1.6 if not self.drum.labels else 1.2  # названия длиннее цифр
             font.setPointSizeF(max(8.0, (self.font().pointSizeF() if self.font().pointSizeF() > 0 else 10.0)
-                                   * (1.6 if offset == 0 else 1.15 - 0.15 * abs(offset))))
+                                   * (big if offset == 0 else 1.15 - 0.15 * abs(offset))))
             painter.setFont(font)
             color = QColor(tokens.qcolor("text"))
             color.setAlphaF(1.0 if offset == 0 else 0.55 - 0.2 * (abs(offset) - 1))
             painter.setPen(color)
-            painter.drawText(rect, Qt.AlignCenter, str(number))
+            painter.drawText(rect, Qt.AlignCenter, self.drum.label(number))
 
 
 class NumberDrum(QFrame):
@@ -78,10 +81,12 @@ class NumberDrum(QFrame):
     chosen = pyqtSignal(int)
     cleared = pyqtSignal()
 
-    def __init__(self, title, minimum=1, maximum=99, clear_text="", parent=None):
+    def __init__(self, title, minimum=1, maximum=99, clear_text="", parent=None, labels=None, hints=None):
         super().__init__(parent, Qt.Popup)
         self.setProperty("role", "panel")
         self.title, self.minimum, self.maximum = title, minimum, maximum
+        self.labels = dict(labels or {})
+        self.hints = dict(hints or {})
         self.value = minimum
         self._typed = ""
         self._timer = QTimer(self)
@@ -91,9 +96,15 @@ class NumberDrum(QFrame):
         column = QVBoxLayout(self)
         column.setContentsMargins(8, 8, 8, 8)
         column.setSpacing(6)
-        self.wheel = _Wheel(self)
+        self.wheel = _Wheel(self, LABELS_WIDTH if self.labels else DRUM_WIDTH)
         self.wheel.picked.connect(self.choose)
         column.addWidget(self.wheel, 0, Qt.AlignHCenter)
+        self.hint_label = QLabel("")
+        self.hint_label.setWordWrap(True)
+        self.hint_label.setProperty("role", "dim")
+        self.hint_label.setFixedWidth(LABELS_WIDTH)
+        self.hint_label.setVisible(bool(self.hints))
+        column.addWidget(self.hint_label)
         self.ok_button = QPushButton("")
         self.ok_button.setProperty("role", "primary")
         self.ok_button.setFocusPolicy(Qt.NoFocus)
@@ -121,8 +132,13 @@ class NumberDrum(QFrame):
         self.value = max(self.minimum, min(self.maximum, int(value)))
         self._refresh()
 
+    def label(self, number):
+        """Что написано на барабане: название или сам номер."""
+        return self.labels.get(number, str(number))
+
     def _refresh(self):
-        self.ok_button.setText("{} {}".format(self.title, self.value))
+        self.ok_button.setText(("{} {}" if not self.labels else "{}: {}").format(self.title, self.label(self.value)))
+        self.hint_label.setText(self.hints.get(self.value, ""))
         self.wheel.update()
 
     def choose(self):

@@ -25,8 +25,7 @@ def gray(image, x, y):
 
 
 def test_wants_enhance_only_when_magnified():
-    assert not enhance.wants_enhance(0.3, "deblur")
-    assert enhance.wants_enhance(0.8, "deblur")
+    assert enhance.wants_enhance(0.1, "deblur")  # любой масштаб: кнопка включена — работает и без зума
     assert enhance.wants_enhance(2.0, "deblur")
     assert not enhance.wants_enhance(4.0, None)
 
@@ -99,25 +98,21 @@ def test_does_not_change_source_and_refuses_huge(qapp):
     assert source == before
 
 
-def test_photo_view_enhances_at_high_zoom(qtbot, qapp):
+def test_photo_view_enhances_without_zoom(qtbot, qapp):
     apply_theme(qapp)
     cache = FakeCache()
     view = PhotoView(cache, settle_ms=10)
     view.resize(600, 500)
     qtbot.addWidget(view)
     view.show()
-    assert view.enhance_mode is None  # по умолчанию выключено: включает кнопка «Улучшить»
-    view.set_enhance("deblur")
-    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(100, 75), "level": L1})()
+    assert view.enhance_mode is None  # по умолчанию выключено: включает кнопка «Качество»
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
     view.set_photo("a.jpg")
-    assert view._enh_image is None  # при «вписать» масштаб меньше порога
-    view.zoom_by(12.0)
     qtbot.wait(50)
-    cache.ready.emit("a.jpg", L3, board())
-    qtbot.waitUntil(lambda: view.shown_level == L3)
+    assert view._enh_image is None
+    view.set_enhance("deblur")  # зум 1 — «вписать»
     qtbot.waitUntil(lambda: view._enh_image is not None, timeout=3000)
-    pixmap = view.grab().toImage()
-    assert not pixmap.isNull()
+    assert not view.grab().toImage().isNull()
     view.set_enhance(None)
     assert view._enh_image is None
     view.zoom_by(1.1)
@@ -125,17 +120,19 @@ def test_photo_view_enhances_at_high_zoom(qtbot, qapp):
     assert view._enh_image is None
 
 
-def test_compare_screen_has_enhance_button(qtbot, qapp):
+def test_compare_screen_has_quality_button(qtbot, qapp):
+    from atlas.features.compare import logic
     from atlas.features.compare.screen import CompareScreen
     apply_theme(qapp)
-    from atlas.features.compare import logic
     screen = CompareScreen(FakeCache(), logic.DEFAULT_HOTKEYS)
     qtbot.addWidget(screen)
     control = screen.enhance_control
-    assert control.active_mode() is None and control.mode == "deblur"
-    control.menu.actions()[2].trigger()  # выбрать «Максимум»
-    assert control.active_mode() == "max"
+    assert control.text() == "Качество" and control.active_mode() is None and control.mode == "deblur"
+    assert control.drum.labels == {1: "Лёгкая", 2: "Снять размытие", 3: "Максимум"}
+    control.drum.chosen.emit(3)  # выбрали на барабане «Максимум»
+    assert control.active_mode() == "max" and control.isChecked()
+    assert control.text() == "Качество: Максимум"
     assert all(view.enhance_mode == "max" for view in screen.views)
-    control.button.click()  # выключить
-    assert control.active_mode() is None
+    control.drum.cleared.emit()  # «Выключить»
+    assert control.active_mode() is None and control.text() == "Качество"
     assert all(view.enhance_mode is None for view in screen.views)

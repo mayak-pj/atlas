@@ -5,11 +5,14 @@
 """
 from __future__ import annotations
 
+import threading
+
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QPainter, QPainterPath, QTransform
+from PyQt5.QtGui import QImage, QPainter, QPainterPath, QTransform
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
-from atlas.shared.viewer.levels import CURRENT, L0, L1, level_divisor, level_for_scale
+from atlas.shared.viewer import enhance
+from atlas.shared.viewer.levels import CURRENT, L0, L1, L3, level_divisor, level_for_scale
 from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
 from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
 
@@ -61,6 +64,7 @@ class PhotoView(QWidget):
     view_changed = pyqtSignal(float, float, float)  # зум, центр x, y — только от действий пользователя
     photo_shown = pyqtSignal(str)  # на экране появилась картинка именно этого фото
     photo_failed = pyqtSignal(str, str)  # путь, текст ошибки
+    _enhanced = pyqtSignal(object, QImage)  # ключ, готовая улучшенная часть; из рабочего потока
 
     def __init__(self, cache, parent=None, settle_ms=SETTLE_MS):
         super().__init__(parent)
@@ -83,6 +87,11 @@ class PhotoView(QWidget):
         self._smoothed_key = None
         self._overlay = None  # слой фигур (shared/annotate): рисует поверх фото и может забрать мышь
         self._align = False  # «Выровнять»: зум и центр — в долях рамки платы (cache.frame), шаг 12.1
+        self._enhance_amount = enhance.DEFAULT_AMOUNT  # резкость при приближении (12.5); 0 — выключено
+        self._enh_key = None  # для какой части и размера готова улучшенная копия
+        self._enh_image = None
+        self._enh_pending = None  # ключ, который сейчас считается в рабочем потоке
+        self._enhanced.connect(self._on_enhanced)
         self._settle = QTimer(self)
         self._settle.setSingleShot(True)
         self._settle.setInterval(settle_ms)
@@ -163,6 +172,78 @@ class PhotoView(QWidget):
     def _on_frame_ready(self, path):
         if path == self._path:
             self._apply_frame()
+
+    def set_enhance(self, amount):
+        """Резкость мелких элементов при сильном приближении: 0 — выключено, 1 — обычная, до 3. Файл не меняется."""
+        self._enhance_amount = max(0.0, min(3.0, float(amount)))
+        self._enh_key = self._enh_image = None
+        self._enh_pending = None
+        self._after_view_change()
+
+    def _paint_geometry(self):
+        """(target, visible) в координатах неповёрнутого фото с началом в его центре; None — рисовать нечего. Общее для рисования и улучшения."""
+        inner = self.inner_rect()
+        target = QRectF(*self._state.target_rect())
+        visible = target.intersected(inner)
+        if visible.isEmpty():
+            return None
+        turn = QTransform().translate(target.center().x(), target.center().y()).rotate(self._image_rotation)
+        visible = turn.inverted()[0].mapRect(visible)
+        width, height = rotated_size(target.width(), target.height(), self._image_rotation)
+        return QRectF(-width / 2, -height / 2, width, height), visible
+
+    def _enhance_job(self):
+        """Что улучшать сейчас: (ключ, источник в пикселях картинки, размер в пикселях экрана) или None."""
+        if self._image is None or not self.is_current_shown or self._level != L3 or self._enhance_amount <= 0:
+            return None
+        geometry = self._paint_geometry()
+        if geometry is None:
+            return None
+        target, visible = geometry
+        ratio = self.devicePixelRatioF()
+        scale = target.width() * ratio / self._image.width()
+        if not enhance.wants_enhance(scale, self._enhance_amount):
+            return None
+        source = QRectF(
+            (visible.left() - target.left()) / target.width() * self._image.width(),
+            (visible.top() - target.top()) / target.height() * self._image.height(),
+            visible.width() / target.width() * self._image.width(),
+            visible.height() / target.height() * self._image.height(),
+        )
+        size = (max(1, round(visible.width() * ratio)), max(1, round(visible.height() * ratio)))
+        key = (self._image.cacheKey(), self._image_rotation, tuple(round(v, 2) for v in source.getRect()), size)
+        return key, source, size
+
+    def _start_enhance(self):
+        job = self._enhance_job()
+        if job is None:
+            self._enh_key = self._enh_image = None
+            return
+        key, source, size = job
+        if key == self._enh_key or key == self._enh_pending:
+            return
+        self._enh_pending = key
+        image, amount = self._image, self._enhance_amount
+
+        def work():
+            try:
+                result = enhance.enhanced_crop(image, source, size[0], size[1], amount)
+            except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка
+                result = None
+            self._enhanced.emit(key, result if result is not None else QImage())
+
+        threading.Thread(target=work, name="enhance", daemon=True).start()
+
+    def _on_enhanced(self, key, image):
+        if key == self._enh_pending:
+            self._enh_pending = None
+        job = self._enhance_job()
+        if image.isNull() or job is None or job[0] != key:
+            if job is not None and job[0] != key:
+                self._start_enhance()  # пока считалось, окно сдвинули: считаем для нового места
+            return
+        self._enh_key, self._enh_image = key, image
+        self.update()
 
     def set_overlay(self, overlay):
         """Слой поверх фото: у него методы `paint(painter, view)`, `mouse_press/move/release(view, event) -> bool`, `cursor()`."""
@@ -319,6 +400,7 @@ class PhotoView(QWidget):
             self._show_message(TEXT_LOADING)
             return  # уровень выберем, когда придёт первая картинка: до неё неизвестен размер
         self._wanted = self._needed_level()
+        self._start_enhance()
         if self._level != self._wanted:
             hit = self._cache.get(self._path, self._wanted, CURRENT, exact=True)
             if hit is not None and _improves(hit.level, self._level, self._wanted):
@@ -339,6 +421,7 @@ class PhotoView(QWidget):
         self._apply_frame()
         self._show_message("")
         self.update()
+        self._start_enhance()
         if first:
             self.photo_shown.emit(self._path)
 
@@ -419,26 +502,27 @@ class PhotoView(QWidget):
         outline.addRoundedRect(inner, _INNER_RADIUS, _INNER_RADIUS)
         painter.setClipPath(outline)
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        target = QRectF(*self._state.target_rect())
-        visible = target.intersected(inner)
-        if visible.isEmpty():
+        geometry = self._paint_geometry()
+        if geometry is None:
             return
+        target, visible = geometry
         # Дальше координаты неповёрнутого фото с началом в его центре: поворачивается отрисовка, а не пиксели
-        turn = QTransform().translate(target.center().x(), target.center().y()).rotate(self._image_rotation)
-        painter.setTransform(turn)
-        visible = turn.inverted()[0].mapRect(visible)
-        width, height = rotated_size(target.width(), target.height(), self._image_rotation)
-        target = QRectF(-width / 2, -height / 2, width, height)
-        # Только видимая часть: при зуме 12× весь прямоугольник в десятки тысяч пикселей не нужно передавать
-        image = self._paint_image(target)
-        scale_x = image.width() / target.width()
-        scale_y = image.height() / target.height()
-        offset = visible.topLeft() - target.topLeft()
-        source = QRectF(
-            QPointF(offset.x() * scale_x, offset.y() * scale_y),
-            QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
-        )
-        painter.drawImage(visible, image, source)
+        left, top, width, height = self._state.target_rect()
+        painter.setTransform(QTransform().translate(left + width / 2, top + height / 2).rotate(self._image_rotation))
+        job = self._enhance_job()
+        if job is not None and job[0] == self._enh_key and self._enh_image is not None:
+            painter.drawImage(visible, self._enh_image)  # улучшенная копия видимой части, шаг 12.5
+        else:
+            # Только видимая часть: при зуме 12× весь прямоугольник в десятки тысяч пикселей не нужно передавать
+            image = self._paint_image(target)
+            scale_x = image.width() / target.width()
+            scale_y = image.height() / target.height()
+            offset = visible.topLeft() - target.topLeft()
+            source = QRectF(
+                QPointF(offset.x() * scale_x, offset.y() * scale_y),
+                QPointF((offset.x() + visible.width()) * scale_x, (offset.y() + visible.height()) * scale_y),
+            )
+            painter.drawImage(visible, image, source)
         if self._overlay is not None:
             painter.resetTransform()
             painter.setClipping(False)

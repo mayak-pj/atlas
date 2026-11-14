@@ -15,11 +15,12 @@ from atlas.shared.widgets.icons import set_icon
 
 TEXT_BUTTON = "Качество"
 TEXT_OFF = "Выключить"
+TEXT_NO_ENGINE = "нет OpenCV"  # серая строка: без OpenCV и NumPy режим не работает
 TIP_BUTTON = ("Мелкие детали и надписи чётче: фото вычисляется заново для видимой части, файл не меняется.\n"
               "Ничего не дорисовывается. Нажмите — выберите режим; включённый работает на любом масштабе")
 DEFAULT_ICON = "signal-medium"
 ROW_HEIGHT = 36
-LIST_WIDTH = 250  # чтобы «только Mac» у серой строки не наезжало на название
+LIST_WIDTH = 250  # чтобы время или «нет OpenCV» не наезжали на название
 ROW_FONT_PX = 14
 TIME_FONT_PX = 12
 
@@ -61,8 +62,8 @@ class _ModeList(QFrame):
         self.rows = []
         self.available = []
         for number, mode in enumerate(modes):
-            available = enhance.platform_ok(mode)
-            weight = mode.get("weight", "") if available else mode.get("unavailable", "недоступно")
+            available = enhance.mode_available(mode)
+            weight = mode.get("weight", "") if available else TEXT_NO_ENGINE
             row = _Row(mode["title"], mode.get("icon", DEFAULT_ICON), weight, available)
             row.clicked.connect(lambda _=False, n=number: self._pick(n))
             self.available.append(available)
@@ -142,7 +143,7 @@ class EnhanceControl(QPushButton):
         self.drum = _ModeList(modes, self)  # имя прежнее: так его знают тесты и экран
         self.drum.chosen.connect(self._on_chosen)
         self.drum.cleared.connect(lambda: self.set_active(False, emit=True))
-        usable = [mode["id"] for mode in modes if enhance.platform_ok(mode)]
+        usable = [mode["id"] for mode in modes if enhance.mode_available(mode)]
         self._mode = default_mode if default_mode in usable else (usable[0] if usable else None)
         self._on = False  # включено ли улучшение; не isChecked(): клик по кнопке переключает её сам, раньше нашего кода
         self.clicked.connect(lambda _=False: self.open_drum())

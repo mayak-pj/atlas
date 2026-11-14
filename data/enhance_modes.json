@@ -1,6 +1,5 @@
 [
-  {"id": "light", "title": "Qt", "icon": "signal-low", "weight": "мгновенно"},
-  {"id": "deblur", "title": "OpenCV", "icon": "signal-medium", "weight": "0,1–1 с"},
-  {"id": "max", "title": "OpenCV NLM", "icon": "signal-high", "weight": "1–6 с"},
-  {"id": "pro", "title": "OpenCV Pro", "icon": "signal", "weight": "1–5 с", "platforms": ["darwin"], "unavailable": "только Mac"}
+  {"id": "deblur", "title": "OpenCV", "icon": "signal-low", "weight": "0,1–1 с"},
+  {"id": "max", "title": "OpenCV NLM", "icon": "signal-medium", "weight": "1–6 с"},
+  {"id": "pro", "title": "OpenCV Pro", "icon": "signal-high", "weight": "1–10 с"}
 ]

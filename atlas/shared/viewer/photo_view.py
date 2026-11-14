@@ -181,7 +181,7 @@ class PhotoView(QWidget):
             self._apply_frame()
 
     def set_enhance(self, mode):
-        """Улучшение мелких деталей при приближении: None — выключено, иначе режим ("light", "deblur", "max"). Файл не меняется."""
+        """Улучшение мелких деталей при приближении: None — выключено, иначе режим ("deblur", "max", "pro"). Файл не меняется."""
         self._enhance_mode = enhance.usable_mode(mode) if mode else None
         self._enh_key = self._enh_image = None
         self._enh_pending = None

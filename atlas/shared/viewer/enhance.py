@@ -5,22 +5,19 @@
 и честно возвращает то, что было в кадре.
 
 Режимы (названия — по библиотекам, значок — уровень; «вес» — в `data/enhance_modes.json`):
-  light  — усиление границ на чистом Qt (high-pass + «жёсткий свет»), работает всегда;
-  deblur — деконволюция по яркости, степень размытия оценивается по фото (нужны opencv и numpy);
+  deblur — деконволюция по яркости, степень размытия оценивается по самому фото;
   max    — подавление шума + более сильная деконволюция + местный контраст CLAHE;
-  pro    — только Mac (презентация): часть фото растягивается до размера на экране и там снимается размытие
-           (деконволюция с регуляризацией по полной вариации, плитки); мелкие элементы остаются чёткими при большом зуме.
-           На Windows в списке серый, включить нельзя.
+  pro    — часть фото растягивается до размера на экране и там снимается размытие (деконволюция с регуляризацией
+           по полной вариации, плитки): мелкие элементы остаются чёткими при большом зуме.
+Все три нужны opencv и numpy; без них режимы в списке серые, улучшение не включается.
 """
 from __future__ import annotations
 
 import json
-import sys
 
-from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QImage, QPainter
+from PyQt5.QtGui import QImage
 
-try:  # opencv и numpy на целевой машине есть, но программа без них тоже работает: останется «Лёгкая»
+try:  # opencv и numpy на целевой машине есть, но программа без них тоже запускается: режимы «Качества» серые
     import cv2
     import numpy as np
 except ImportError:  # pragma: no cover
@@ -28,7 +25,8 @@ except ImportError:  # pragma: no cover
 
 MIN_SCALE = 0.0  # улучшаем на любом масштабе: включённая кнопка «Качество» работает и при общем виде
 MAX_PIXELS = 4_000_000  # размер результата; окно больше — PhotoView просит меньше и растягивает на окно
-MODE_LIGHT, MODE_DEBLUR, MODE_MAX, MODE_PRO = "light", "deblur", "max", "pro"
+MODE_DEBLUR, MODE_MAX, MODE_PRO = "deblur", "max", "pro"
+_MODES = {MODE_DEBLUR, MODE_MAX, MODE_PRO}
 DEFAULT_MODE = MODE_DEBLUR
 _PAD = 16  # запас вокруг части фото: у деконволюции искажается край
 _MIN_SIGMA, _MAX_SIGMA = 0.5, 3.5  # меньше — фото и так резкое, больше — деконволюция вернёт в основном шум
@@ -41,13 +39,11 @@ _PRO_MAX_SIGMA = 10.0  # «Pro»: потолок размытия на сетк�
 _PRO_MIN_ITERATIONS, _PRO_MAX_ITERATIONS = 30, 80
 _FLAT_RANGE = 0.02  # размах яркости плитки (0…1), меньше которого плитка считается ровной
 _TV_WEIGHT = 0.004  # «Pro»: сила регуляризации по полной вариации (меньше шума и «звона» у краёв)
-PLATFORMS = {MODE_PRO: ("darwin",)}  # режимы, которые считаются только на этих платформах (sys.platform); остальные — везде
 
 _FALLBACK_MODES = (
-    {"id": MODE_LIGHT, "title": "Qt", "icon": "signal-low", "weight": "мгновенно"},
-    {"id": MODE_DEBLUR, "title": "OpenCV", "icon": "signal-medium", "weight": "0,1–1 с"},
-    {"id": MODE_MAX, "title": "OpenCV NLM", "icon": "signal-high", "weight": "1–6 с"},
-    {"id": MODE_PRO, "title": "OpenCV Pro", "icon": "signal", "weight": "1–5 с", "platforms": ["darwin"], "unavailable": "только Mac"},
+    {"id": MODE_DEBLUR, "title": "OpenCV", "icon": "signal-low", "weight": "0,1–1 с"},
+    {"id": MODE_MAX, "title": "OpenCV NLM", "icon": "signal-medium", "weight": "1–6 с"},
+    {"id": MODE_PRO, "title": "OpenCV Pro", "icon": "signal-high", "weight": "1–10 с"},
 )
 
 
@@ -57,34 +53,26 @@ def load_modes(path):
         if path is None:
             return _FALLBACK_MODES
         modes = json.loads(path.read_text(encoding="utf-8-sig"))
-        if isinstance(modes, list) and all(isinstance(m, dict) and m.get("id") in _ITERATIONS_OR_LIGHT for m in modes):
+        if isinstance(modes, list) and modes and all(isinstance(m, dict) and m.get("id") in _MODES for m in modes):
             return tuple(modes)
     except (OSError, ValueError):
         pass
     return _FALLBACK_MODES
 
 
-_ITERATIONS_OR_LIGHT = {MODE_LIGHT, MODE_DEBLUR, MODE_MAX, MODE_PRO}
-
-
 def engine_available():
-    """Есть ли opencv и numpy для режимов deblur и max."""
+    """Есть ли opencv и numpy: без них ни один режим не работает."""
     return cv2 is not None
 
 
-def platform_ok(mode_info):
-    """Режим из `enhance_modes.json` можно включить на этой машине: поле `platforms` (sys.platform) его не запрещает."""
-    platforms = mode_info.get("platforms")
-    return not platforms or sys.platform in platforms
+def mode_available(mode_info):
+    """Строку режима из `enhance_modes.json` можно выбрать: есть opencv и numpy."""
+    return engine_available()
 
 
 def usable_mode(mode):
-    """Режим, который можно выполнить: без opencv — «Лёгкая»; «Pro» не на своей платформе — «OpenCV NLM»."""
-    if mode == MODE_PRO and sys.platform not in PLATFORMS[MODE_PRO]:
-        mode = MODE_MAX
-    if mode in (MODE_DEBLUR, MODE_MAX, MODE_PRO) and cv2 is None:
-        return MODE_LIGHT
-    return mode if mode in _ITERATIONS_OR_LIGHT else None
+    """Режим, который можно выполнить; неизвестный или без opencv — None."""
+    return mode if mode in _MODES and cv2 is not None else None
 
 
 def wants_enhance(scale, mode):
@@ -98,40 +86,9 @@ def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE):
     mode = usable_mode(mode)
     if mode is None or width < 1 or height < 1 or width * height > MAX_PIXELS * 1.01:
         return None
-    if mode == MODE_LIGHT:
-        return _light(image, source, width, height)
     if mode == MODE_PRO:
         return _pro(image, source, width, height)
     return _deblur(image, source, width, height, mode)
-
-
-# --- «Лёгкая»: Qt -------------------------------------------------------------------------------------
-
-def _light(image, source, width, height):
-    crop = image.copy(source.toAlignedRect().intersected(image.rect()))
-    if crop.isNull():
-        return None
-    base = crop.convertToFormat(QImage.Format_RGB32).scaled(width, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-    small = base.scaled(
-        max(1, crop.width() // 3), max(1, crop.height() // 3), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-    blurred = small.scaled(width, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-    blurred.invertPixels()  # 255 − размытое
-    high = QImage(width, height, QImage.Format_RGB32)
-    high.fill(0)
-    painter = QPainter(high)
-    painter.setCompositionMode(QPainter.CompositionMode_Plus)
-    painter.setOpacity(0.5)
-    painter.drawImage(0, 0, base)
-    painter.drawImage(0, 0, blurred)  # 0,5·(фото − размытое) + 127,5
-    painter.end()
-    result = QImage(base)
-    result.detach()
-    painter = QPainter(result)
-    painter.setCompositionMode(QPainter.CompositionMode_HardLight)
-    painter.drawImage(0, 0, high)
-    painter.drawImage(0, 0, high)
-    painter.end()
-    return result
 
 
 # --- «Снять размытие» и «Максимум»: opencv ---------------------------------------------------------------

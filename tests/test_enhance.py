@@ -21,6 +21,18 @@ def board(width=400, height=300):
     return image
 
 
+def soft_board(width=400, height=300):
+    """Плата с размытием: резкие края «Снять размытие» не трогает, а на размытом разница видна."""
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    image = board(width, height)
+    ptr = image.constBits()
+    ptr.setsize(image.byteCount())
+    rows = np.frombuffer(ptr, np.uint8).reshape(height, image.bytesPerLine())[:, : width * 4].reshape(height, width, 4)
+    blurred = cv2.GaussianBlur(np.ascontiguousarray(rows[:, :, :3]), (0, 0), 2.0)
+    return QImage(blurred.data, width, height, blurred.strides[0], QImage.Format_RGB888).rgbSwapped().copy()
+
+
 def gray(image, x, y):
     return image.pixel(x, y) & 255
 
@@ -29,19 +41,6 @@ def test_wants_enhance_only_when_magnified():
     assert enhance.wants_enhance(0.1, "deblur")  # любой масштаб: кнопка включена — работает и без зума
     assert enhance.wants_enhance(2.0, "deblur")
     assert not enhance.wants_enhance(4.0, None)
-
-
-def test_edge_gets_overshoot_and_thin_line_gets_brighter(qapp):
-    source = board()
-    result = enhance.enhanced_crop(source, QRectF(100, 60, 300, 150), 1800, 900, "light")
-    assert (result.width(), result.height()) == (1800, 900)
-    # у края светлого предмета (x = 300 на экране): тёмный выброс по тёмной стороне и светлый — по светлой
-    row = [gray(result, x, 400) for x in range(280, 340)]
-    assert min(row) < 85 and max(row) > 165
-    # дорожка 130 на фоне 90 стала ярче, чем в простом растяжении
-    plain = source.copy(300, 100, 2, 80).scaled(12, 480).pixel(0, 100) & 255
-    assert max(gray(result, x, 400) for x in range(1190, 1230)) > plain + 10
-    assert gray(result, 20, 20) in range(85, 95)  # ровный фон не изменился
 
 
 def blurred_text(sigma=1.6):
@@ -85,7 +84,8 @@ def test_sharp_photo_is_left_alone(qapp):
 def test_modes_file_and_fallback(tmp_path):
     from pathlib import Path
     modes = enhance.load_modes(Path(__file__).resolve().parent.parent / "data" / "enhance_modes.json")
-    assert [m["id"] for m in modes] == ["light", "deblur", "max", "pro"] and all(m["weight"] for m in modes)
+    assert [m["id"] for m in modes] == ["deblur", "max", "pro"] and all(m["weight"] for m in modes)
+    assert all("platforms" not in m for m in modes)  # «Pro» доступен и на Windows
     assert enhance.load_modes(tmp_path / "нет.json") == enhance.load_modes(None)
     assert enhance.usable_mode("nonsense") is None
 
@@ -107,7 +107,7 @@ def test_photo_view_enhances_without_zoom(qtbot, qapp):
     qtbot.addWidget(view)
     view.show()
     assert view.enhance_mode is None  # по умолчанию выключено: включает кнопка «Качество»
-    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": soft_board(1000, 750), "level": L1})()
     view.set_photo("a.jpg")
     qtbot.wait(50)
     assert view._enh_image is None
@@ -129,8 +129,8 @@ def test_compare_screen_has_quality_button(qtbot, qapp):
     qtbot.addWidget(screen)
     control = screen.enhance_control
     assert control.text() == "Качество" and control.active_mode() is None and control.mode == "deblur"
-    assert [row.text() for row in control.drum.rows][:3] == ["Qt", "OpenCV", "OpenCV NLM"]
-    control.drum.chosen.emit(2)  # выбрали в списке «OpenCV NLM»
+    assert [row.text() for row in control.drum.rows] == ["OpenCV", "OpenCV NLM", "OpenCV Pro"]
+    control.drum.chosen.emit(1)  # выбрали в списке «OpenCV NLM»
     assert control.active_mode() == "max" and control.isChecked()
     assert control.text() == "Качество: OpenCV NLM"
     assert all(view.enhance_mode == "max" for view in screen.views)
@@ -148,7 +148,7 @@ def test_quality_button_keeps_state_when_clicked_and_offers_off(qtbot, qapp):
     qtbot.addWidget(screen)
     screen.show()
     control = screen.enhance_control
-    control.drum.chosen.emit(1)
+    control.drum.chosen.emit(0)
     assert control.active_mode() == "deblur"
     control.click()  # открывает барабан; кнопка остаётся включённой
     assert control.isChecked() and control.active_mode() == "deblur"
@@ -172,8 +172,8 @@ def test_big_window_is_enhanced_too(qtbot, qapp, monkeypatch):
     view.resize(600, 500)  # видимая часть заметно больше лимита
     qtbot.addWidget(view)
     view.show()
-    view.set_enhance("light")
-    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
+    view.set_enhance("deblur")
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": soft_board(1000, 750), "level": L1})()
     view.set_photo("a.jpg")
     qtbot.waitUntil(lambda: view._enh_image is not None, timeout=5000)
     assert view._enh_image.width() * view._enh_image.height() <= 60_000 * 1.01
@@ -196,33 +196,33 @@ def test_pro_is_clean_and_sharper_than_plain(qapp):
     assert gray(got)[250:350, 10:150].std() < plain[250:350, 10:150].std() * 1.1  # шум на фоне заметно не вырос
 
 
-def test_pro_is_mac_only(qtbot, qapp, monkeypatch):
+def test_pro_is_available_everywhere_and_grey_without_engine(qtbot, qapp, monkeypatch):
+    """«Pro» работает и на Windows (только opencv и numpy); без них все строки серые и выбрать нечего."""
     modes = enhance.load_modes(None)
-    pro = [m for m in modes if m["id"] == "pro"][0]
-    monkeypatch.setattr(enhance.sys, "platform", "win32")
-    assert not enhance.platform_ok(pro) and enhance.platform_ok(modes[0])
-    assert enhance.usable_mode("pro") == "max"  # на Windows «Pro» подменяется «OpenCV NLM»
     from atlas.shared.widgets.enhance_control import EnhanceControl
     control = EnhanceControl(modes, "pro")
     qtbot.addWidget(control)
-    assert not control.drum.rows[3].isEnabled() and control.drum.rows[2].isEnabled()
-    assert control.mode != "pro"  # серый режим по умолчанию не выбирается
-    control.drum.show()
-    qtbot.keyClick(control.drum, Qt.Key_Down)  # серую строку стрелки пропускают
-    assert control.drum.current != 3
-    monkeypatch.setattr(enhance.sys, "platform", "darwin")
-    assert enhance.platform_ok(pro) and enhance.usable_mode("pro") == "pro"
-    assert EnhanceControl(modes, "pro").drum.rows[3].isEnabled()
+    assert control.mode == "pro" and all(row.isEnabled() for row in control.drum.rows)
+    assert enhance.usable_mode("pro") == "pro" and enhance.usable_mode("light") is None  # режима на Qt больше нет
+    monkeypatch.setattr(enhance, "cv2", None)
+    assert enhance.usable_mode("pro") is None and not enhance.engine_available()
+    assert enhance.enhanced_crop(board(), QRectF(0, 0, 100, 100), 200, 200, "pro") is None
+    grey = EnhanceControl(modes, "pro")
+    qtbot.addWidget(grey)
+    assert not any(row.isEnabled() for row in grey.drum.rows) and grey.mode is None
+    grey.drum.show()
+    qtbot.keyClick(grey.drum, Qt.Key_Down)  # серые строки стрелки пропускают
+    assert grey.drum.current == 0
 
 
-def _view_with_enhanced(qtbot, qapp, mode="light"):
+def _view_with_enhanced(qtbot, qapp, mode="deblur"):
     apply_theme(qapp)
     cache = FakeCache()
     view = PhotoView(cache, settle_ms=10)
     view.resize(600, 500)
     qtbot.addWidget(view)
     view.show()
-    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": soft_board(1000, 750), "level": L1})()
     view.set_photo("a.jpg")
     qtbot.wait(50)
     return view
@@ -231,7 +231,7 @@ def _view_with_enhanced(qtbot, qapp, mode="light"):
 def test_hold_original_and_curtain(qtbot, qapp):
     view = _view_with_enhanced(qtbot, qapp)
     plain = view.grab().toImage()
-    view.set_enhance("light")
+    view.set_enhance("deblur")
     qtbot.waitUntil(lambda: view.enhanced_shown, timeout=3000)
     enhanced = view.grab().toImage()
     assert enhanced != plain  # улучшение видно
@@ -248,7 +248,7 @@ def test_hold_original_and_curtain(qtbot, qapp):
 
 def test_curtain_is_dragged_by_mouse_not_pan(qtbot, qapp):
     view = _view_with_enhanced(qtbot, qapp)
-    view.set_enhance("light")
+    view.set_enhance("deblur")
     qtbot.waitUntil(lambda: view.enhanced_shown, timeout=3000)
     view.set_curtain(True)
     state = view.state()
@@ -270,7 +270,7 @@ def test_compare_curtain_button_and_key(qtbot, qapp):
     screen = CompareScreen(FakeCache(), logic.DEFAULT_HOTKEYS)
     qtbot.addWidget(screen)
     assert not screen.curtain_button.isEnabled()  # без включённого «Качества» шторки нет
-    screen.set_enhance("light")
+    screen.set_enhance("deblur")
     assert screen.curtain_button.isEnabled()
     screen.curtain_button.click()
     assert all(view.curtain for view in screen.views)

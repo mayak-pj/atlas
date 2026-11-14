@@ -136,3 +136,27 @@ def test_compare_screen_has_quality_button(qtbot, qapp):
     control.drum.cleared.emit()  # «Выключить»
     assert control.active_mode() is None and control.text() == "Качество"
     assert all(view.enhance_mode is None for view in screen.views)
+
+
+def test_quality_button_keeps_state_when_clicked_and_offers_off(qtbot, qapp):
+    """Клик по включённой кнопке не сбрасывает её, а барабан предлагает «Выключить»."""
+    from atlas.features.compare import logic
+    from atlas.features.compare.screen import CompareScreen
+    apply_theme(qapp)
+    screen = CompareScreen(FakeCache(), logic.DEFAULT_HOTKEYS)
+    qtbot.addWidget(screen)
+    screen.show()
+    control = screen.enhance_control
+    control.drum.chosen.emit(2)
+    assert control.active_mode() == "deblur"
+    control.click()  # открывает барабан; кнопка остаётся включённой
+    assert control.isChecked() and control.active_mode() == "deblur"
+    assert control.drum.isVisible() and not control.drum.clear_button.isHidden()
+    control.drum.hide()
+    control.click()
+    assert control.isChecked() and control.active_mode() == "deblur"
+    control.drum.cleared.emit()
+    assert not control.isChecked() and control.active_mode() is None
+    control.click()  # выключено: барабан без «Выключить»
+    assert control.drum.clear_button.isHidden()
+    control.drum.hide()

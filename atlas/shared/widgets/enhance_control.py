@@ -35,6 +35,7 @@ class EnhanceControl(QPushButton):
         self.drum.chosen.connect(self._on_chosen)
         self.drum.cleared.connect(lambda: self.set_active(False, emit=True))
         self._mode = default_mode if default_mode in self._ids else (self._ids[0] if self._ids else None)
+        self._on = False  # включено ли улучшение; не isChecked(): клик по кнопке переключает её сам, раньше нашего кода
         self.clicked.connect(lambda _=False: self.open_drum())
 
     @property
@@ -44,10 +45,10 @@ class EnhanceControl(QPushButton):
 
     def active_mode(self):
         """Режим, если улучшение включено, иначе None."""
-        return self._mode if self.isChecked() else None
+        return self._mode if self._on else None
 
     def open_drum(self):
-        self.setChecked(self.active_mode() is not None)  # клик по кнопке сам её не переключает: решает барабан
+        self.setChecked(self._on)  # клик по кнопке уже переключил её, а включает и выключает только барабан
         number = self._ids.index(self._mode) + 1 if self._mode in self._ids else 1
         top = self.mapToGlobal(QPoint(self.width() // 2, 0))
         bottom = self.mapToGlobal(QPoint(self.width() // 2, self.height()))
@@ -59,7 +60,8 @@ class EnhanceControl(QPushButton):
             self._refresh_text()
 
     def set_active(self, on, emit=False):
-        self.setChecked(bool(on))
+        self._on = bool(on)
+        self.setChecked(self._on)
         self._refresh_text()
         if emit:
             self.changed.emit(self.active_mode())
@@ -70,4 +72,4 @@ class EnhanceControl(QPushButton):
 
     def _refresh_text(self):
         title = self.drum.labels.get(self._ids.index(self._mode) + 1, "") if self._mode in self._ids else ""
-        self.setText("{}: {}".format(TEXT_BUTTON, title) if self.isChecked() and title else TEXT_BUTTON)
+        self.setText("{}: {}".format(TEXT_BUTTON, title) if self._on and title else TEXT_BUTTON)

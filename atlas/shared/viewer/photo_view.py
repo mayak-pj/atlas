@@ -12,7 +12,7 @@ from PyQt5.QtGui import QImage, QPainter, QPainterPath, QTransform
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
 from atlas.shared.viewer import enhance
-from atlas.shared.viewer.levels import CURRENT, L0, L1, L3, level_divisor, level_for_scale
+from atlas.shared.viewer.levels import CURRENT, L0, L1, L2, L3, level_divisor, level_for_scale
 from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
 from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
 
@@ -198,7 +198,7 @@ class PhotoView(QWidget):
 
     def _enhance_job(self):
         """Что улучшать сейчас: (ключ, источник в пикселях картинки, размер в пикселях экрана) или None."""
-        if self._image is None or not self.is_current_shown or self._level != L3 or self._enhance_mode is None:
+        if self._image is None or not self.is_current_shown or self._level < L2 or self._enhance_mode is None:
             return None
         geometry = self._paint_geometry()
         if geometry is None:
@@ -206,8 +206,8 @@ class PhotoView(QWidget):
         target, visible = geometry
         ratio = self.devicePixelRatioF()
         scale = target.width() * ratio / self._image.width()
-        if not enhance.wants_enhance(scale, self._enhance_mode):
-            return None
+        if not enhance.wants_enhance(scale, self._enhance_mode) or not self.is_sharp:
+            return None  # пока не пришёл уровень, чёткий для этого зума, улучшать нечего
         source = QRectF(
             (visible.left() - target.left()) / target.width() * self._image.width(),
             (visible.top() - target.top()) / target.height() * self._image.height(),

@@ -25,8 +25,8 @@ def gray(image, x, y):
 
 
 def test_wants_enhance_only_when_magnified():
-    assert not enhance.wants_enhance(0.5, "deblur")
-    assert not enhance.wants_enhance(1.0, "deblur")
+    assert not enhance.wants_enhance(0.3, "deblur")
+    assert enhance.wants_enhance(0.8, "deblur")
     assert enhance.wants_enhance(2.0, "deblur")
     assert not enhance.wants_enhance(4.0, None)
 

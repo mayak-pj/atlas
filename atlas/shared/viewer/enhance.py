@@ -22,7 +22,7 @@ try:  # opencv и numpy на целевой машине есть, но прог
 except ImportError:  # pragma: no cover
     cv2 = np = None
 
-MIN_SCALE = 1.25  # пикселей экрана на пиксель фото, с которого улучшаем: меньше — картинка и так чёткая
+MIN_SCALE = 0.5  # пикселей экрана на пиксель показанной картинки (L2/L3), с которого улучшаем; на L1 (общий вид) не нужно
 MAX_PIXELS = 4_000_000  # размер результата на экране; больше не делаем
 MODE_LIGHT, MODE_DEBLUR, MODE_MAX = "light", "deblur", "max"
 DEFAULT_MODE = MODE_DEBLUR
@@ -183,9 +183,10 @@ def _deblur(image, source, width, height, mode):
         ycc[:, :, 0] = luma
     result = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
     scale_x, scale_y = width / source.width(), height / source.height()
+    shrinking = scale_x < 1 and scale_y < 1  # окно меньше фото: INTER_AREA не даёт ряби
     full = cv2.resize(
         result, (max(1, round(rect.width() * scale_x)), max(1, round(rect.height() * scale_y))),
-        interpolation=cv2.INTER_LANCZOS4)
+        interpolation=cv2.INTER_AREA if shrinking else cv2.INTER_LANCZOS4)
     left = round((source.left() - rect.left()) * scale_x)
     top = round((source.top() - rect.top()) * scale_y)
     out = full[top:top + height, left:left + width]

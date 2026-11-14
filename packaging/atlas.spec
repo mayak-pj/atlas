@@ -15,7 +15,7 @@ a = Analysis(
     pathex=[ROOT],
     datas=data_files(ROOT),
     hiddenimports=hidden_modules(ROOT) + ["PyQt5.QtSvg"],
-    excludes=["tkinter", "numpy", "PIL", "pytest"],
+    excludes=["tkinter", "PIL", "pytest", "cv2.gapi", "matplotlib", "scipy"],
     noarchive=False,
 )
 

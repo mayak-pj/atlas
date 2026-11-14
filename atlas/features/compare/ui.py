@@ -14,6 +14,7 @@ from atlas.core.domain.photo_names import load_pattern
 from atlas.core.feature import Feature
 from atlas.features.compare import logic
 from atlas.features.compare.screen import CompareScreen
+from atlas.shared.viewer import enhance
 from atlas.shared.viewer.decode import read_size
 
 log = logging.getLogger("atlas.compare")
@@ -101,7 +102,8 @@ class CompareFeature(Feature):
     def create_tab(self):
         cache = self.ctx.services.get("image_cache")
         data = self.ctx.paths.data
-        self.screen = CompareScreen(cache, self._hotkeys(), load_pattern(data), logic.load_defect_kinds(data))
+        self.screen = CompareScreen(cache, self._hotkeys(), load_pattern(data), logic.load_defect_kinds(data),
+                                    enhance.load_modes(data / "enhance_modes.json"))
         self.screen.photo_changed.connect(self._on_photo_changed)
         self.screen.mark_requested.connect(self._on_mark_requested)
         self.screen.rotation_changed.connect(self._on_rotation_changed)

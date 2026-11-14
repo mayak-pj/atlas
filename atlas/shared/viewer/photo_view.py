@@ -87,7 +87,7 @@ class PhotoView(QWidget):
         self._smoothed_key = None
         self._overlay = None  # слой фигур (shared/annotate): рисует поверх фото и может забрать мышь
         self._align = False  # «Выровнять»: зум и центр — в долях рамки платы (cache.frame), шаг 12.1
-        self._enhance_amount = enhance.DEFAULT_AMOUNT  # резкость при приближении (12.5); 0 — выключено
+        self._enhance_mode = None  # улучшение при приближении (12.5): None — выключено, иначе id режима из enhance
         self._enh_key = None  # для какой части и размера готова улучшенная копия
         self._enh_image = None
         self._enh_pending = None  # ключ, который сейчас считается в рабочем потоке
@@ -173,12 +173,16 @@ class PhotoView(QWidget):
         if path == self._path:
             self._apply_frame()
 
-    def set_enhance(self, amount):
-        """Резкость мелких элементов при сильном приближении: 0 — выключено, 1 — обычная, до 3. Файл не меняется."""
-        self._enhance_amount = max(0.0, min(3.0, float(amount)))
+    def set_enhance(self, mode):
+        """Улучшение мелких деталей при приближении: None — выключено, иначе режим ("light", "deblur", "max"). Файл не меняется."""
+        self._enhance_mode = enhance.usable_mode(mode) if mode else None
         self._enh_key = self._enh_image = None
         self._enh_pending = None
         self._after_view_change()
+
+    @property
+    def enhance_mode(self):
+        return self._enhance_mode
 
     def _paint_geometry(self):
         """(target, visible) в координатах неповёрнутого фото с началом в его центре; None — рисовать нечего. Общее для рисования и улучшения."""
@@ -194,7 +198,7 @@ class PhotoView(QWidget):
 
     def _enhance_job(self):
         """Что улучшать сейчас: (ключ, источник в пикселях картинки, размер в пикселях экрана) или None."""
-        if self._image is None or not self.is_current_shown or self._level != L3 or self._enhance_amount <= 0:
+        if self._image is None or not self.is_current_shown or self._level != L3 or self._enhance_mode is None:
             return None
         geometry = self._paint_geometry()
         if geometry is None:
@@ -202,7 +206,7 @@ class PhotoView(QWidget):
         target, visible = geometry
         ratio = self.devicePixelRatioF()
         scale = target.width() * ratio / self._image.width()
-        if not enhance.wants_enhance(scale, self._enhance_amount):
+        if not enhance.wants_enhance(scale, self._enhance_mode):
             return None
         source = QRectF(
             (visible.left() - target.left()) / target.width() * self._image.width(),
@@ -211,7 +215,7 @@ class PhotoView(QWidget):
             visible.height() / target.height() * self._image.height(),
         )
         size = (max(1, round(visible.width() * ratio)), max(1, round(visible.height() * ratio)))
-        key = (self._image.cacheKey(), self._image_rotation, tuple(round(v, 2) for v in source.getRect()), size)
+        key = (self._enhance_mode, self._image.cacheKey(), self._image_rotation, tuple(round(v, 2) for v in source.getRect()), size)
         return key, source, size
 
     def _start_enhance(self):
@@ -223,11 +227,11 @@ class PhotoView(QWidget):
         if key == self._enh_key or key == self._enh_pending:
             return
         self._enh_pending = key
-        image, amount = self._image, self._enhance_amount
+        image, mode = self._image, self._enhance_mode
 
         def work():
             try:
-                result = enhance.enhanced_crop(image, source, size[0], size[1], amount)
+                result = enhance.enhanced_crop(image, source, size[0], size[1], mode)
             except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка
                 result = None
             self._enhanced.emit(key, result if result is not None else QImage())

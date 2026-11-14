@@ -19,8 +19,10 @@ from atlas.features.compare.logic import (
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.widgets import FlowLayout
+from atlas.shared.widgets.enhance_control import EnhanceControl
 from atlas.shared.widgets.icons import set_icon
 from atlas.shared.widgets.number_drum import NumberDrum
+from atlas.shared.viewer import enhance
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.object_frame import batch_order, rotated_frame
@@ -142,10 +144,11 @@ class CompareScreen(QWidget):
     rotation_changed = pyqtSignal(object, int)  # [id фото папки], новый поворот: записать в базу
     fullscreen_changed = pyqtSignal(bool)  # «Во весь экран»: окну программы спрятать свои строки и развернуться
 
-    def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
+    def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), enhance_modes=(), parent=None):
         super().__init__(parent)
         self._name_pattern = name_pattern
         self._defect_kinds = list(defect_kinds)
+        self._enhance_modes = enhance_modes or enhance.load_modes(None)
         mark_keys = hotkeys.get("marks") or DEFAULT_MARK_KEYS
         self._mark_keys = {mark: _key(text) for mark, text in mark_keys.items()}
         self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
@@ -464,6 +467,9 @@ class CompareScreen(QWidget):
         row.addStretch(1)
         self.toolbar_layout = FlowLayout(spacing=6)  # кнопки функций переносятся на вторую строку, а не сжимаются
         rows.addLayout(self.toolbar_layout)
+        self.enhance_control = EnhanceControl(self._enhance_modes, enhance.DEFAULT_MODE)  # в этой строке: ряд выше уже полон при 1024
+        self.enhance_control.changed.connect(self.set_enhance)
+        self.toolbar_layout.addWidget(self.enhance_control)
         return bar
 
     def _build_reference_bar(self):
@@ -885,6 +891,12 @@ class CompareScreen(QWidget):
         self._compare_offsets, self._angle_offsets = {}, {}
         self._compare_group_state = self._angle_group_state = FIT_STATE
         self.fit()
+
+    def set_enhance(self, mode):
+        """«Улучшить» (12.5): у всех окон один режим; None — выключено. Считается в фоне, файлы не меняются."""
+        self.enhance_control.set_active(mode is not None)
+        for view in self.views:
+            view.set_enhance(mode)
 
     def set_batches(self, on):
         """Порядок «по партиям» или по именам. Рамки всех фото ищутся при прогреве; пока не готовы — ждём."""

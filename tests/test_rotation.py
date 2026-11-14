@@ -484,7 +484,8 @@ def test_sync_off_keeps_other_window_place_and_group_state(app):
     app.press(Qt.Key_PageDown)
     assert screen.views[0].state() == other
     assert screen.group.state == group_state
-    assert screen.views[1].state() == pytest.approx((6.0, 0.6, 0.3))
+    # допуск по высоте: от высоты окна зависит, насколько центр прижат к краю фото (строка «Улучшить» её меняет)
+    assert screen.views[1].state() == pytest.approx((6.0, 0.6, 0.3), abs=0.01)
 
 
 def test_single_window_turns_with_reference_only_with_sync(app):

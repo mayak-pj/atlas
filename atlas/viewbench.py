@@ -114,7 +114,7 @@ class _Pump:
 
 
 def _find_photos(folder, count):
-    photos = sorted(path for path in folder.rglob("*") if path.suffix.lower() in PHOTO_SUFFIXES and path.is_file())
+    photos = sorted(path for path in folder.rglob("*") if path.suffix.lower() in PHOTO_SUFFIXES and not path.name.startswith("._") and path.is_file())
     if len(photos) < 2:
         raise BenchError("В папке {} меньше двух фото JPEG".format(folder))
     return photos[:count]

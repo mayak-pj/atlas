@@ -94,6 +94,13 @@ def clean_rel_path(rel_path):
     return "/".join(parts)
 
 
+def is_system_file(rel_path):
+    """Служебный файл, а не фото: «._имя.jpeg» — «двойник» macOS (AppleDouble, метаданные), который появляется рядом
+    с каждым файлом при копировании папки с Mac на сетевой или чужой диск; папка «__MACOSX» из архива."""
+    parts = str(rel_path).replace("\\", "/").split("/")
+    return parts[-1].startswith("._") or "__MACOSX" in parts[:-1]
+
+
 def valid_mark(mark):
     return mark is None or mark in (MARK_DEFECT, MARK_REMARK) or bool(_MARK_TYPE.match(str(mark)))
 
@@ -179,6 +186,8 @@ class FoldersService:
         """Добавляет фото одной транзакцией, уже известные пропускает. Возвращает, сколько добавлено."""
         rows = []
         for rel_path in rel_paths:
+            if is_system_file(rel_path):
+                continue
             clean = clean_rel_path(rel_path)
             rows.append((folder_id, clean, clean.casefold()))
 
@@ -196,7 +205,8 @@ class FoldersService:
                 "SELECT {} FROM photos WHERE folder_id = ? ORDER BY rel_key".format(_PHOTO_COLUMNS), (folder_id,)
             ).fetchall()
         )
-        return [Photo(*row) for row in rows]
+        # «._…» из папок, добавленных до исправления, в списке не показываем: открыть их нельзя
+        return [photo for photo in (Photo(*row) for row in rows) if not is_system_file(photo.rel_path)]
 
     def delete(self, folder_id):
         """Папку — из базы вместе с её фото, отметками и поворотами. Файлы на диске не трогаются.

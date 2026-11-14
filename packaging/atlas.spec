@@ -43,7 +43,13 @@ def _is_foreign_translation(entry):
     return "/translations/" in path and path.endswith(".qm") and "_ru." not in os.path.basename(path)
 
 
-a.binaries = [entry for entry in a.binaries if not (_is_system_crt(entry) or _is_unused_qt(entry))]
+def _is_unused_cv2(entry):
+    """Видео (ffmpeg) в OpenCV не нужно: Atlas читает только картинки. Эта DLL тянет mfplat.dll, а check_pe_imports
+    не считает его системным для Win7, так что сборка не проходила проверку."""
+    return os.path.basename(entry[0]).lower().startswith("opencv_videoio_ffmpeg")
+
+
+a.binaries = [entry for entry in a.binaries if not (_is_system_crt(entry) or _is_unused_qt(entry) or _is_unused_cv2(entry))]
 a.datas = [entry for entry in a.datas if not _is_foreign_translation(entry)]
 
 pyz = PYZ(a.pure)

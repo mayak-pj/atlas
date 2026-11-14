@@ -232,6 +232,7 @@ def _walk(check, paths, work):
     check.info("Шрифты: основной «{}», моноширинный «{}»".format(theme.ui_family, theme.mono_family))
     _check_formats(check)
     _check_icons(check)
+    _check_quality(check)
     _check_image_levels(app, check, work)
 
     ctx = build_core(_make_work_root(paths, work))
@@ -262,6 +263,34 @@ def _walk(check, paths, work):
     window.close()
     registry.stop_all()
     app.processEvents()
+
+
+def _check_quality(check):
+    """«Качество» (12.5): OpenCV и NumPy вошли в сборку, три режима считают. Время — по нему видно, потянет ли эта машина."""
+    import time
+
+    from PyQt5.QtCore import QRectF
+
+    from atlas.shared.viewer import enhance
+
+    check.result("OpenCV и NumPy в сборке", enhance.engine_available())
+    if not enhance.engine_available():
+        return
+    import cv2
+    import numpy as np
+
+    base = np.full((600, 800, 3), (40, 70, 40), np.uint8)
+    for number in range(8):
+        cv2.putText(base, "U{} SN74HC595 10K 1%".format(number), (30, 50 + number * 70), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                    (210, 210, 210), 2, cv2.LINE_AA)
+    soft = cv2.GaussianBlur(base, (0, 0), 2.0)
+    image = enhance._to_qimage(soft)
+    for mode in ("deblur", "max", "pro"):
+        started = time.monotonic()
+        result = enhance.enhanced_crop(image, QRectF(0, 0, 800, 600), 1600, 1200, mode)
+        ok = result is not None and (result.width(), result.height()) == (1600, 1200)
+        check.result("«Качество»: режим {} (800×600 → 1600×1200)".format(mode), ok,
+                     "{:.2f} с; OpenCV {}, NumPy {}".format(time.monotonic() - started, cv2.getVersionString(), np.__version__))
 
 
 def run(out, paths=None):

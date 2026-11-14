@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
+import time
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QImage, QPainter, QPainterPath, QPen, QTransform
@@ -16,6 +18,8 @@ from atlas.shared.viewer import enhance
 from atlas.shared.viewer.levels import CURRENT, L0, L1, L3, level_divisor, level_for_scale
 from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
 from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
+
+log = logging.getLogger("atlas.viewer.enhance")
 
 SETTLE_MS = 150  # после остановки листания или зума — чёткий уровень (цель: не позже 300 мс)
 WHEEL_STEP = 1.2  # за один щелчок колеса, как в макете
@@ -277,10 +281,14 @@ class PhotoView(QWidget):
         image, mode = self._image, self._enhance_mode
 
         def work():
+            started = time.monotonic()
             try:
                 result = enhance.enhanced_crop(image, source, size[0], size[1], mode)
-            except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка
+            except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка; причина — в лог
+                log.exception("Качество: режим %s не отработал", mode)
                 result = None
+            log.info("Качество: режим %s, часть фото %dx%d → экран %dx%d: %.2f с%s", mode, source.width(), source.height(),
+                     size[0], size[1], time.monotonic() - started, "" if result is not None else " (без улучшения)")
             self._enhanced.emit(key, result if result is not None else QImage())
 
         threading.Thread(target=work, name="enhance", daemon=True).start()

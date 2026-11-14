@@ -10,6 +10,7 @@ from PyQt5.QtGui import QPainter, QPainterPath, QTransform
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, QWidget
 
 from atlas.shared.viewer.levels import CURRENT, L0, L1, level_divisor, level_for_scale
+from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
 from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
 
 SETTLE_MS = 150  # после остановки листания или зума — чёткий уровень (цель: не позже 300 мс)
@@ -81,6 +82,7 @@ class PhotoView(QWidget):
         self._smoothed = None
         self._smoothed_key = None
         self._overlay = None  # слой фигур (shared/annotate): рисует поверх фото и может забрать мышь
+        self._align = False  # «Выровнять»: зум и центр — в долях рамки платы (cache.frame), шаг 12.1
         self._settle = QTimer(self)
         self._settle.setSingleShot(True)
         self._settle.setInterval(settle_ms)
@@ -94,6 +96,9 @@ class PhotoView(QWidget):
         self._caption = _Caption(self)
         cache.ready.connect(self._on_ready)
         cache.failed.connect(self._on_failed)
+        frame_ready = getattr(cache, "frame_ready", None)
+        if frame_ready is not None:
+            frame_ready.connect(self._on_frame_ready)
 
     @property
     def path(self):
@@ -127,6 +132,37 @@ class PhotoView(QWidget):
 
     def state(self):
         return self._state.state()
+
+    @property
+    def aligned(self):
+        """Включено «Выровнять» и на текущем фото нашлась плата."""
+        return self._state.frame is not None
+
+    def set_align(self, on):
+        """«Выровнять»: плата на одном месте и в одном масштабе у всех фото. Файл не меняется, view_changed не посылает.
+
+        Зум и центр остаются теми же числами, но считаются в долях рамки платы. Плата не нашлась — фото целиком, как обычно.
+        """
+        self._align = bool(on)
+        self._apply_frame()
+
+    def _apply_frame(self):
+        frame = None
+        if self._align:
+            if not self.is_current_shown:
+                return  # на экране ещё прежнее фото — с прежней рамкой; новая встанет вместе с новой картинкой
+            found = getattr(self._cache, "frame", None)
+            frame = found(self._path) if found is not None else None
+            if frame is not None:
+                frame = rotated_frame(frame, self._image_rotation)
+                frame = padded_frame(frame, self._state.photo_w, self._state.photo_h)
+        if frame != self._state.frame:
+            self._state.set_frame(frame)
+            self._after_view_change()
+
+    def _on_frame_ready(self, path):
+        if path == self._path:
+            self._apply_frame()
 
     def set_overlay(self, overlay):
         """Слой поверх фото: у него методы `paint(painter, view)`, `mouse_press/move/release(view, event) -> bool`, `cursor()`."""
@@ -182,6 +218,7 @@ class PhotoView(QWidget):
         if self.is_current_shown:
             self._image_rotation = rotation
             self._state.set_photo_size(*rotated_size(self._image.width(), self._image.height(), rotation))
+            self._apply_frame()
         self._after_view_change()
 
     def set_photo(self, path, rotation=0):
@@ -215,6 +252,7 @@ class PhotoView(QWidget):
         self._path = None
         self._image = None
         self._image_path = None
+        self._state.set_frame(None)
         self._rotation = 0
         self._image_rotation = 0
         self._full_size = None
@@ -298,6 +336,7 @@ class PhotoView(QWidget):
             self._full_size = (image.width() * divisor, image.height() * divisor)
         if not keep_proportions:
             self._state.set_photo_size(*rotated_size(image.width(), image.height(), self._rotation))
+        self._apply_frame()
         self._show_message("")
         self.update()
         if first:

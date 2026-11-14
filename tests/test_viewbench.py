@@ -51,7 +51,7 @@ def test_short_run_with_generated_photos(tmp_path):
     assert result.returncode == 0, result.stdout
     text = _report(tmp_path)
     assert "ИТОГ: ЗАМЕР ЗАВЕРШЁН" in text
-    for part in ("кэш пуст", "после прогрева", "Прогрев L0", "4 окна, зум 12×", "Пик памяти", "ЦЕЛЬ: чётко за 300"):
+    for part in ("кэш пуст", "после прогрева", "Прогрев L0", "Плата на тёмном фоне найдена", "Поиск платы по L1", "4 окна, зум 12×", "Пик памяти", "ЦЕЛЬ: чётко за 300"):
         assert part in text, text
     assert "ОШИБКА" not in text
     assert "4 окна, зум 12× (L3,L3,L3,L3)" in text  # зум не сбросился: чёткий уровень правда читался

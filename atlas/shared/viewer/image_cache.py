@@ -18,6 +18,7 @@ from atlas.shared.viewer.disk_cache import DiskCache, default_cache_dir
 from atlas.shared.viewer.job_queue import JobQueue
 from atlas.shared.viewer.levels import CURRENT, DISK_LEVELS, L0, L1, L2, L3, WARMUP
 from atlas.shared.viewer.memory_cache import MemoryCache
+from atlas.shared.viewer.object_frame import find_frame
 
 log = logging.getLogger("atlas.viewer.image_cache")
 
@@ -49,6 +50,7 @@ class CacheSettings:
 class ImageCache(QObject):
     ready = pyqtSignal(str, int, QImage)  # путь, уровень, картинка; приходит в потоке получателя
     failed = pyqtSignal(str, int, str)  # путь, уровень, текст ошибки
+    frame_ready = pyqtSignal(str)  # рамка платы на фото найдена или уточнена (в том числе «не нашлась»)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -60,6 +62,7 @@ class ImageCache(QObject):
         self._threads = []
         self._lock = threading.Lock()
         self._failures = {}  # (путь, уровень) → когда не получилось
+        self._frames = {}  # путь → (рамка платы или None, уровень, по которому искали); object_frame.py
         self._epoch = 0
         self._stopped = False
 
@@ -79,8 +82,25 @@ class ImageCache(QObject):
         """Как get, но только смотрит в память и ничего не запрашивает. CachedImage или None."""
         return self._memory.best(str(path), level)
 
+    def has_frame(self, path):
+        """Рамку платы уже искали (нашлась или нет)."""
+        with self._lock:
+            return str(path) in self._frames
+
+    def frame(self, path):
+        """Рамка платы (x, y, ширина, высота) в долях фото с учётом EXIF, без поворота Atlas; None — не искали или не нашлась.
+
+        Ищется в рабочих потоках, когда фото читается (L0–L3, в том числе прогрев), до сигнала ready.
+        """
+        with self._lock:
+            known = self._frames.get(str(path))
+        return known[0] if known is not None else None
+
     def prefetch(self, paths):
-        """Подготовить L0 и L1 на локальном диске, в память не загружать. Ошибки не сообщаются: это только ускорение."""
+        """Подготовить L0 и L1 на локальном диске, в память не загружать. Ошибки не сообщаются: это только ускорение.
+
+        Заодно ищется рамка платы (по L0 с диска): она нужна раскладке по партиям.
+        """
         for path in paths:
             self._enqueue(str(path), L1, WARMUP, False)
 
@@ -95,6 +115,7 @@ class ImageCache(QObject):
             self._epoch += 1
             for key in [key for key in self._failures if key[0] == path]:
                 del self._failures[key]
+            self._frames.pop(path, None)
         self._memory.forget(path)
 
     def wait_idle(self, timeout=30.0):
@@ -162,6 +183,7 @@ class ImageCache(QObject):
             image = decode.decode_file(job.path, job.level)
         if image is None or not job.to_memory:
             return
+        self._note_frame(job.path, image, job.level, epoch)
         with self._lock:
             if self._stopped or epoch != self._epoch:  # пока читали, файл объявили заменённым
                 return
@@ -179,6 +201,8 @@ class ImageCache(QObject):
         """L0 и L1 получаются за одно чтение исходника и сразу оба попадают на диск."""
         disk = self._disk_cache()
         if not job.to_memory and (not disk.enabled or (disk.has(signature, L0) and disk.has(signature, L1))):
+            if disk.enabled and not self.has_frame(job.path):
+                self._note_frame(job.path, disk.load(signature, L0), L0)
             return None  # прогрев: уже готово или некуда класть
         if job.to_memory:
             cached = disk.load(signature, job.level)
@@ -188,10 +212,26 @@ class ImageCache(QObject):
         if preview is None:
             preview = decode.decode_file(job.path, L1)
             disk.save(signature, L1, preview)
+        if not job.to_memory:
+            self._note_frame(job.path, preview, L1)
         thumbnail = decode.make_thumbnail(preview, self._settings.thumbnail_side)
         if not disk.has(signature, L0):
             disk.save(signature, L0, thumbnail)
         return thumbnail if job.level == L0 else preview
+
+    def _note_frame(self, path, image, level, epoch=None):
+        """Найти рамку платы, если её ещё нет или она найдена по L0, а теперь есть картинка крупнее. Рабочий поток."""
+        with self._lock:
+            known = self._frames.get(path)
+        if image is None or (known is not None and (known[1] >= level or known[1] > L0)):
+            return
+        frame = find_frame(image)
+        with self._lock:
+            if self._stopped or (epoch is not None and epoch != self._epoch):
+                return
+            self._frames[path] = (frame, level)
+        if known is None or known[0] != frame:
+            self.frame_ready.emit(path)
 
 
 def create_image_cache(config, paths, parent=None):

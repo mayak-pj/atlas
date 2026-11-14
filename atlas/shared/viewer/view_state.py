@@ -3,6 +3,10 @@
 Состояние — зум (1 = «вписать») и центр в долях фото. Эти числа не зависят ни от размера окна, ни от уровня изображения:
 поэтому подмена L1 на L3 ничего не сдвигает, а SyncGroup сможет передавать их между фото разного размера.
 Фото здесь такое, каким его видно на экране: у повёрнутого на 90° стороны уже поменяны местами, доли считаются по экрану.
+
+Рамка (`set_frame`, «Выровнять», шаг 12.1) — часть фото, где плата, в долях фото на экране. С рамкой зум 1 — плата
+во всё окно, а центр считается в долях рамки: у фото, где плата стоит по-разному, те же числа показывают то же место
+платы. Без рамки всё как раньше: рамка — всё фото.
 """
 from __future__ import annotations
 
@@ -19,6 +23,15 @@ class ViewState:
         self.zoom = MIN_ZOOM
         self.cx = 0.5
         self.cy = 0.5
+        self.frame = None  # (x, y, ширина, высота) в долях фото; None — всё фото
+
+    def set_frame(self, frame):
+        """Рамка в долях фото на экране или None. Зум и центр остаются теми же числами — уже в долях новой рамки."""
+        self.frame = tuple(frame) if frame is not None else None
+        self._clamp()
+
+    def _frame(self):
+        return self.frame if self.frame is not None else (0.0, 0.0, 1.0, 1.0)
 
     def set_view_size(self, width, height):
         self.view_w = float(max(1, width))
@@ -44,13 +57,17 @@ class ViewState:
 
     def displayed_size(self):
         """Размер всего фото на экране при текущем зуме, в пикселях окна."""
-        scale = min(self.view_w / self.photo_w, self.view_h / self.photo_h) * self.zoom
+        _x, _y, fw, fh = self._frame()
+        scale = min(self.view_w / (self.photo_w * fw), self.view_h / (self.photo_h * fh)) * self.zoom
         return self.photo_w * scale, self.photo_h * scale
 
     def target_rect(self):
         """(x, y, ширина, высота) всего фото в координатах окна."""
         width, height = self.displayed_size()
-        return self.view_w / 2 - self.cx * width, self.view_h / 2 - self.cy * height, width, height
+        fx, fy, fw, fh = self._frame()
+        left = self.view_w / 2 - (fx + self.cx * fw) * width
+        top = self.view_h / 2 - (fy + self.cy * fh) * height
+        return left, top, width, height
 
     def to_photo(self, x, y):
         """Точка окна → доли фото."""
@@ -62,20 +79,24 @@ class ViewState:
         px, py = self.to_photo(x, y)
         self.zoom = min(MAX_ZOOM, max(MIN_ZOOM, self.zoom * factor))
         width, height = self.displayed_size()
-        self.cx = px - (x - self.view_w / 2) / width
-        self.cy = py - (y - self.view_h / 2) / height
+        fx, fy, fw, fh = self._frame()
+        self.cx = (px - (x - self.view_w / 2) / width - fx) / fw
+        self.cy = (py - (y - self.view_h / 2) / height - fy) / fh
         self._clamp()
 
     def pan_by(self, dx, dy):
         width, height = self.displayed_size()
-        self.cx -= dx / width
-        self.cy -= dy / height
+        _x, _y, fw, fh = self._frame()
+        self.cx -= dx / (width * fw)
+        self.cy -= dy / (height * fh)
         self._clamp()
 
     def _clamp(self):
+        """Край рамки (без рамки — фото) не отходит от края окна; поместилась целиком — по центру."""
         width, height = self.displayed_size()
-        self.cx = _clamp_axis(self.cx, self.view_w / width)
-        self.cy = _clamp_axis(self.cy, self.view_h / height)
+        _x, _y, fw, fh = self._frame()
+        self.cx = _clamp_axis(self.cx, self.view_w / (width * fw))
+        self.cy = _clamp_axis(self.cy, self.view_h / (height * fh))
 
 
 def rotated_center(cx, cy, delta):

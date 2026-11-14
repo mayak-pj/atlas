@@ -225,6 +225,7 @@ def _warm(pump, settings, photos, report):
     cache.prefetch(photos)
     finished = pump.run_until(lambda: cache.wait_idle(0.0), HANG_TIMEOUT_S / 2)
     elapsed = time.perf_counter() - started
+    cache_frames = {str(path): cache.frame(path) for path in photos}
     cache.stop()
     cache = None
     _release(pump)
@@ -232,7 +233,32 @@ def _warm(pump, settings, photos, report):
         raise BenchError("Прогрев не завершился")
     report.line("Прогрев L0 и L1 на локальный диск, {} фото: {:.1f} с, {:.0f} мс на фото, {:.0f} фото в минуту".format(
         len(photos), elapsed, elapsed / len(photos) * 1000, len(photos) / elapsed * 60))
+    _report_frames(cache_frames, photos, report)
     return elapsed
+
+
+def _report_frames(frames, photos, report):
+    """«Выровнять» и «По партиям» (12.1): на скольких фото нашлась плата, сколько партий, скорость поиска."""
+    from PyQt5.QtGui import QImageReader
+
+    from atlas.shared.viewer.object_frame import batches, find_frame
+
+    found = [frames.get(str(path)) for path in photos]
+    groups = batches(found)
+    report.line("Плата на тёмном фоне найдена: {} из {} фото; партий по положению платы: {} ({})".format(
+        sum(1 for frame in found if frame is not None), len(photos), len(groups),
+        ", ".join(str(len(group)) for group in groups[:8]) or "—"))
+    sample = photos[:10]
+    started = time.perf_counter()
+    for path in sample:
+        reader = QImageReader(str(path))
+        reader.setAutoTransform(True)
+        size = reader.size()
+        if size.isValid():
+            reader.setScaledSize(size / 4)
+        find_frame(reader.read())
+    report.line("Поиск платы по L1 (чтение файла и поиск), {} фото: {:.0f} мс на фото".format(
+        len(sample), (time.perf_counter() - started) / max(1, len(sample)) * 1000))
 
 
 def _step(pump, settings, size, photos, windows, zoom, flips, report):

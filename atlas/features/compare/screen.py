@@ -1,6 +1,8 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон (если он есть), текущие — views[1], views[2]…; раскладка только показывает нужные."""
 from __future__ import annotations
 
+import time
+
 from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
@@ -21,6 +23,7 @@ from atlas.shared.widgets.icons import set_icon
 from atlas.shared.widgets.number_drum import NumberDrum
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
+from atlas.shared.viewer.object_frame import batch_order, rotated_frame
 from atlas.shared.viewer.photo_view import PhotoView
 from atlas.shared.viewer.sync_group import SyncGroup
 
@@ -66,6 +69,15 @@ TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
 TEXT_CLEAR_REFERENCE = "Убрать эталон"
+TEXT_ALIGN = "Выровнять"
+TIP_ALIGN = ("Плата на одном месте и в одном масштабе у всех фото: окно само находит её на тёмном фоне.\n"
+             "Файл не меняется. Плата не нашлась — фото показывается целиком")
+TEXT_BATCHES = "По партиям"
+TEXT_BATCHES_WAIT = "По партиям ({} из {})"
+TIP_BATCHES = ("Фото с одним положением платы — подряд: сначала одна партия (фотоаппарат, день), потом другая.\n"
+               "Выключить — снова по именам")
+BATCH_POLL_MS = 400
+BATCH_GIVE_UP_S = 8.0  # рамки перестали приходить (фото не читается) — раскладываем по тем, что есть
 TIP_CLEAR_REFERENCE = "Сравнил — эталон больше не нужен: его окно снова показывает фото этой папки"
 TIP_RESET = ("Всё фото целиком во всех окнах; подгонка окон друг к другу снимается.\n"
              "Двойной клик по фото — целиком только это окно")
@@ -171,6 +183,13 @@ class CompareScreen(QWidget):
         self._deferred_turns = []
         self._portrait = True  # фото Atlas обычно вертикальные; уточняется по первому показанному
         self._orientation_known = False
+        self._align = False  # «Выровнять» (12.1): у всех окон, обоих режимов и всех папок
+        self._batches = False  # «По партиям» (12.1): порядок фото текущей папки по положению платы
+        self._name_order = []  # id фото в порядке имён: к нему возвращает выключение «По партиям»
+        self._batch_wait = None  # (сколько рамок было, когда пришла последняя), пока ждём рамки всех фото
+        self._batch_timer = QTimer(self)
+        self._batch_timer.setInterval(BATCH_POLL_MS)
+        self._batch_timer.timeout.connect(self._check_batches)
         self.views = [PhotoView(cache, self) for _ in range(MAX_WINDOWS)]
         for view in self.views:
             view.hide()
@@ -425,6 +444,17 @@ class CompareScreen(QWidget):
             else:
                 self.rotate_left_button = button
             row.addWidget(button)
+        self.align_button = self._button(TEXT_ALIGN, lambda _=False: self.set_align(self.align_button.isChecked()),
+                                         checkable=True)
+        set_icon(self.align_button, "focus", "text")
+        self.align_button.setToolTip(TIP_ALIGN)
+        row.addWidget(self.align_button)
+        self.batches_button = self._button(
+            TEXT_BATCHES, lambda _=False: self.set_batches(self.batches_button.isChecked()), checkable=True)
+        set_icon(self.batches_button, "layers", "text")
+        self.batches_button.setToolTip(TIP_BATCHES)
+        row.addWidget(self.batches_button)
+        self._compare_only.append(self.batches_button)
         self.find_button = self._button("Найти такую же деталь", self.find_requested.emit)
         set_icon(self.find_button, "search")
         self.find_button.setToolTip("Открыть эталоном последнюю проверку такой же детали")
@@ -607,6 +637,9 @@ class CompareScreen(QWidget):
         self.find_button.setEnabled(bool(self.model.photos))
         self._apply_layout()
         self._cache.prefetch([photo.path for photo in self.model.photos])
+        self._name_order = [photo.id for photo in self.model.photos]
+        if self._batches:
+            self._start_batches()
 
     def show_failure(self, text):
         self._end_flicker()
@@ -840,6 +873,80 @@ class CompareScreen(QWidget):
     def fit(self):
         self.group.fit()
         self._show_zoom(1.0)
+
+    # --- «Выровнять» и «По партиям» (12.1) --------------------------------------
+    def set_align(self, on):
+        """Плата на одном месте у всех окон. Числа зума и центра меняют смысл, поэтому окна встают «В кадр»."""
+        self._align = bool(on)
+        self.align_button.setChecked(self._align)
+        for view in self.views:
+            view.set_align(self._align)
+        self._compare_states, self._angle_states = {}, {}
+        self._compare_offsets, self._angle_offsets = {}, {}
+        self._compare_group_state = self._angle_group_state = FIT_STATE
+        self.fit()
+
+    def set_batches(self, on):
+        """Порядок «по партиям» или по именам. Рамки всех фото ищутся при прогреве; пока не готовы — ждём."""
+        self._batches = bool(on)
+        self.batches_button.setChecked(self._batches)
+        if self._batches:
+            self._start_batches()
+        else:
+            self._stop_batch_wait()
+            self._reorder(self._name_positions())
+
+    def _start_batches(self):
+        if not self.model.photos:
+            return
+        self._batch_wait = (-1, time.monotonic())
+        self._check_batches()
+        if self._batch_wait is not None:
+            self._batch_timer.start()
+
+    def _stop_batch_wait(self):
+        self._batch_timer.stop()
+        self._batch_wait = None
+        self.batches_button.setText(TEXT_BATCHES)
+
+    def _check_batches(self):
+        if self._batch_wait is None:
+            return
+        has_frame = getattr(self._cache, "has_frame", None)
+        photos = self.model.photos
+        known = sum(1 for photo in photos if has_frame is not None and has_frame(photo.path))
+        before, since = self._batch_wait
+        now = time.monotonic()
+        if known != before:
+            self._batch_wait = (known, now)
+            since = now
+        if known < len(photos) and has_frame is not None and now - since < BATCH_GIVE_UP_S:
+            self.batches_button.setText(TEXT_BATCHES_WAIT.format(known, len(photos)))
+            return
+        self._stop_batch_wait()
+        frame = getattr(self._cache, "frame", lambda path: None)
+        frames = [None if frame(photo.path) is None else rotated_frame(frame(photo.path), photo.rotation)
+                  for photo in photos]
+        self._reorder(batch_order(frames))
+
+    def _name_positions(self):
+        """Прежние номера фото в порядке имён (как пришли из базы)."""
+        place = {photo_id: number for number, photo_id in enumerate(self._name_order)}
+        numbers = list(range(len(self.model.photos)))
+        return sorted(numbers, key=lambda number: place.get(self.model.photos[number].id, number))
+
+    def _reorder(self, order):
+        """Тот же набор фото в другом порядке: окна остаются на своих фото, лента и отметки — по новому порядку."""
+        if not self.model.photos or order == list(range(len(self.model.photos))):
+            return
+        self.model.reorder(order)
+        self._index_by_id = {photo.id: number for number, photo in enumerate(self.model.photos)}
+        if not self._angles_on:  # в «Ракурсах» кнопки нет; план ракурсов держит номера фото — строим заново
+            self.angles.set_photos(self.model.photos, self._name_pattern)
+            self._fill_angle_toggles()
+        self._strip_source = None
+        self._sync_strip()
+        self._request_neighbors()
 
     def _show_zoom(self, zoom):
         self.zoom_label.setText("{:.0f}%".format(zoom * 100))

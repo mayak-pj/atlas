@@ -308,6 +308,19 @@ class CompareModel:
         self._indexes = [0] * MAX_CURRENTS
         self._spread_from(0)
 
+    def reorder(self, order):
+        """Тот же набор фото в другом порядке («По партиям»): order — прежние номера в новом порядке.
+
+        Окна остаются на своих фото, размеры переходят вместе с фото.
+        """
+        if sorted(order) != list(range(len(self.photos))):
+            raise ValueError("Порядок должен перечислять все фото по одному разу")
+        place = {old: new for new, old in enumerate(order)}
+        self.photos = [self.photos[old] for old in order]
+        if self.sizes is not None:
+            self.sizes = {place[old]: size for old, size in self.sizes.items() if old in place}
+        self._indexes = [place.get(index, index) for index in self._indexes]
+
     def set_layout(self, count):
         """Активное окно сохраняет своё фото. Появившиеся окна показывают следующие фото за предыдущим окном."""
         if not 1 <= count <= MAX_WINDOWS:

@@ -367,8 +367,20 @@ def test_disk_candidates_prefer_nearest_level_and_skip_empty(tmp_path):
     (part / "2026-09-01").mkdir()  # пустая
     _photos(tmp_path / "Проект" / "Плата USB - Эталон", 1, names=["э.jpg"])
     assert [item.name for item, _ in candidates(current, "2026")] == ["2026-10-01"]
-    assert [item.name for item, _ in candidates(current, "плата usb")] == ["Плата USB - Эталон"]
+    # 14.11.2026: папка над открытой названа деталью — подходят её подпапки с любыми именами, они ближе эталона рядом
+    assert [item.name for item, _ in candidates(current, "плата usb")] == ["2026-10-01"]
     assert candidates(current, "") == []
+
+
+def test_disk_candidates_any_name_only_inside_folder_named_after_part(tmp_path):
+    from atlas.features.compare.disk_find import candidates
+
+    batch = tmp_path / "Проект" / "Поставка 12"  # папка над открытой — не деталь
+    current = batch / "Плата USB 2026-11-04"
+    _photos(current, 1, names=["1.jpg"])
+    _photos(batch / "Другая плата", 1, names=["д.jpg"])
+    _photos(batch / "Плата USB 2026-10-01", 1, names=["с.jpg"])
+    assert [item.name for item, _ in candidates(current, "Плата USB")] == ["Плата USB 2026-10-01"]
 
 
 def test_clear_reference_frees_its_window(app):

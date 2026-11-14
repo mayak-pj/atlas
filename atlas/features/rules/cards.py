@@ -25,9 +25,10 @@ TEXT_NEW = "НОВОЕ"
 TEXT_READ = "Прочитано"
 TEXT_ARCHIVED = "В архиве"
 TEXT_ARCHIVED_BY = "В архиве · {}"
-TIP_LOCKED = "Изменить и удалить можно в течение {} дней после добавления; дальше — только в архив"
+TIP_LOCKED = "Изменить можно в течение {} дней после добавления; дальше — только в архив"
+TIP_NO_RESTORE = "Вернуть из архива может тот, кто убрал, или разработчик"
 TEXT_EDITED = "изменено {}"
-TIP_EDIT = "Изменить заголовок, текст и фото"
+TIP_EDIT = "Изменить заголовок, деталь, модель, текст и фото"
 TIP_ARCHIVE = "В архив: правило остаётся внизу списка, но к детали не показывается"
 TIP_RESTORE = "Вернуть из архива"
 TIP_DELETE = "Удалить насовсем"
@@ -131,7 +132,8 @@ class RuleTile(QFrame):
     delete_clicked = pyqtSignal(int)
     animation_done = pyqtSignal(int)
 
-    def __init__(self, rule, author, color, root, today=None, parent=None, archiver="", edit_days=logic.EDIT_DAYS):
+    def __init__(self, rule, author, color, root, today=None, parent=None, archiver="", edit_days=logic.EDIT_DAYS,
+                 user_id=0, developer=False):
         super().__init__(parent)
         self.rule = rule
         self.setProperty("role", "type-card")
@@ -164,11 +166,17 @@ class RuleTile(QFrame):
         self.delete_button.clicked.connect(lambda _=False: self.delete_clicked.emit(rule.id))
         for button in (self.edit_button, self.archive_button, self.delete_button):
             head.addWidget(button)
-        self.locked = logic.locked(rule, today, edit_days)
+        # Права (14.11.2026): изменить — первые edit_days суток (разработчику всегда); удалить — только разработчику;
+        # вернуть из архива — тот, кто убрал, или разработчик
+        self.locked = not logic.can_edit(rule, developer, today, edit_days)
+        self.can_delete = logic.can_delete(developer)
+        self.can_archive = not rule.archived or logic.can_restore(rule, user_id, developer)
         if self.locked:  # прошло больше edit_days: правило — уже обоснование, только архив
-            for button in (self.edit_button, self.delete_button):
-                button.setEnabled(False)
-                button.setToolTip(TIP_LOCKED.format(edit_days))
+            self.edit_button.setToolTip(TIP_LOCKED.format(edit_days))
+        self.delete_button.setVisible(self.can_delete)  # остальным кнопки нет: правило убирают в архив
+        if not self.can_archive:
+            self.archive_button.setToolTip(TIP_NO_RESTORE)
+        self.set_buttons_enabled(True)
         body.addLayout(head)
         body.addWidget(_label(rule.title, "heading"))
         if rule.body:
@@ -207,9 +215,9 @@ class RuleTile(QFrame):
         return self._stamp.running or self._destroy is not None
 
     def set_buttons_enabled(self, enabled):
-        self.archive_button.setEnabled(enabled)
-        for button in (self.edit_button, self.delete_button):
-            button.setEnabled(enabled and not self.locked)
+        self.archive_button.setEnabled(enabled and self.can_archive)
+        self.edit_button.setEnabled(enabled and not self.locked)
+        self.delete_button.setEnabled(enabled and self.can_delete)
 
     def play_archive(self, archived):
         """Печать «В АРХИВЕ» (или обратно в цвет), как в «БД». Без фото — сразу конец."""

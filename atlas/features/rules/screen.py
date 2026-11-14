@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt5.QtCore import QEvent, QPointF, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QImageReader, QPainter, QPalette, QPixmap
 from PyQt5.QtWidgets import (
-    QButtonGroup, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
+    QButtonGroup, QCompleter, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
     QGridLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -24,20 +24,24 @@ TEXT_FORM = "Новое правило"
 TEXT_FORM_EDIT = "Изменить правило"
 TEXT_SAVE_EDIT = "Сохранить изменения"
 TEXT_CANCEL_EDIT = "Отмена"
-TEXT_EDIT_SCOPE = "Область не меняется: {}"
+TEXT_LEGACY = "Старое правило ({}): деталь и модель можно не вписывать — тогда область прежняя"
 TEXT_DELETE_ASK = "Удалить правило «{}» насовсем? Фото правила тоже удалятся. Чтобы убрать, но сохранить, — «В архив»."
 CARD_MIN_WIDTH = 360
 GRID_SPACING = 12
 TEXT_TITLE = "Заголовок"
 TEXT_TITLE_HINT = "Коротко, что проверять"
-TEXT_SCOPE = "Относится к"
-TEXT_BODY = "Общий комментарий"
-TEXT_BODY_HINT = "Один комментарий ко всем приложенным фото"
+TEXT_PART = "Деталь"
+TEXT_PART_HINT = "Как в названии папки: по ней правило покажется в «Сравнении»"
+TEXT_MODEL = "Модель"
+TEXT_MODEL_HINT = "Для поиска"
+TEXT_BODY = "Комментарий"
+TEXT_BODY_HINT = "Что именно проверять; один комментарий ко всем приложенным фото"
+TEXT_SEARCH_HINT = "Поиск: заголовок, текст, деталь, модель, кто добавил, дата (14.11.2026)"
+TEXT_EMPTY_SEARCH = "Ничего не нашлось"
 TEXT_ATTACH = "Приложить фото"
 TEXT_PUBLISH = "Опубликовать"
 TEXT_PUBLISHING = "Сохраняю…"
 TEXT_NOTE = "После публикации у коллег вкладка «Правила» подсветится, а правило к детали покажется в сводке на экране сравнения."
-TEXT_NO_PART = "Откройте папку — тогда правило можно привязать к виду, проекту, устройству или детали"
 TEXT_PANEL = "Правила к детали"
 TEXT_PHOTOS = "Фото: {}"
 TEXT_PHOTO_TITLE = "Фото правила"
@@ -45,10 +49,6 @@ TILE_MAX_HEIGHT = 420
 ATTACH_PREVIEW = 64
 TEXT_DROP_PHOTOS = "Убрать фото"
 FILTERS = ((logic.FILTER_ALL, "Все"), (logic.FILTER_GENERAL, "Общие"), (logic.FILTER_PART, "К детали"))
-SCOPE_TITLES = (
-    (logic.SCOPE_GENERAL, "Общее"), (logic.SCOPE_KIND, "Вид"), (logic.SCOPE_PROJECT, "Проект"),
-    (logic.SCOPE_DEVICE, "Устройство"), (logic.SCOPE_PART, "Деталь"),
-)
 IMAGE_FILTER = "Фото (*.jpg *.jpeg *.png);;Все файлы (*)"
 
 
@@ -116,16 +116,40 @@ class _Tile(QWidget):
 
 
 class ZoomView(QWidget):
-    """Одно фото: колесо — зум к курсору, мышь — сдвиг, двойной клик — вписать."""
+    """Одно фото: колесо — зум к курсору, мышь — сдвиг, двойной клик — вписать.
 
-    def __init__(self, parent=None):
+    moved — (зум относительно «целиком», сдвиг в долях фото): по нему соседние окна двигаются так же (14.11.2026).
+    """
+
+    moved = pyqtSignal(float, float, float)
+
+    def __init__(self, parent=None, minimum=QSize(640, 480)):
         super().__init__(parent)
         self.pixmap = QPixmap()
         self.zoom = 1.0
         self.offset = QPointF(0, 0)
         self._drag = None
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(minimum)
         self.setCursor(Qt.OpenHandCursor)
+
+    def _fit_zoom(self):
+        if self.pixmap.isNull():
+            return 1.0
+        return min(self.width() / float(self.pixmap.width()), self.height() / float(self.pixmap.height()))
+
+    def _emit_moved(self):
+        if self.pixmap.isNull():
+            return
+        shown_w, shown_h = self.pixmap.width() * self.zoom, self.pixmap.height() * self.zoom
+        self.moved.emit(self.zoom / self._fit_zoom(), self.offset.x() / shown_w, self.offset.y() / shown_h)
+
+    def follow(self, relative, dx, dy):
+        """Встать так же, как соседнее окно: тот же зум от «целиком» и тот же сдвиг в долях фото."""
+        if self.pixmap.isNull():
+            return
+        self.zoom = self._fit_zoom() * relative
+        self.offset = QPointF(dx * self.pixmap.width() * self.zoom, dy * self.pixmap.height() * self.zoom)
+        self.update()
 
     def set_pixmap(self, pixmap):
         self.pixmap = pixmap
@@ -171,6 +195,7 @@ class ZoomView(QWidget):
         self.offset = cursor - (cursor - self.offset) * factor  # точка под курсором остаётся на месте
         self.zoom = new_zoom
         self.update()
+        self._emit_moved()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -181,6 +206,7 @@ class ZoomView(QWidget):
         if self._drag is not None:
             self.offset = self._drag[1] + (QPointF(event.pos()) - self._drag[0])
             self.update()
+            self._emit_moved()
 
     def mouseReleaseEvent(self, event):
         self._drag = None
@@ -188,10 +214,26 @@ class ZoomView(QWidget):
 
     def mouseDoubleClickEvent(self, event):
         self.fit()
+        self._emit_moved()
+
+
+ARRANGE_ONE = "one"
+ARRANGE_SIDE = "side"
+ARRANGE_STACK = "stack"
+ARRANGES = ((ARRANGE_ONE, "По одному", "Одно фото, листать стрелками"),
+            (ARRANGE_SIDE, "Рядом", "Все фото правила слева направо, вплотную"),
+            (ARRANGE_STACK, "Друг под другом", "Все фото правила сверху вниз, вплотную — для длинных плат"))
+MULTI_MINIMUM = QSize(160, 120)
 
 
 class PhotoDialog(QDialog):
-    """Просмотр фото правила: зум, сдвиг, листание стрелками, полоса миниатюр внизу."""
+    """Просмотр фото правила: зум, сдвиг, листание стрелками.
+
+    14.11.2026 (замечание с выезда: фото правила далеко друг от друга): «Рядом» и «Друг под другом» — все фото
+    вплотную, зум и сдвиг у всех вместе. Выбор запоминается до закрытия программы.
+    """
+
+    arrange = None  # общий для всех окон фото: последний выбор
 
     def __init__(self, root, rels, index=0, parent=None):
         super().__init__(parent)
@@ -199,7 +241,29 @@ class PhotoDialog(QDialog):
         self.setWindowTitle(TEXT_PHOTO_TITLE)
         layout = QVBoxLayout(self)
         self.view = ZoomView()
+        self.multi = QWidget()  # все фото вплотную
+        self.multi_layout = QGridLayout(self.multi)
+        self.multi_layout.setContentsMargins(0, 0, 0, 0)
+        self.multi_layout.setSpacing(2)
+        self.multi_views = []
+        self._following = False
         layout.addWidget(self.view, 1)
+        layout.addWidget(self.multi, 1)
+        modes = QHBoxLayout()
+        self.arrange_buttons = {}
+        group = QButtonGroup(self)
+        for key, text, tip in ARRANGES:
+            button = QPushButton(text)
+            button.setProperty("role", "chip")
+            button.setCheckable(True)
+            button.setToolTip(tip)
+            button.setFocusPolicy(Qt.NoFocus)
+            group.addButton(button)
+            button.clicked.connect(lambda _=False, k=key: self.set_arrange(k))
+            modes.addWidget(button)
+            self.arrange_buttons[key] = button
+        modes.addStretch(1)
+        layout.addLayout(modes)
         bar = QHBoxLayout()
         self.prev_button = QPushButton("Назад")
         self.next_button = QPushButton("Вперёд")
@@ -211,7 +275,7 @@ class PhotoDialog(QDialog):
             button.setFocusPolicy(Qt.NoFocus)
         self.prev_button.clicked.connect(lambda _=False: self.step(-1))
         self.next_button.clicked.connect(lambda _=False: self.step(1))
-        self.fit_button.clicked.connect(lambda _=False: self.view.fit())
+        self.fit_button.clicked.connect(lambda _=False: self.fit_all())
         bar.addWidget(self.prev_button)
         bar.addWidget(self.next_button)
         bar.addWidget(self.fit_button)
@@ -221,6 +285,55 @@ class PhotoDialog(QDialog):
         layout.addLayout(bar)
         self.resize(1000, 760)
         self.show_index(index)
+        if len(self.rels) < 2:
+            for button in self.arrange_buttons.values():
+                button.hide()
+        default = ARRANGE_SIDE if len(self.rels) > 1 else ARRANGE_ONE
+        self.set_arrange(PhotoDialog.arrange if len(self.rels) > 1 and PhotoDialog.arrange else default)
+
+    def set_arrange(self, key):
+        """По одному / рядом / друг под другом."""
+        key = key if len(self.rels) > 1 else ARRANGE_ONE
+        self.arrange_buttons[key].setChecked(True)
+        if len(self.rels) > 1:
+            PhotoDialog.arrange = key
+        single = key == ARRANGE_ONE
+        self.view.setVisible(single)
+        self.multi.setVisible(not single)
+        for button in (self.prev_button, self.next_button, self.count_label):
+            button.setVisible(single)
+        if single:
+            return
+        if not self.multi_views:
+            for number, rel in enumerate(self.rels):
+                view = ZoomView(minimum=MULTI_MINIMUM)
+                view.set_pixmap(QPixmap(str(self.root / rel)))
+                view.moved.connect(lambda relative, dx, dy, source=view: self._follow(source, relative, dx, dy))
+                self.multi_views.append(view)
+        for view in self.multi_views:
+            self.multi_layout.removeWidget(view)
+        for number, view in enumerate(self.multi_views):
+            if key == ARRANGE_SIDE:
+                self.multi_layout.addWidget(view, 0, number)
+            else:
+                self.multi_layout.addWidget(view, number, 0)
+        self.fit_all()
+
+    def _follow(self, source, relative, dx, dy):
+        if self._following:
+            return
+        self._following = True
+        try:
+            for view in self.multi_views:
+                if view is not source:
+                    view.follow(relative, dx, dy)
+        finally:
+            self._following = False
+
+    def fit_all(self):
+        self.view.fit()
+        for view in self.multi_views:
+            view.fit()
 
     def show_index(self, index):
         if not self.rels:
@@ -322,7 +435,8 @@ class RulesScreen(QWidget):
     shown = pyqtSignal()
     archive_requested = pyqtSignal(int, bool)  # правило, True — в архив
     delete_requested = pyqtSignal(int)
-    update_requested = pyqtSignal(int, str, str, tuple, tuple)  # правило, заголовок, текст, оставленные фото, новые
+    # правило, заголовок, текст, оставленные фото, новые, деталь, модель
+    update_requested = pyqtSignal(int, str, str, tuple, tuple, str, str)
 
     def __init__(self, root, kinds, today=None, animations=True, parent=None, edit_days=logic.EDIT_DAYS):
         super().__init__(parent)
@@ -338,6 +452,8 @@ class RulesScreen(QWidget):
         self.editing = None  # правило, которое сейчас меняют в форме
         self.keep_rels = []  # его фото, которые оставляем
         self.filter_key = logic.FILTER_ALL
+        self.query = ""
+        self.user_id, self.developer = 0, False
         self.photo_paths = []
         outer = QHBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -363,6 +479,11 @@ class RulesScreen(QWidget):
         self.read_all_button.clicked.connect(lambda _=False: self.read_all_requested.emit())
         bar.addWidget(self.read_all_button)
         left.addLayout(bar)
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText(TEXT_SEARCH_HINT)
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.textChanged.connect(self._set_query)
+        left.addWidget(self.search_edit)
         self.scroll = QScrollArea()
         self.scroll.setProperty("role", "plain")
         self.scroll.setWidgetResizable(True)
@@ -398,22 +519,18 @@ class RulesScreen(QWidget):
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText(TEXT_TITLE_HINT)
         column.addWidget(self.title_edit)
-        column.addWidget(_label(TEXT_SCOPE, "muted"))
-        chips = FlowLayout(spacing=6)
-        self.scope_buttons = {}
-        group = QButtonGroup(self)
-        for scope, text in SCOPE_TITLES:
-            button = QPushButton(text)
-            button.setProperty("role", "chip")
-            button.setCheckable(True)
-            button.setFocusPolicy(Qt.NoFocus)
-            group.addButton(button)
-            button.clicked.connect(lambda _=False: self._refresh_form())
-            chips.addWidget(button)
-            self.scope_buttons[scope] = button
-        self.scope_buttons[logic.SCOPE_GENERAL].setChecked(True)
-        column.addLayout(chips)
+        column.addWidget(_label(TEXT_PART, "muted"))
+        self.part_edit = QLineEdit()
+        self.part_edit.setPlaceholderText(TEXT_PART_HINT)
+        self.part_edit.textEdited.connect(self._on_part_edited)
+        column.addWidget(self.part_edit)
+        column.addWidget(_label(TEXT_MODEL, "muted"))
+        self.model_edit = QLineEdit()
+        self.model_edit.setPlaceholderText(TEXT_MODEL_HINT)
+        column.addWidget(self.model_edit)
+        self._part_touched = False  # вписали деталь руками — открытая папка её больше не подставляет
         self.scope_note = _label("", "muted")
+        self.scope_note.hide()
         column.addWidget(self.scope_note)
         column.addWidget(_label(TEXT_BODY, "muted"))
         self.body_edit = QPlainTextEdit()
@@ -450,33 +567,30 @@ class RulesScreen(QWidget):
         column.addStretch(1)
         return form
 
-    def current_scope(self):
-        for scope, button in self.scope_buttons.items():
-            if button.isChecked():
-                return scope
-        return logic.SCOPE_GENERAL
+    def _on_part_edited(self, _text):
+        self._part_touched = True
+
+    def _fill_suggestions(self):
+        """Подсказки: детали и модели из уже записанных правил плюс открытая деталь."""
+        parts = {rule.part_name for rule in self.rules if rule.part_name}
+        if self.part is not None:
+            parts.add(self.part.name)
+        models = {rule.model for rule in self.rules if rule.model}
+        for edit, values in ((self.part_edit, parts), (self.model_edit, models)):
+            completer = QCompleter(sorted(values, key=str.casefold), edit)
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchContains)
+            edit.setCompleter(completer)
 
     def _refresh_form(self):
-        has_part = self.part is not None
-        if self.editing is not None:  # область правила не меняется: она привязана к детали, открытой при создании
-            for scope, button in self.scope_buttons.items():
-                button.setEnabled(False)
-                button.setChecked(scope == self.editing.scope)
-            self.scope_note.setText(TEXT_EDIT_SCOPE.format(logic.scope_text(self.editing)))
+        if self.editing is None and not self._part_touched:  # новая форма: деталь — открытая сейчас
+            self.part_edit.setText(self.part.name if self.part is not None else "")
+        if self.editing is not None:
             count = len(self.keep_rels) + len(self.photo_paths)
             self.photos_label.setText(TEXT_PHOTOS.format(count) if count else "")
             self.drop_button.setVisible(bool(count))
             self._render_previews()
             return
-        for scope, button in self.scope_buttons.items():
-            button.setEnabled(scope == logic.SCOPE_GENERAL or has_part)
-        if not has_part and self.current_scope() != logic.SCOPE_GENERAL:
-            self.scope_buttons[logic.SCOPE_GENERAL].setChecked(True)
-        scope = self.current_scope()
-        if scope != logic.SCOPE_GENERAL:
-            self.scope_note.setText(logic.scope_label_for(scope, self.part))
-        else:
-            self.scope_note.setText("" if has_part else TEXT_NO_PART)
         self.photos_label.setText(TEXT_PHOTOS.format(len(self.photo_paths)) if self.photo_paths else "")
         self.drop_button.setVisible(bool(self.photo_paths))
         self._render_previews()
@@ -520,8 +634,11 @@ class RulesScreen(QWidget):
         self._refresh_form()
 
     def publish(self):
+        part_name, model = self.part_edit.text(), self.model_edit.text()
         if self.editing is not None:
-            draft = logic.Draft(logic.SCOPE_GENERAL, self.title_edit.text(), self.body_edit.toPlainText())
+            full = bool(self.editing.part_name or part_name.strip() or model.strip())
+            draft = logic.Draft(logic.SCOPE_GENERAL, self.title_edit.text(), self.body_edit.toPlainText(),
+                                part_name=part_name, model=model, full=full)
             try:
                 logic.checked(draft)
             except logic.RuleError as exc:
@@ -530,9 +647,9 @@ class RulesScreen(QWidget):
             self.show_error("")
             self.set_busy(True)
             self.update_requested.emit(self.editing.id, self.title_edit.text(), self.body_edit.toPlainText(),
-                                       tuple(self.keep_rels), tuple(self.photo_paths))
+                                       tuple(self.keep_rels), tuple(self.photo_paths), part_name, model)
             return
-        draft = logic.draft_for(self.current_scope(), self.part, self.title_edit.text(), self.body_edit.toPlainText(),
+        draft = logic.draft_new(self.title_edit.text(), part_name, model, self.body_edit.toPlainText(), self.part,
                                 self.photo_paths)
         try:
             logic.checked(draft)
@@ -548,14 +665,19 @@ class RulesScreen(QWidget):
         self.publish_button.setText(TEXT_PUBLISHING if busy else idle)
 
     def edit_rule(self, rule_id):
-        """Правило — в форму справа: заголовок, текст, его фото (можно убрать и добавить). Область — прежняя."""
+        """Правило — в форму справа: заголовок, деталь, модель, текст, его фото (можно убрать и добавить)."""
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None or logic.locked(rule, self.today, self.edit_days):
+        if rule is None or not logic.can_edit(rule, self.developer, self.today, self.edit_days):
             return
         self.editing = rule
         self.keep_rels = list(rule.photos)
         self.photo_paths = []
         self.title_edit.setText(rule.title)
+        self.part_edit.setText(rule.part_name or "")
+        self.model_edit.setText(rule.model or "")
+        legacy = not rule.part_name
+        self.scope_note.setText(TEXT_LEGACY.format(logic.scope_text(rule)) if legacy else "")
+        self.scope_note.setVisible(legacy)
         self.body_edit.setPlainText(rule.body)
         self.form_title.setText(TEXT_FORM_EDIT)
         self.cancel_edit_button.show()
@@ -568,6 +690,8 @@ class RulesScreen(QWidget):
         """Изменение сохранено или отменено: форма снова для нового правила."""
         self.editing = None
         self.keep_rels = []
+        self.model_edit.clear()  # модель была от изменённого правила
+        self.scope_note.hide()
         self.form_title.setText(TEXT_FORM)
         self.cancel_edit_button.hide()
         self.clear_form()
@@ -577,8 +701,10 @@ class RulesScreen(QWidget):
         self.error_label.setText(text)
 
     def clear_form(self):
+        """После публикации: деталь снова — открытая, модель остаётся (часто следующее правило про неё же)."""
         self.title_edit.clear()
         self.body_edit.clear()
+        self._part_touched = False
         self.photo_paths = []
         self.show_error("")
         self._refresh_form()
@@ -593,12 +719,25 @@ class RulesScreen(QWidget):
             self._pending = (rules, names, part, colors)  # перестройка оборвала бы печать или «сгорание»
             return
         self.rules, self.names, self.part, self.colors = rules, names, part, dict(colors or {})
+        self._fill_suggestions()
         self._refresh_form()
         self._render()
+
+    def set_access(self, user_id, developer):
+        """Кто смотрит: от этого зависят «вернуть из архива», «удалить» и срок правки."""
+        changed = (user_id, bool(developer)) != (self.user_id, self.developer)
+        self.user_id, self.developer = user_id, bool(developer)
+        if changed and not self._animating:
+            self._render()
 
     def _set_filter(self, key):
         self.filter_key = key
         self._render()
+
+    def _set_query(self, text):
+        self.query = text
+        if not self._animating:
+            self._render()
 
     def _render(self):
         while self.grid.count():
@@ -609,9 +748,10 @@ class RulesScreen(QWidget):
                 widget.setParent(None)
                 widget.deleteLater()
         self.cards = {}
-        shown = logic.filtered(self.rules, self.filter_key)
+        shown = logic.search(logic.filtered(self.rules, self.filter_key), self.query, self.names)
         if not shown:
-            self.empty_label.setText(TEXT_EMPTY if not self.rules else TEXT_EMPTY_FILTER)
+            self.empty_label.setText(TEXT_EMPTY if not self.rules else TEXT_EMPTY_SEARCH if self.query.strip()
+                                     else TEXT_EMPTY_FILTER)
             self.grid.addWidget(self.empty_label, 0, 0)
             self.empty_label.show()
         else:
@@ -621,7 +761,7 @@ class RulesScreen(QWidget):
         for number, rule in enumerate(shown):
             card = RuleTile(rule, self.names.get(rule.author_id, ""), self.colors.get(rule.author_id), self.root,
                             self.today, self.grid_holder, archiver=self.names.get(rule.archived_by, ""),
-                            edit_days=self.edit_days)
+                            edit_days=self.edit_days, user_id=self.user_id, developer=self.developer)
             card.read_clicked.connect(lambda rule_id: self.read_requested.emit([rule_id]))
             card.photo_clicked.connect(self.open_photo)
             card.edit_clicked.connect(self.edit_rule)
@@ -652,7 +792,7 @@ class RulesScreen(QWidget):
 
     def _on_delete_clicked(self, rule_id):
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None or logic.locked(rule, self.today, self.edit_days) or not self.ask_delete(rule):
+        if rule is None or not logic.can_delete(self.developer) or not self.ask_delete(rule):
             return
         card = self.cards.get(rule_id)
         if card is not None:

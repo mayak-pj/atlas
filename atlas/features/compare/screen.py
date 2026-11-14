@@ -4,7 +4,8 @@ from __future__ import annotations
 from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtWidgets import (
-    QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QSplitter,
+    QVBoxLayout, QWidget,
 )
 
 from atlas.core import theme
@@ -33,6 +34,11 @@ PANEL_BUTTONS = (
 PANEL_ICONS = {"left": "panel-left", "top": "wrench", "bottom": "gallery-horizontal", "right": "panel-right"}
 MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
 TEXT_HIDE_UI = "Скрыть всё"
+TEXT_STACK = "Друг под другом"
+TIP_STACK = "Окна друг под другом — для длинных плат. Границу между окнами можно тянуть мышью"
+SPLIT_HANDLE = 10
+TEXT_FULLSCREEN = "Во весь экран"
+TIP_FULLSCREEN = "Только фото на весь экран; выход — Esc или F11"
 TEXT_SHOW_UI = "Показать всё"
 HINT = "Колесо — зум · перетаскивание — сдвиг · двойной клик — фото целиком · стрелки — листать · пробел — эталон"
 HINT_ANGLES = "Колесо — зум · перетаскивание — сдвиг · двойной клик — фото целиком · стрелки — следующий SN · клик — активное окно"
@@ -114,6 +120,7 @@ class CompareScreen(QWidget):
     kinds_edit_requested = pyqtSignal()  # кнопка правки списка видов замечаний
     panels_changed = pyqtSignal(object)  # {панель: видна}: пользователь спрятал или показал панель
     rotation_changed = pyqtSignal(object, int)  # [id фото папки], новый поворот: записать в базу
+    fullscreen_changed = pyqtSignal(bool)  # «Во весь экран»: окну программы спрятать свои строки и развернуться
 
     def __init__(self, cache, hotkeys, name_pattern=None, defect_kinds=(), parent=None):
         super().__init__(parent)
@@ -143,6 +150,9 @@ class CompareScreen(QWidget):
         self._keys = {_key(hotkeys["prev"]): -1, _key(hotkeys["next"]): 1}
         self._flicker_key = _key(hotkeys["flicker"])
         self._toggle_ui_key = _key(hotkeys.get("toggle_ui", DEFAULT_HOTKEYS["toggle_ui"]))
+        self._fullscreen_key = _key(hotkeys.get("fullscreen", DEFAULT_HOTKEYS["fullscreen"]))
+        self.fullscreen = False
+        self._panels_before = None  # какие панели были видны до «Во весь экран»
         self._rotate_keys = {
             _key(hotkeys.get("rotate_left", DEFAULT_HOTKEYS["rotate_left"])): -ROTATE_STEP,
             _key(hotkeys.get("rotate_right", DEFAULT_HOTKEYS["rotate_right"])): ROTATE_STEP,
@@ -184,6 +194,13 @@ class CompareScreen(QWidget):
         self.grid = QGridLayout()
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(10)
+        # Окна в одну линию (в ряд или друг под другом) — в разделителе: одно можно сделать больше другого (14.11.2026)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(SPLIT_HANDLE)
+        self.splitter.hide()
+        self._stacked = False
+        self._split_key = None
         self.message = QLabel(TEXT_NO_FOLDER)
         self.message.setProperty("role", "muted")
         self.message.setAlignment(Qt.AlignCenter)
@@ -201,10 +218,11 @@ class CompareScreen(QWidget):
 
         middle = QVBoxLayout()
         middle.setSpacing(10)
-        middle.addLayout(self._build_visibility_bar())
+        middle.addWidget(self._build_visibility_bar())
         middle.addWidget(self.top_box)
         middle.addWidget(self.message, 1)
         middle.addLayout(self.grid, 1)
+        middle.addWidget(self.splitter, 1)
         middle.addWidget(self.bottom_box)
 
         root = QHBoxLayout(self)
@@ -248,7 +266,23 @@ class CompareScreen(QWidget):
         self.hide_all_button.setProperty("role", "mini")
         set_icon(self.hide_all_button, "eye-off", size=12)
         row.addWidget(self.hide_all_button)
-        return row
+        # Строка панелей, а не ряд кнопок: тот должен помещаться в окно шириной 1024
+        self.stack_button = self._button(TEXT_STACK, lambda _=False: self.set_stacked(self.stack_button.isChecked()),
+                                         checkable=True)
+        self.stack_button.setProperty("role", "mini")
+        set_icon(self.stack_button, "rows-2", size=12)
+        self.stack_button.setToolTip(TIP_STACK)
+        row.addWidget(self.stack_button)
+        self.fullscreen_button = self._button(TEXT_FULLSCREEN, lambda: self.set_fullscreen(True))
+        self.fullscreen_button.setProperty("role", "mini")
+        set_icon(self.fullscreen_button, "maximize", size=12)
+        self.fullscreen_button.setToolTip(TIP_FULLSCREEN)
+        row.addWidget(self.fullscreen_button)
+        self.visibility_bar = QWidget()  # строку прячет «Во весь экран»
+        self.visibility_bar.setProperty("role", "plain")
+        row.setContentsMargins(0, 0, 0, 0)
+        self.visibility_bar.setLayout(row)
+        return self.visibility_bar
 
     def _apply_side(self, key, holder):
         if not hasattr(self, "_panel_buttons"):
@@ -288,6 +322,27 @@ class CompareScreen(QWidget):
         for key in self._panel_boxes:
             self.set_panel_visible(key, show)
         self.panels_changed.emit(self.panels_state())
+
+    def set_fullscreen(self, on):
+        """Во весь экран (14.11.2026): только окна с фото; панели и строки прячутся, выход — Esc или F11.
+
+        Выбор панелей не сохраняется: после выхода они такие же, как были до входа.
+        """
+        on = bool(on)
+        if on == self.fullscreen:
+            return
+        self.fullscreen = on
+        if on:
+            self._panels_before = self.panels_state()
+            for key in self._panel_boxes:
+                self.set_panel_visible(key, False)
+        else:
+            for key, visible in (self._panels_before or {}).items():
+                self.set_panel_visible(key, visible)
+            self._panels_before = None
+        self.visibility_bar.setVisible(not on)
+        self.setFocus()
+        self.fullscreen_changed.emit(on)
 
     def _build_toolbar(self):
         bar = QFrame()
@@ -893,11 +948,33 @@ class CompareScreen(QWidget):
             for photo in photos:
                 self._cache.get(photo.path, level, NEIGHBOR, exact=True)
 
+    def set_stacked(self, on):
+        """Окна друг под другом (длинные платы) или как обычно."""
+        self._stacked = bool(on)
+        self.stack_button.setChecked(self._stacked)
+        self._apply_layout()
+
     def _place(self, visible):
         for line in range(MAX_WINDOWS):
             self.grid.setRowStretch(line, 0)
             self.grid.setColumnStretch(line, 0)
-        for view, (row, column, rows, columns) in zip(visible, grid_cells(len(visible), self._portrait)):
+        cells = grid_cells(len(visible), self._portrait)
+        if len(visible) > 1 and (self._stacked or all(cell[0] == 0 for cell in cells)):
+            orientation = Qt.Vertical if self._stacked else Qt.Horizontal
+            self.splitter.setOrientation(orientation)
+            for number, view in enumerate(visible):
+                self.splitter.insertWidget(number, view)
+                view.show()  # скрытому окну разделитель даёт нулевой размер
+            key = (tuple(id(view) for view in visible), orientation)
+            if key != self._split_key:  # те же окна — граница остаётся, где её оставили
+                self._split_key = key
+                self.splitter.setSizes([1000 if self.splitter.widget(number) in visible else 0
+                                        for number in range(self.splitter.count())])
+            self.splitter.show()
+            return
+        self.splitter.hide()
+        self._split_key = None
+        for view, (row, column, rows, columns) in zip(visible, cells):
             self.grid.addWidget(view, row, column, rows, columns)
             self.grid.setRowStretch(row, 1)
             self.grid.setColumnStretch(column, 1)
@@ -1261,8 +1338,13 @@ class CompareScreen(QWidget):
             if not event.isAutoRepeat():
                 self._begin_flicker()
         elif key == self._toggle_ui_key:
-            if not event.isAutoRepeat():
+            if not event.isAutoRepeat() and not self.fullscreen:
                 self.toggle_interface()
+        elif key == self._fullscreen_key:
+            if not event.isAutoRepeat():
+                self.set_fullscreen(not self.fullscreen)
+        elif key == Qt.Key_Escape and self.fullscreen:
+            self.set_fullscreen(False)
         elif key in self._rotate_keys:
             if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
                 self.rotate(self._rotate_keys[key], whole_angle=bool(event.modifiers() & Qt.ShiftModifier))

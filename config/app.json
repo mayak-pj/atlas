@@ -40,7 +40,10 @@
   "rules": {
     "dir": "var/rules",
     "refresh_s": 60,
-    "edit_days": 14
+    "edit_days": 30
+  },
+  "roles": {
+    "developers": []
   },
   "comments": {
     "dir": "var/comments",

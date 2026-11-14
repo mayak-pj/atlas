@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
+from atlas.core.domain.text import clean_name, normalize_name
+
 SCOPE_GENERAL = "general"
 SCOPE_KIND = "kind"
 SCOPE_PROJECT = "project"
@@ -43,6 +45,8 @@ class Rule:
     archived_at: Optional[str] = None  # миграция 002: архив, изменение (04.11.2026)
     updated_at: Optional[str] = None
     archived_by: Optional[int] = None
+    part_name: Optional[str] = None  # миграция 003: деталь и модель вписываются в форме (14.11.2026)
+    model: Optional[str] = None
     read: bool = True
     photos: Tuple[str, ...] = field(default_factory=tuple)
 
@@ -65,6 +69,9 @@ class Draft:
     name_key: Optional[str] = None
     scope_label: str = ""
     photo_paths: Tuple[str, ...] = ()
+    part_name: str = ""
+    model: str = ""
+    full: bool = False  # новое правило (14.11.2026): заголовок, деталь, модель и комментарий обязательны
 
 
 def checked(draft):
@@ -82,10 +89,37 @@ def checked(draft):
     if len(draft.photo_paths) > MAX_PHOTOS:
         raise RuleError("Фото не больше {}".format(MAX_PHOTOS))
     needed = {SCOPE_KIND: draft.kind, SCOPE_PROJECT: draft.project_id, SCOPE_DEVICE: draft.device_id, SCOPE_PART: draft.part_id}
+    part_name, model = clean_name(draft.part_name), clean_name(draft.model)
+    if draft.full:
+        if not normalize_name(part_name):
+            raise RuleError("Впишите деталь: по ней правило покажется в «Сравнении» и найдётся в поиске")
+        if not model:
+            raise RuleError("Впишите модель")
+        if not body:
+            raise RuleError("Напишите комментарий: что именно проверять")
+        if len(part_name) > TITLE_LIMIT or len(model) > TITLE_LIMIT:
+            raise RuleError("Деталь и модель — не длиннее {} знаков".format(TITLE_LIMIT))
+        needed[SCOPE_PART] = normalize_name(part_name)
     if draft.scope != SCOPE_GENERAL and not needed[draft.scope]:
         raise RuleError("Откройте папку: область правила берётся из неё")
     return Draft(draft.scope, title, body, draft.kind, draft.project_id, draft.device_id, draft.part_id,
-                 draft.name_key, draft.scope_label, tuple(draft.photo_paths))
+                 draft.name_key, draft.scope_label, tuple(draft.photo_paths), part_name, model, draft.full)
+
+
+def draft_new(title, part_name, model, body, part=None, photo_paths=()):
+    """Новое правило из формы (14.11.2026): «Относится к» больше нет — правило к детали, которую вписали.
+
+    Деталь сравнивается по ключу имени, как сводка: «SSD XS-2280» и «ssd xs2280» — одна. Если вписана открытая
+    сейчас деталь — правило запоминает и её вид, проект, устройство (для фильтра по виду).
+    """
+    name = clean_name(part_name)
+    key = normalize_name(name)
+    same = part is not None and part.name_key == key
+    return Draft(
+        SCOPE_PART, title, body, kind=part.kind if same else None, project_id=part.project_id if same else None,
+        device_id=part.device_id if same else None, part_id=part.id if same else None, name_key=key or None,
+        scope_label=name, photo_paths=tuple(photo_paths), part_name=name, model=clean_name(model), full=True,
+    )
 
 
 def applies(rule, part):
@@ -120,7 +154,7 @@ def matches_filter(rule, key):
     return True
 
 
-EDIT_DAYS = 14  # настройка rules.edit_days
+EDIT_DAYS = 30  # настройка rules.edit_days: месяц — пока правило узнают все коллеги (14.11.2026)
 
 
 def locked(rule, today=None, days=EDIT_DAYS):
@@ -133,6 +167,42 @@ def locked(rule, today=None, days=EDIT_DAYS):
     except ValueError:
         return True
     return (today or datetime.now()) - created > timedelta(days=days)
+
+
+def can_edit(rule, developer=False, today=None, days=EDIT_DAYS):
+    """Изменить: любой в первые days суток, разработчик — всегда."""
+    return developer or not locked(rule, today, days)
+
+
+def can_delete(developer=False):
+    """Удалить насовсем — только разработчик (14.11.2026); остальным — архив."""
+    return bool(developer)
+
+
+def can_restore(rule, user_id, developer=False):
+    """Вернуть из архива — тот, кто убрал, или разработчик. Кто убрал, не записано (старый архив) — разработчик."""
+    return developer or (rule.archived_by is not None and rule.archived_by == user_id)
+
+
+def _search_text(rule, author):
+    dates = []
+    for stamp in (rule.created_at, rule.updated_at):
+        try:
+            when = datetime.strptime(str(stamp)[:19], "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+        dates += [when.strftime("%d.%m.%Y"), when.strftime("%Y-%m-%d")]
+    parts = [rule.title, rule.body, author, scope_text(rule), rule.model or ""] + dates
+    return " ".join(parts).casefold().replace("ё", "е")
+
+
+def search(rules, query, names=None):
+    """Поиск по заголовку, тексту, детали, модели, автору и дате («14.11», «2026-11», «Петров»): все слова запроса."""
+    words = str(query or "").casefold().replace("ё", "е").split()
+    if not words:
+        return list(rules)
+    names = names or {}
+    return [rule for rule in rules if all(word in _search_text(rule, names.get(rule.author_id, "")) for word in words)]
 
 
 def filtered(rules, key):
@@ -151,6 +221,8 @@ def scope_text(rule):
         return "Общее"
     if rule.scope == SCOPE_KIND:
         return "Вид {}".format(rule.kind)
+    if rule.part_name:
+        return " · ".join(item for item in (rule.part_name, rule.model) if item)
     return rule.scope_label
 
 

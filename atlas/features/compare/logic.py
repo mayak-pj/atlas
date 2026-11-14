@@ -17,7 +17,7 @@ MAX_CURRENTS = MAX_WINDOWS  # 1–4 — число окон текущей па�
 DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "remark": "R"}
 DEFAULT_HOTKEYS = {
     "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
-    "toggle_ui": "H",
+    "toggle_ui": "H", "fullscreen": "F11",
     "marks": DEFAULT_MARK_KEYS,
 }
 ROTATE_STEP = 90

@@ -113,6 +113,8 @@ class CompareFeature(Feature):
         self.screen.restore_panels(ui_state.load(self.ctx.paths).get(logic.PANELS_KEY))
         self.screen.panels_changed.connect(self._save_panels)
         shell = self.ctx.shell
+        if shell is not None and hasattr(shell, "set_focus_mode"):
+            self.screen.fullscreen_changed.connect(shell.set_focus_mode)
         if shell is not None:
             shell.register_slot(SLOT_LEFT, self.screen.left_layout)
             shell.register_slot(SLOT_RIGHT, self.screen.right_layout)

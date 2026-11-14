@@ -1,11 +1,11 @@
 """Доступ к таблицам правил. Вызывать не из GUI-потока."""
 from __future__ import annotations
 
-from atlas.core.domain.text import now_text
+from atlas.core.domain.text import normalize_name, now_text
 from atlas.features.rules.logic import Rule
 
 _COLUMNS = ("id, scope, kind, project_id, device_id, part_id, name_key, scope_label, title, body, author_id, created_at, "
-            "archived_at, updated_at, archived_by")
+            "archived_at, updated_at, archived_by, part_name, model")
 
 
 class Repo:
@@ -18,9 +18,9 @@ class Repo:
             now = now_text()
             cur = conn.execute(
                 "INSERT INTO rules (scope, kind, project_id, device_id, part_id, name_key, scope_label, title, body, "
-                "author_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "author_id, created_at, part_name, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (draft.scope, draft.kind, draft.project_id, draft.device_id, draft.part_id, draft.name_key,
-                 draft.scope_label, draft.title, draft.body, author_id, now),
+                 draft.scope_label, draft.title, draft.body, author_id, now, draft.part_name or None, draft.model or None),
             )
             rule_id = cur.lastrowid
             for rel in photo_rels:
@@ -75,10 +75,10 @@ class Repo:
 
         return self.db.write(work)
 
-    def update(self, rule_id, title, body, keep_rels, new_rels, user_id=None):
+    def update(self, rule_id, title, body, keep_rels, new_rels, user_id=None, part=None):
         """Новые заголовок и текст; фото — оставленные плюс новые. → пути убранных фото (файлы убирает вызывающий).
 
-        Область не меняется: она привязана к детали, открытой при создании.
+        part — (деталь, модель): правило становится правилом к этой детали (14.11.2026); None — область прежняя.
         """
         def work(conn):
             if conn.execute("SELECT 1 FROM rules WHERE id = ?", (rule_id,)).fetchone() is None:
@@ -91,6 +91,11 @@ class Repo:
                 conn.execute("INSERT INTO rule_photos (rule_id, rel) VALUES (?, ?)", (rule_id, rel))
             conn.execute("UPDATE rules SET title = ?, body = ?, updated_at = ?, updated_by = ? WHERE id = ?",
                          (title, body, now_text(), user_id, rule_id))
+            if part is not None:
+                part_name, model = part
+                conn.execute(
+                    "UPDATE rules SET scope = 'part', part_name = ?, model = ?, name_key = ?, scope_label = ? WHERE id = ?",
+                    (part_name, model, normalize_name(part_name), part_name, rule_id))
             return removed
 
         return self.db.write(work)

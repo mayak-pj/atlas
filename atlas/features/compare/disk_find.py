@@ -3,7 +3,8 @@
 Правил, где лежат прошлые проверки, пока нет (OPEN_ITEMS №2), а для тестов кнопка «Найти такую же деталь» должна
 находить эталон, который лежит рядом: «Деталь - Эталон» возле «Деталь», другие даты той же детали. Ищется только
 рядом: соседи открытой папки и соседи папки над ней. Подходит папка, чьё имя начинается с названия детали
-(регистр, «е/ё» и разделители не важны) и в которой есть фото. Из нескольких — изменённая последней.
+(регистр, «е/ё» и разделители не важны) и в которой есть фото; если сама папка над открытой названа деталью —
+любая соседняя папка с фото (14.11.2026). Из нескольких — изменённая последней.
 Папка в Atlas не добавляется: эталон только показывается. Выключить — `compare.disk_search: false`.
 """
 from __future__ import annotations
@@ -27,8 +28,11 @@ def candidates(folder_path, part_name):
             children = [item for item in level.iterdir() if item.is_dir()]
         except OSError:
             continue
+        # Папка над открытой названа деталью («Деталь\\проверка 1», «Деталь\\проверка 2») — подходит любая
+        # соседняя папка с фото, как бы она ни называлась (замечание с выезда, 14.11.2026)
+        any_name = level == current.parent and normalize_name(level.name).startswith(key)
         for item in children:
-            if item in skip or not normalize_name(item.name).startswith(key):
+            if item in skip or not (any_name or normalize_name(item.name).startswith(key)):
                 continue
             try:
                 rels = photo_paths(item)

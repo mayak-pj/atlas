@@ -107,6 +107,12 @@ class App:
         self.qtbot.waitUntil(lambda: self.rules.screen.publish_button.isEnabled() and not self.rules._busy_read
                              and not any(t.is_alive() for t in self.rules._threads), timeout=5000)
 
+    def make_developer(self, *names):
+        """Как `roles.developers` в local.json: настройки уже прочитаны, поэтому — прямо в них."""
+        self.ctx.config.app.setdefault("roles", {})["developers"] = list(names)
+        self.rules.refresh()
+        self.wait_idle()
+
     def stop(self):
         self.registry.stop_all()
 
@@ -182,12 +188,12 @@ def test_failed_photo_publishes_nothing_and_leaves_no_files(app):
 
 def test_screen_filters_and_form_follow_open_folder(app):
     screen = app.rules.screen
-    assert not screen.scope_buttons["part"].isEnabled()
+    assert screen.part_edit.text() == ""
     part, folder = app.folder()
     app.rules.repo.add(logic.checked(logic.draft_for("part", part, "К детали", "")), app.ivanova.id)
     app.rules.repo.add(logic.checked(logic.draft_for("general", None, "Общее", "")), app.ivanova.id)
     app.open(part, folder)
-    assert screen.scope_buttons["part"].isEnabled()
+    assert screen.part_edit.text() == "SSD XS-2280"  # деталь — открытая сейчас
     assert len(screen.cards) == 2  # две карточки в сетке
     screen.filter_buttons["general"].click()
     assert list(screen.cards) == [r.id for r in screen.rules if r.scope == "general"]
@@ -195,6 +201,10 @@ def test_screen_filters_and_form_follow_open_folder(app):
     screen.title_edit.setText("")
     screen.publish()
     assert "заголовок" in screen.error_label.text().lower()
+    screen.title_edit.setText("Сверять дорожку")
+    screen.body_edit.setPlainText("Дорожка у разъёма")
+    screen.publish()
+    assert "модель" in screen.error_label.text().lower()  # «Относится к» нет: деталь и модель обязательны
 
 
 def test_photo_columns():
@@ -290,6 +300,11 @@ def test_delete_asks_burns_the_card_and_removes_photos(app):
     files = list((app.tmp / "правила").iterdir())
     assert len(files) == 4  # две копии и две миниатюры
     screen = app.rules.screen
+    assert screen.cards[item.id].delete_button.isHidden()  # удалить — только разработчику
+    app.rules.delete(item.id)  # и сервис не даёт
+    app.wait_idle()
+    assert app.rules.repo.all(app.petrov.id)
+    app.make_developer("петров")
     screen.ask_delete = lambda rule_: False
     screen.cards[item.id].delete_button.click()
     assert app.rules.repo.all(app.petrov.id)
@@ -307,7 +322,7 @@ def test_edit_changes_text_and_photos_keeps_scope(app):
     screen = app.rules.screen
     screen.cards[item.id].edit_button.click()
     assert screen.editing.id == item.id and screen.title_edit.text() == item.title
-    assert screen.publish_button.text() == "Сохранить изменения" and not screen.scope_buttons["general"].isEnabled()
+    assert screen.publish_button.text() == "Сохранить изменения" and not screen.scope_note.isHidden()  # старое правило
     screen.keep_rels = screen.keep_rels[:1]  # одно фото убрали
     screen.attach([photo(app.tmp / "новое.jpg")])
     screen.title_edit.setText("Сверяем ножки по схеме")
@@ -336,25 +351,25 @@ def test_card_shows_author_tag_cover_and_body_in_text_color(app):
     assert opened == [(item.photos, 0)]
 
 
-def test_rule_older_than_two_weeks_can_only_be_archived(app):
+def test_rule_older_than_a_month_can_only_be_archived(app):
     from datetime import datetime, timedelta
 
     item = _published(app, "Старое")
-    old = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d %H:%M:%S")
+    old = (datetime.now() - timedelta(days=31)).strftime("%Y-%m-%d %H:%M:%S")
     app.ctx.db.write(lambda conn: conn.execute("UPDATE rules SET created_at = ? WHERE id = ?", (old, item.id)))
     app.rules.refresh()
     app.wait_idle()
     screen = app.rules.screen
     card = screen.cards[item.id]
-    assert card.locked and not card.edit_button.isEnabled() and not card.delete_button.isEnabled()
-    assert card.archive_button.isEnabled() and "14 дней" in card.edit_button.toolTip()
+    assert card.locked and not card.edit_button.isEnabled() and card.delete_button.isHidden()
+    assert card.archive_button.isEnabled() and "30 дней" in card.edit_button.toolTip()
     screen.ask_delete = lambda rule_: True
     screen._on_delete_clicked(item.id)  # кнопка выключена, но и сам вызов не удаляет
     screen.edit_rule(item.id)
     assert screen.editing is None
-    app.rules.delete(item.id)  # и сервис не даёт: окно могло быть открыто давно
+    app.rules.update(item.id, "Новое", "текст", (), ())  # и сервис не даёт: окно могло быть открыто давно
     app.wait_idle()
-    assert app.rules.repo.all(app.petrov.id)
+    assert app.rules.repo.all(app.petrov.id)[0].title == "Старое"
     screen.cards[item.id].archive_button.click()  # карточка могла перестроиться после перечитывания
     app.qtbot.waitUntil(lambda: not screen._animating and any(r.archived for r in app.rules.rules), timeout=5000)
     app.wait_idle()
@@ -389,3 +404,132 @@ def test_wheel_zoom_is_gentle_on_touchpad(qtbot):
                         Qt.ScrollUpdate, False)
     view.wheelEvent(small)  # одно мелкое событие тачпада — десятая доля шага
     assert view.zoom / start == pytest.approx(1.2 ** 0.1)
+
+
+# --- деталь и модель, поиск, права (14.11.2026) -------------------------------------------------
+def test_new_rule_needs_part_model_and_comment():
+    with pytest.raises(logic.RuleError, match="деталь"):
+        logic.checked(logic.draft_new("Заголовок", " ", "M2", "текст"))
+    with pytest.raises(logic.RuleError, match="модель"):
+        logic.checked(logic.draft_new("Заголовок", "SSD XS-2280", "", "текст"))
+    with pytest.raises(logic.RuleError, match="комментарий"):
+        logic.checked(logic.draft_new("Заголовок", "SSD XS-2280", "M2", "  "))
+    draft = logic.checked(logic.draft_new("Заголовок", " ssd  xs-2280 ", "M2  2280", "текст", PART))
+    assert (draft.scope, draft.name_key, draft.part_name, draft.model) == ("part", "ssdxs2280", "ssd xs-2280", "M2 2280")
+    assert (draft.kind, draft.part_id) == ("A", 5)  # вписана открытая деталь — запомнились её вид и проект
+    other = logic.checked(logic.draft_new("Заголовок", "Плата", "P", "текст", PART))
+    assert (other.kind, other.part_id, other.name_key) == (None, None, "плата")
+
+
+def test_rule_with_typed_part_applies_by_name_and_shows_part_and_model():
+    item = rule("part", name_key="ssdxs2280", part_name="SSD XS-2280", model="M2")
+    assert logic.for_part([item], PART) == [item] and logic.for_part([item], OTHER) == []
+    assert logic.scope_text(item) == "SSD XS-2280 · M2"
+
+
+def test_search_by_title_text_part_model_author_and_date():
+    rules = [rule("part", id=1, title="Сверять дорожку", part_name="SSD XS-2280", model="M2", author_id=1),
+             rule("general", id=2, title="Критерии", body="Ёмкость платы", author_id=2, created_at="2026-11-14 10:00:00")]
+    names = {1: "Петров", 2: "Иванова"}
+    find = lambda query: [item.id for item in logic.search(rules, query, names)]
+    assert find("") == [1, 2]
+    assert find("дорожк") == [1] and find("емкость") == [2]  # «е/ё» не важны
+    assert find("xs-2280") == [1] and find("m2") == [1]
+    assert find("иванова") == [2] and find("14.11.2026") == [2] and find("2026-10") == [1]
+    assert find("петров критерии") == []  # все слова запроса
+
+
+def test_permissions():
+    from datetime import timedelta
+    fresh = rule("general", created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    old = rule("general", created_at=(datetime.now() - timedelta(days=31)).strftime("%Y-%m-%d %H:%M:%S"))
+    assert logic.can_edit(fresh) and not logic.can_edit(old) and logic.can_edit(old, developer=True)
+    assert not logic.can_delete() and logic.can_delete(True)
+    archived = rule("general", archived_at="2026-11-01 10:00:00", archived_by=7)
+    assert logic.can_restore(archived, 7) and not logic.can_restore(archived, 8) and logic.can_restore(archived, 8, True)
+    assert not logic.can_restore(rule("general", archived_at="x"), 7)  # кто убрал, не записано — только разработчик
+
+
+def test_developers_from_config():
+    from atlas.core import roles
+    config = SimpleNamespace(get=lambda key, default=None: {"roles.developers": [" Петров ", ""]}.get(key, default))
+    assert roles.is_developer(config, SimpleNamespace(name="петров"))
+    assert not roles.is_developer(config, SimpleNamespace(name="Иванова")) and not roles.is_developer(config, None)
+    assert roles.developers(SimpleNamespace(get=lambda key, default=None: "Петров")) == frozenset()
+
+
+def test_form_publishes_rule_for_typed_part_and_search_finds_it(app):
+    part, folder = app.folder()
+    app.open(part, folder)
+    screen = app.rules.screen
+    screen.title_edit.setText("Сверять дорожку")
+    screen.model_edit.setText("M2 2280")
+    screen.body_edit.setPlainText("Дорожка у разъёма")
+    screen.publish()
+    app.qtbot.waitUntil(lambda: bool(app.rules.rules) and screen.publish_button.isEnabled(), timeout=5000)
+    app.wait_idle()
+    item = app.rules.rules[0]
+    assert (item.part_name, item.model, item.scope) == ("SSD XS-2280", "M2 2280", "part")
+    assert screen.title_edit.text() == "" and screen.part_edit.text() == "SSD XS-2280"
+    assert app.rules.for_part(part.id) == [item]  # покажется в «Сравнении»
+    screen.search_edit.setText("m2 петров")
+    assert list(screen.cards) == [item.id]
+    screen.search_edit.setText("нет такого")
+    assert screen.cards == {} and screen.empty_label.text() == "Ничего не нашлось"
+
+
+def test_edit_old_rule_can_get_part_and_model(app):
+    item = _published(app)
+    screen = app.rules.screen
+    screen.edit_rule(item.id)
+    screen.part_edit.setText("Плата")
+    screen.publish()
+    assert "модель" in screen.error_label.text().lower()
+    screen.model_edit.setText("P1")
+    screen.publish()
+    app.qtbot.waitUntil(lambda: screen.editing is None, timeout=5000)
+    app.wait_idle()
+    changed = next(r for r in app.rules.rules if r.id == item.id)
+    assert (changed.scope, changed.part_name, changed.model, changed.name_key) == ("part", "Плата", "P1", "плата")
+
+
+def test_restore_only_by_who_archived_or_developer(app):
+    item = _published(app)
+    app.rules.repo.set_archived(item.id, True, app.ivanova.id)
+    app.rules.refresh()
+    app.wait_idle()
+    screen = app.rules.screen
+    assert not screen.cards[item.id].archive_button.isEnabled()  # убрала Иванова, смотрит Петров
+    app.rules.archive(item.id, False)  # и сервис не даёт
+    app.wait_idle()
+    assert app.rules.repo.all(app.petrov.id)[0].archived
+    app.make_developer("Петров")
+    assert screen.cards[item.id].archive_button.isEnabled()
+
+
+def test_photo_dialog_shows_all_photos_side_by_side_or_stacked_and_moves_them_together(app, qtbot):
+    from atlas.features.rules.screen import ARRANGE_ONE, ARRANGE_SIDE, ARRANGE_STACK, PhotoDialog
+    PhotoDialog.arrange = None
+    item = _published(app, photos=2)
+    dialog = PhotoDialog(app.tmp / "правила", item.photos, 0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert dialog.arrange_buttons[ARRANGE_SIDE].isChecked() and len(dialog.multi_views) == 2  # два фото — сразу рядом
+    first, second = dialog.multi_views
+    qtbot.waitUntil(lambda: first.width() > 100 and second.width() > 100)
+    assert abs(first.geometry().right() - second.geometry().left()) <= 4  # вплотную
+    assert dialog.prev_button.isHidden()
+    from PyQt5.QtCore import QPoint, QPointF, Qt
+    from PyQt5.QtGui import QWheelEvent
+    first.wheelEvent(QWheelEvent(QPointF(30, 30), QPointF(30, 30), QPoint(0, 0), QPoint(0, 240), 0, Qt.Vertical,
+                                 Qt.NoButton, Qt.NoModifier))
+    assert second.zoom / second._fit_zoom() == pytest.approx(first.zoom / first._fit_zoom())  # зум у обоих
+    dialog.arrange_buttons[ARRANGE_STACK].click()
+    qtbot.waitUntil(lambda: abs(first.geometry().bottom() - second.geometry().top()) <= 4)
+    assert PhotoDialog.arrange == ARRANGE_STACK
+    dialog.arrange_buttons[ARRANGE_ONE].click()
+    assert dialog.multi.isHidden() and not dialog.view.isHidden() and not dialog.prev_button.isHidden()
+    single = PhotoDialog(app.tmp / "правила", item.photos[:1], 0)
+    qtbot.addWidget(single)
+    assert single.multi.isHidden() and all(button.isHidden() for button in single.arrange_buttons.values())
+    PhotoDialog.arrange = None

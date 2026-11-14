@@ -44,7 +44,10 @@ class ShellWindow(QMainWindow):
         column = QVBoxLayout(root)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
-        column.addWidget(self._build_top_bar())
+        self.top_bar = self._build_top_bar()
+        column.addWidget(self.top_bar)
+        self.focus_mode = False
+        self._before_focus = None
         show_kind = bool(ctx.config.get("ui.show_project_kind", True)) if ctx is not None else True
         self.context_bar = ContextBar(show_kind=show_kind)
         column.addWidget(self.context_bar)
@@ -177,6 +180,30 @@ class ShellWindow(QMainWindow):
 
     def set_context(self, kind=None, project=None, device=None, part=None, path=None):
         self.context_bar.set_context(kind, project, device, part, path)
+
+    def set_focus_mode(self, on):
+        """Весь экран странице (14.11.2026): окно на весь экран, без верхней строки, контекста и строки состояния.
+
+        Выход — тем же вызовом с False (у функции: Esc, F11); окно возвращается к прежнему размеру.
+        """
+        on = bool(on)
+        if on == self.focus_mode:
+            return
+        self.focus_mode = on
+        bars = (self.top_bar, self.context_bar, self.statusBar())
+        if on:
+            self._before_focus = (self.isMaximized(), [not bar.isHidden() for bar in bars])
+            for bar in bars:
+                bar.hide()
+            self.showFullScreen()
+            return
+        maximized, shown = self._before_focus or (False, [True] * len(bars))
+        for bar, visible in zip(bars, shown):
+            bar.setVisible(visible)
+        if maximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
 
     def show_message(self, text, timeout_ms=0):
         self.statusBar().showMessage(text, timeout_ms)

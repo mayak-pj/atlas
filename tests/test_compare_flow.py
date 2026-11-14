@@ -373,8 +373,32 @@ def test_portrait_photos_stand_in_a_row(app):
     app.wait_open()
     app.screen.set_layout(4)
     app.wait_shown()
-    rows = {app.screen.grid.getItemPosition(app.screen.grid.indexOf(view))[0] for view in app.screen.views}
-    assert rows == {0}
+    splitter = app.screen.splitter  # в одну линию — в разделителе: границу можно тянуть (14.11.2026)
+    assert splitter.isVisibleTo(app.screen) and splitter.orientation() == Qt.Horizontal
+    assert all(splitter.indexOf(view) >= 0 for view in app.screen.views)
+
+
+def test_stacked_windows_go_one_under_another_and_keep_dragged_border(app):
+    """14.11.2026: «Друг под другом» — для длинных плат; одно окно можно сделать больше другого."""
+    app.wait_open()
+    screen = app.screen
+    screen.set_layout(2)
+    app.wait_shown()
+    screen.stack_button.click()
+    app.wait_shown()
+    splitter = screen.splitter
+    first, second = screen._visible_views()
+    assert splitter.orientation() == Qt.Vertical and first.geometry().bottom() < second.geometry().top()
+    app.qtbot.waitUntil(lambda: first.height() > 50 and second.height() > 50)
+    total = sum(splitter.sizes())
+    splitter.setSizes([int(total * 0.7) if splitter.widget(n) is first else int(total * 0.3) if splitter.widget(n) is second
+                       else 0 for n in range(splitter.count())])
+    bigger = first.height()
+    app.press(Qt.Key_Right)  # листание раскладку не трогает
+    app.wait_shown()
+    assert first.height() == bigger and first.height() > second.height()
+    screen.stack_button.click()
+    assert splitter.orientation() == Qt.Horizontal
 
 
 def test_empty_folder_shows_message(tmp_path, qtbot):
@@ -906,3 +930,26 @@ def test_sync_on_again_keeps_second_window_adjustment_and_new_folder_resets(app)
     assert second.state()[0] / first.state()[0] == pytest.approx(adjusted)
     app.feature.open_folder(app.folder.id)  # новая папка — подгонка снимается
     app.qtbot.waitUntil(lambda: screen.group.offsets == {}, timeout=5000)
+
+
+def test_fullscreen_hides_panels_and_window_bars_and_esc_returns_them(app):
+    """14.11.2026: «Во весь экран» — только фото; Esc или F11 — обратно, панели как были."""
+    app.wait_open()
+    screen, window = app.screen, app.window
+    screen.show()
+    screen._panel_buttons["bottom"].click()  # до входа нижняя панель уже скрыта
+    before = screen.panels_state()
+    screen.fullscreen_button.click()
+    assert screen.fullscreen and window.focus_mode and window.isFullScreen()
+    assert not any(box.isVisibleTo(screen) for box in screen._panel_boxes.values())
+    assert screen.visibility_bar.isHidden() and window.top_bar.isHidden() and window.context_bar.isHidden()
+    app.press(Qt.Key_H)  # «скрыть всё» во весь экран не действует: и так всё скрыто
+    app.press(Qt.Key_Escape)
+    assert not screen.fullscreen and not window.focus_mode and not window.isFullScreen()
+    assert screen.panels_state() == before and not screen.visibility_bar.isHidden() and not window.top_bar.isHidden()
+    app.press(Qt.Key_F11)
+    assert screen.fullscreen
+    app.press(Qt.Key_F11)
+    assert not screen.fullscreen
+    state = json.loads((app.ctx.paths.root / "var" / "ui_state.json").read_text(encoding="utf-8"))
+    assert state["compare_panels"] == before  # выбор панелей не перезаписан

@@ -49,8 +49,9 @@ class EnhanceControl(QPushButton):
     def open_drum(self):
         self.setChecked(self.active_mode() is not None)  # клик по кнопке сам её не переключает: решает барабан
         number = self._ids.index(self._mode) + 1 if self._mode in self._ids else 1
-        anchor = self.mapToGlobal(QPoint(self.width() // 2, 0))
-        self.drum.open_at(anchor, number, can_clear=self.active_mode() is not None)
+        top = self.mapToGlobal(QPoint(self.width() // 2, 0))
+        bottom = self.mapToGlobal(QPoint(self.width() // 2, self.height()))
+        self.drum.open_at(top, number, can_clear=self.active_mode() is not None, below_point=bottom)  # вниз, как просили
 
     def set_mode(self, mode):
         if mode in self._ids:

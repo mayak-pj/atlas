@@ -9,14 +9,17 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QRectF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPainter
-from PyQt5.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from atlas.core import theme
 
 ROW_HEIGHT = 34
 ROWS = 5  # видно: два выше, выбранный, два ниже
 DRUM_WIDTH = 96
-LABELS_WIDTH = 230  # барабан с названиями
+LABELS_WIDTH = 190  # барабан с названиями: уже и ниже, чтобы помещаться на экран
+LABELS_ROW_HEIGHT = 28
+LABELS_ROWS = 3
+HINT_PX = 11
 TYPE_DELAY_MS = 650  # пауза после цифры: успеть набрать вторую
 WHEEL_STEP = 120
 
@@ -26,11 +29,12 @@ class _Wheel(QWidget):
 
     picked = pyqtSignal()
 
-    def __init__(self, drum, width):
+    def __init__(self, drum, width, row_height, rows):
         super().__init__(drum)
         self.drum = drum
         self._wheel_rest = 0
-        self.setFixedSize(width, ROW_HEIGHT * ROWS)
+        self.row_height, self.rows = row_height, rows
+        self.setFixedSize(width, row_height * rows)
         self.setCursor(Qt.PointingHandCursor)
 
     def wheelEvent(self, event):
@@ -44,7 +48,7 @@ class _Wheel(QWidget):
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
-        row = int(event.pos().y() // ROW_HEIGHT) - ROWS // 2
+        row = int(event.pos().y() // self.row_height) - self.rows // 2
         if row == 0:
             self.picked.emit()
         else:
@@ -54,18 +58,18 @@ class _Wheel(QWidget):
         tokens = theme.current()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        middle = QRectF(4, ROW_HEIGHT * (ROWS // 2), self.width() - 8, ROW_HEIGHT)
+        middle = QRectF(4, self.row_height * (self.rows // 2), self.width() - 8, self.row_height)
         painter.setPen(Qt.NoPen)
         painter.setBrush(tokens.qcolor("accent_soft"))
         painter.drawRoundedRect(middle, 7, 7)
         font = QFont(self.font())
-        for offset in range(-(ROWS // 2), ROWS // 2 + 1):
+        for offset in range(-(self.rows // 2), self.rows // 2 + 1):
             number = self.drum.value + offset
             if not self.drum.minimum <= number <= self.drum.maximum:
                 continue
-            rect = QRectF(0, ROW_HEIGHT * (offset + ROWS // 2), self.width(), ROW_HEIGHT)
+            rect = QRectF(0, self.row_height * (offset + self.rows // 2), self.width(), self.row_height)
             font.setBold(offset == 0)
-            big = 1.6 if not self.drum.labels else 1.2  # названия длиннее цифр
+            big = 1.6 if not self.drum.labels else 1.05  # названия длиннее цифр
             font.setPointSizeF(max(8.0, (self.font().pointSizeF() if self.font().pointSizeF() > 0 else 10.0)
                                    * (big if offset == 0 else 1.15 - 0.15 * abs(offset))))
             painter.setFont(font)
@@ -94,19 +98,24 @@ class NumberDrum(QFrame):
         self._timer.setInterval(TYPE_DELAY_MS)
         self._timer.timeout.connect(self.choose)
         column = QVBoxLayout(self)
-        column.setContentsMargins(8, 8, 8, 8)
-        column.setSpacing(6)
-        self.wheel = _Wheel(self, LABELS_WIDTH if self.labels else DRUM_WIDTH)
+        compact = bool(self.labels)
+        column.setContentsMargins(6, 6, 6, 6) if compact else column.setContentsMargins(8, 8, 8, 8)
+        column.setSpacing(4 if compact else 6)
+        if self.labels:
+            self.wheel = _Wheel(self, LABELS_WIDTH, LABELS_ROW_HEIGHT, LABELS_ROWS)
+        else:
+            self.wheel = _Wheel(self, DRUM_WIDTH, ROW_HEIGHT, ROWS)
         self.wheel.picked.connect(self.choose)
         column.addWidget(self.wheel, 0, Qt.AlignHCenter)
         self.hint_label = QLabel("")
         self.hint_label.setWordWrap(True)
-        self.hint_label.setProperty("role", "dim")
+        self.hint_label.setStyleSheet("font-size: {}px;".format(HINT_PX))
         self.hint_label.setFixedWidth(LABELS_WIDTH)
         self.hint_label.setVisible(bool(self.hints))
         column.addWidget(self.hint_label)
         self.ok_button = QPushButton("")
         self.ok_button.setProperty("role", "primary")
+        self.ok_button.setMinimumHeight(28 if self.labels else 0)
         self.ok_button.setFocusPolicy(Qt.NoFocus)
         self.ok_button.clicked.connect(lambda _=False: self.choose())
         column.addWidget(self.ok_button)
@@ -117,14 +126,24 @@ class NumberDrum(QFrame):
         self.clear_button.hide()
         self._refresh()
 
-    def open_at(self, global_point, value=None, can_clear=False):
-        """Показать над точкой (обычно — над кнопкой); value — с какого номера начать."""
+    def open_at(self, global_point, value=None, can_clear=False, below_point=None):
+        """Показать над точкой (обычно — над кнопкой); value — с какого номера начать.
+
+        below_point — низ кнопки: тогда окно открывается под ней. В любом случае окно не выходит за экран.
+        """
         self._typed = ""
         self._timer.stop()
         self.set_value(value if value is not None else self.minimum)
         self.clear_button.setVisible(bool(can_clear and self.clear_button.text()))
         self.adjustSize()
-        self.move(global_point.x() - self.width() // 2, global_point.y() - self.height())
+        x = global_point.x() - self.width() // 2
+        y = below_point.y() if below_point is not None else global_point.y() - self.height()
+        screen = QApplication.screenAt(global_point) or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        if y + self.height() > area.bottom():  # снизу не помещается — над кнопкой
+            y = global_point.y() - self.height()
+        x = max(area.left(), min(x, area.right() - self.width()))
+        self.move(x, max(area.top(), y))
         self.show()
         self.setFocus()
 
@@ -137,7 +156,7 @@ class NumberDrum(QFrame):
         return self.labels.get(number, str(number))
 
     def _refresh(self):
-        self.ok_button.setText(("{} {}" if not self.labels else "{}: {}").format(self.title, self.label(self.value)))
+        self.ok_button.setText("{} {}".format(self.title, self.value) if not self.labels else "Выбрать")
         self.hint_label.setText(self.hints.get(self.value, ""))
         self.wheel.update()
 

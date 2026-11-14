@@ -24,6 +24,7 @@ DEFAULT_DIR = "var/rules"  # TODO(OPEN_ITEMS №12): настоящая папк
 DEFAULT_REFRESH_S = 60
 STOP_WAIT_S = 3.0
 MESSAGE_MS = 8000
+TEXT_RULE_REFERENCE = "фото правила"
 TEXT_PUBLISHED = "Правило опубликовано"
 TEXT_FAILED = "Не удалось записать правило: база недоступна, попробуйте ещё раз"
 TEXT_UPDATED = "Правило изменено"
@@ -88,6 +89,7 @@ class RulesFeature(Feature):
         self.screen = RulesScreen(self._root, self.ctx.services.get("parts").kinds,
                                   animations=bool(self.ctx.config.get("ui.animations", True)), edit_days=self._edit_days())
         self.screen.set_access(self._user_id(), self.admin())
+        self.screen.to_compare = self.open_in_compare_or_none()
         self.screen.publish_requested.connect(self.publish)
         self.screen.archive_requested.connect(self.archive)
         self.screen.delete_requested.connect(self.delete)
@@ -335,4 +337,14 @@ class RulesFeature(Feature):
     def _open_photo(self, rels, index):
         from atlas.features.rules.screen import PhotoDialog
 
-        PhotoDialog(self._root, rels, index, self.panel).exec_()
+        PhotoDialog(self._root, rels, index, self.panel, self.open_in_compare_or_none()).exec_()
+
+    def open_in_compare_or_none(self):
+        """Обработчик «Открыть в сравнении» для окна фото; без функции «Сравнение» — None, кнопка скрыта."""
+        return self.open_in_compare if self.ctx.services.get_optional("compare") is not None else None
+
+    def open_in_compare(self, paths):
+        compare = self.ctx.services.get_optional("compare")
+        if compare is None:
+            return
+        compare.set_reference_photos(paths, TEXT_RULE_REFERENCE)

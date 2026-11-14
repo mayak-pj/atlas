@@ -45,6 +45,8 @@ TEXT_NOTE = "После публикации у коллег вкладка «П
 TEXT_PANEL = "Правила к детали"
 TEXT_PHOTOS = "Фото: {}"
 TEXT_PHOTO_TITLE = "Фото правила"
+TEXT_TO_COMPARE = "Открыть в сравнении"
+TIP_TO_COMPARE = "Фото правила — в окна «Сравнения» как эталон: сравнить с проверяемой платой"
 TILE_MAX_HEIGHT = 420
 ATTACH_PREVIEW = 64
 TEXT_DROP_PHOTOS = "Убрать фото"
@@ -235,9 +237,10 @@ class PhotoDialog(QDialog):
 
     arrange = None  # общий для всех окон фото: последний выбор
 
-    def __init__(self, root, rels, index=0, parent=None):
+    def __init__(self, root, rels, index=0, parent=None, to_compare=None):
         super().__init__(parent)
         self.root, self.rels, self.index = Path(root), list(rels), 0
+        self.to_compare = to_compare  # callable(список полных путей) или None, если «Сравнения» нет
         self.setWindowTitle(TEXT_PHOTO_TITLE)
         layout = QVBoxLayout(self)
         self.view = ZoomView()
@@ -263,6 +266,13 @@ class PhotoDialog(QDialog):
             modes.addWidget(button)
             self.arrange_buttons[key] = button
         modes.addStretch(1)
+        self.compare_button = QPushButton(TEXT_TO_COMPARE)
+        self.compare_button.setFocusPolicy(Qt.NoFocus)
+        self.compare_button.setToolTip(TIP_TO_COMPARE)
+        set_icon(self.compare_button, "columns-2", "text")
+        self.compare_button.clicked.connect(lambda _=False: self.open_in_compare())
+        self.compare_button.setVisible(to_compare is not None)
+        modes.addWidget(self.compare_button)
         layout.addLayout(modes)
         bar = QHBoxLayout()
         self.prev_button = QPushButton("Назад")
@@ -290,6 +300,13 @@ class PhotoDialog(QDialog):
                 button.hide()
         default = ARRANGE_SIDE if len(self.rels) > 1 else ARRANGE_ONE
         self.set_arrange(PhotoDialog.arrange if len(self.rels) > 1 and PhotoDialog.arrange else default)
+
+    def open_in_compare(self):
+        """Все фото правила — эталоном в «Сравнении»; окно закрывается."""
+        if self.to_compare is None:
+            return
+        self.to_compare([self.root / rel for rel in self.rels])
+        self.accept()
 
     def set_arrange(self, key):
         """По одному / рядом / друг под другом."""
@@ -454,6 +471,7 @@ class RulesScreen(QWidget):
         self.filter_key = logic.FILTER_ALL
         self.query = ""
         self.user_id, self.admin = 0, False
+        self.to_compare = None  # «Открыть в сравнении» в окне фото; ставит функция, если есть «Сравнение»
         self.photo_paths = []
         outer = QHBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -841,7 +859,7 @@ class RulesScreen(QWidget):
         self.show_error(text)
 
     def open_photo(self, rels, index):
-        PhotoDialog(self.root, rels, index, self).exec_()
+        PhotoDialog(self.root, rels, index, self, self.to_compare).exec_()
 
 
 class RulesPanel(QFrame):

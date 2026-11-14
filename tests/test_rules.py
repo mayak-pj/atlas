@@ -535,6 +535,26 @@ def test_photo_dialog_shows_all_photos_side_by_side_or_stacked_and_moves_them_to
     PhotoDialog.arrange = None
 
 
+# --- «Открыть в сравнении» (шаг 12.4) ---------------------------------------------------------
+def test_photo_dialog_opens_rule_photos_as_reference_in_compare(app, qtbot):
+    from atlas.features.rules.screen import PhotoDialog
+    item = _published(app, photos=2)
+    opener = app.rules.open_in_compare_or_none()
+    assert opener is not None
+    dialog = PhotoDialog(app.tmp / "правила", item.photos, 0, None, opener)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert not dialog.compare_button.isHidden()
+    app.window.select_tab("rules")
+    dialog.compare_button.click()
+    screen = app.svc.get("compare").screen
+    assert app.window.current_tab_id() == "compare"
+    assert screen.model.has_reference_folder and len(screen.model.ref_photos) == 2
+    assert [Path(p.path).name for p in screen.model.ref_photos] == [Path(r).name for r in item.photos]
+    assert "фото правила" in screen.reference_label.text()
+    assert not PhotoDialog(app.tmp / "правила", item.photos, 0).compare_button.isVisible()  # без «Сравнения» — скрыта
+
+
 # --- ушло в архив, а человек уже читал (шаг 12.2) ------------------------------------------
 def test_archive_news_for_those_who_read_before(app):
     part, folder = app.folder()

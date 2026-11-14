@@ -71,7 +71,7 @@ class MarkResult:
 
 
 class CompareFeature(Feature):
-    """Сервис «compare»: open_folder(folder_id), set_reference(path), set_reference_folder(folder_id),
+    """Сервис «compare»: open_folder(folder_id), set_reference(path), set_reference_folder(folder_id), set_reference_photos(paths, note),
     find_same_part(), current_folder(), views(), active_view()."""
 
     def on_start(self):
@@ -184,6 +184,18 @@ class CompareFeature(Feature):
     def set_reference(self, path):
         """Показать в окне эталона это фото."""
         self.screen.set_reference(logic.PhotoItem(None, str(path)))
+
+    def set_reference_photos(self, paths, note=""):
+        """Эталон — эти файлы (фото правила и т. п.): только показ, листаются как найденная папка. Из GUI-потока.
+
+        Переключает вкладку на «Сравнение». Пустой список — ничего не делает.
+        """
+        items = [logic.PhotoItem(None, str(path)) for path in paths]
+        if not items or self.screen is None:
+            return
+        self.screen.set_reference_folder(items, note, False)
+        if self.ctx.shell is not None:
+            self.ctx.shell.select_tab("compare")
 
     def set_reference_folder(self, folder_id):
         """Показать в окне эталона фото этой папки (первое; дальше листаются). Чтение базы — в фоне; из GUI-потока."""

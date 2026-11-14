@@ -279,7 +279,7 @@ def test_dialog_saves_without_description_and_defect_has_no_number(qtbot):
 def test_card_offers_the_type_the_photo_is_marked_with(app):
     """Отметил фото «Тип 2» — в окне карточки уже стоит 2, а не следующий номер детали."""
     screen = app.screen
-    screen.mark_buttons["type:2"].click()
+    screen.assign_type(2)
     app.qtbot.waitUntil(lambda: screen.model.photos[screen.model.active_index].mark == "type:2", timeout=3000)
     app.type_db.add_button.click()
     app.qtbot.waitUntil(lambda: not app.type_db.busy and bool(app.type_db.asked), timeout=5000)

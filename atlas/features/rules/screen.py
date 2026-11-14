@@ -453,7 +453,7 @@ class RulesScreen(QWidget):
         self.keep_rels = []  # его фото, которые оставляем
         self.filter_key = logic.FILTER_ALL
         self.query = ""
-        self.user_id, self.developer = 0, False
+        self.user_id, self.admin = 0, False
         self.photo_paths = []
         outer = QHBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -667,7 +667,7 @@ class RulesScreen(QWidget):
     def edit_rule(self, rule_id):
         """Правило — в форму справа: заголовок, деталь, модель, текст, его фото (можно убрать и добавить)."""
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None or not logic.can_edit(rule, self.developer, self.today, self.edit_days):
+        if rule is None or not logic.can_edit(rule, self.admin, self.today, self.edit_days):
             return
         self.editing = rule
         self.keep_rels = list(rule.photos)
@@ -723,10 +723,10 @@ class RulesScreen(QWidget):
         self._refresh_form()
         self._render()
 
-    def set_access(self, user_id, developer):
+    def set_access(self, user_id, admin):
         """Кто смотрит: от этого зависят «вернуть из архива», «удалить» и срок правки."""
-        changed = (user_id, bool(developer)) != (self.user_id, self.developer)
-        self.user_id, self.developer = user_id, bool(developer)
+        changed = (user_id, bool(admin)) != (self.user_id, self.admin)
+        self.user_id, self.admin = user_id, bool(admin)
         if changed and not self._animating:
             self._render()
 
@@ -761,7 +761,7 @@ class RulesScreen(QWidget):
         for number, rule in enumerate(shown):
             card = RuleTile(rule, self.names.get(rule.author_id, ""), self.colors.get(rule.author_id), self.root,
                             self.today, self.grid_holder, archiver=self.names.get(rule.archived_by, ""),
-                            edit_days=self.edit_days, user_id=self.user_id, developer=self.developer)
+                            edit_days=self.edit_days, user_id=self.user_id, admin=self.admin)
             card.read_clicked.connect(lambda rule_id: self.read_requested.emit([rule_id]))
             card.photo_clicked.connect(self.open_photo)
             card.edit_clicked.connect(self.edit_rule)
@@ -792,7 +792,7 @@ class RulesScreen(QWidget):
 
     def _on_delete_clicked(self, rule_id):
         rule = next((item for item in self.rules if item.id == rule_id), None)
-        if rule is None or not logic.can_delete(self.developer) or not self.ask_delete(rule):
+        if rule is None or not logic.can_delete(self.admin) or not self.ask_delete(rule):
             return
         card = self.cards.get(rule_id)
         if card is not None:

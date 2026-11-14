@@ -107,9 +107,9 @@ class App:
         self.qtbot.waitUntil(lambda: self.rules.screen.publish_button.isEnabled() and not self.rules._busy_read
                              and not any(t.is_alive() for t in self.rules._threads), timeout=5000)
 
-    def make_developer(self, *names):
-        """Как `roles.developers` в local.json: настройки уже прочитаны, поэтому — прямо в них."""
-        self.ctx.config.app.setdefault("roles", {})["developers"] = list(names)
+    def make_admin(self, *names):
+        """Как `roles.admins` в local.json: настройки уже прочитаны, поэтому — прямо в них."""
+        self.ctx.config.app.setdefault("roles", {})["admins"] = list(names)
         self.rules.refresh()
         self.wait_idle()
 
@@ -300,11 +300,11 @@ def test_delete_asks_burns_the_card_and_removes_photos(app):
     files = list((app.tmp / "правила").iterdir())
     assert len(files) == 4  # две копии и две миниатюры
     screen = app.rules.screen
-    assert screen.cards[item.id].delete_button.isHidden()  # удалить — только разработчику
+    assert screen.cards[item.id].delete_button.isHidden()  # удалить — только администратору
     app.rules.delete(item.id)  # и сервис не даёт
     app.wait_idle()
     assert app.rules.repo.all(app.petrov.id)
-    app.make_developer("петров")
+    app.make_admin("петров")
     screen.ask_delete = lambda rule_: False
     screen.cards[item.id].delete_button.click()
     assert app.rules.repo.all(app.petrov.id)
@@ -443,19 +443,19 @@ def test_permissions():
     from datetime import timedelta
     fresh = rule("general", created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     old = rule("general", created_at=(datetime.now() - timedelta(days=31)).strftime("%Y-%m-%d %H:%M:%S"))
-    assert logic.can_edit(fresh) and not logic.can_edit(old) and logic.can_edit(old, developer=True)
+    assert logic.can_edit(fresh) and not logic.can_edit(old) and logic.can_edit(old, admin=True)
     assert not logic.can_delete() and logic.can_delete(True)
     archived = rule("general", archived_at="2026-11-01 10:00:00", archived_by=7)
     assert logic.can_restore(archived, 7) and not logic.can_restore(archived, 8) and logic.can_restore(archived, 8, True)
-    assert not logic.can_restore(rule("general", archived_at="x"), 7)  # кто убрал, не записано — только разработчик
+    assert not logic.can_restore(rule("general", archived_at="x"), 7)  # кто убрал, не записано — только администратор
 
 
-def test_developers_from_config():
+def test_admins_from_config():
     from atlas.core import roles
-    config = SimpleNamespace(get=lambda key, default=None: {"roles.developers": [" Петров ", ""]}.get(key, default))
-    assert roles.is_developer(config, SimpleNamespace(name="петров"))
-    assert not roles.is_developer(config, SimpleNamespace(name="Иванова")) and not roles.is_developer(config, None)
-    assert roles.developers(SimpleNamespace(get=lambda key, default=None: "Петров")) == frozenset()
+    config = SimpleNamespace(get=lambda key, default=None: {"roles.admins": [" Петров ", ""]}.get(key, default))
+    assert roles.is_admin(config, SimpleNamespace(name="петров"))
+    assert not roles.is_admin(config, SimpleNamespace(name="Иванова")) and not roles.is_admin(config, None)
+    assert roles.admins(SimpleNamespace(get=lambda key, default=None: "Петров")) == frozenset()
 
 
 def test_form_publishes_rule_for_typed_part_and_search_finds_it(app):
@@ -493,7 +493,7 @@ def test_edit_old_rule_can_get_part_and_model(app):
     assert (changed.scope, changed.part_name, changed.model, changed.name_key) == ("part", "Плата", "P1", "плата")
 
 
-def test_restore_only_by_who_archived_or_developer(app):
+def test_restore_only_by_who_archived_or_admin(app):
     item = _published(app)
     app.rules.repo.set_archived(item.id, True, app.ivanova.id)
     app.rules.refresh()
@@ -503,7 +503,7 @@ def test_restore_only_by_who_archived_or_developer(app):
     app.rules.archive(item.id, False)  # и сервис не даёт
     app.wait_idle()
     assert app.rules.repo.all(app.petrov.id)[0].archived
-    app.make_developer("Петров")
+    app.make_admin("Петров")
     assert screen.cards[item.id].archive_button.isEnabled()
 
 

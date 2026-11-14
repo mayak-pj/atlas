@@ -7,6 +7,7 @@
     "rotate_right": "PgDown",
     "toggle_ui": "H",
     "fullscreen": "F11",
+    "type_drum": "T",
     "marks": {
       "type:1": "1",
       "type:2": "2",

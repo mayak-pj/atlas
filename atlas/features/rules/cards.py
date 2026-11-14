@@ -26,7 +26,7 @@ TEXT_READ = "Прочитано"
 TEXT_ARCHIVED = "В архиве"
 TEXT_ARCHIVED_BY = "В архиве · {}"
 TIP_LOCKED = "Изменить можно в течение {} дней после добавления; дальше — только в архив"
-TIP_NO_RESTORE = "Вернуть из архива может тот, кто убрал, или разработчик"
+TIP_NO_RESTORE = "Вернуть из архива может тот, кто убрал, или администратор"
 TEXT_EDITED = "изменено {}"
 TIP_EDIT = "Изменить заголовок, деталь, модель, текст и фото"
 TIP_ARCHIVE = "В архив: правило остаётся внизу списка, но к детали не показывается"
@@ -133,7 +133,7 @@ class RuleTile(QFrame):
     animation_done = pyqtSignal(int)
 
     def __init__(self, rule, author, color, root, today=None, parent=None, archiver="", edit_days=logic.EDIT_DAYS,
-                 user_id=0, developer=False):
+                 user_id=0, admin=False):
         super().__init__(parent)
         self.rule = rule
         self.setProperty("role", "type-card")
@@ -166,11 +166,11 @@ class RuleTile(QFrame):
         self.delete_button.clicked.connect(lambda _=False: self.delete_clicked.emit(rule.id))
         for button in (self.edit_button, self.archive_button, self.delete_button):
             head.addWidget(button)
-        # Права (14.11.2026): изменить — первые edit_days суток (разработчику всегда); удалить — только разработчику;
-        # вернуть из архива — тот, кто убрал, или разработчик
-        self.locked = not logic.can_edit(rule, developer, today, edit_days)
-        self.can_delete = logic.can_delete(developer)
-        self.can_archive = not rule.archived or logic.can_restore(rule, user_id, developer)
+        # Права (14.11.2026): изменить — первые edit_days суток (администратору всегда); удалить — только администратору;
+        # вернуть из архива — тот, кто убрал, или администратор
+        self.locked = not logic.can_edit(rule, admin, today, edit_days)
+        self.can_delete = logic.can_delete(admin)
+        self.can_archive = not rule.archived or logic.can_restore(rule, user_id, admin)
         if self.locked:  # прошло больше edit_days: правило — уже обоснование, только архив
             self.edit_button.setToolTip(TIP_LOCKED.format(edit_days))
         self.delete_button.setVisible(self.can_delete)  # остальным кнопки нет: правило убирают в архив

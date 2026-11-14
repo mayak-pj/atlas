@@ -163,7 +163,7 @@ def test_active_reference_flips_found_folder_and_blocks_marks(app):
     assert not [item for item in app.events if item[0] == "photo.changed"]
     _wait_shown(app)  # фото дошло: отметке мешает только то, что активен эталон
     assert screen.active_view().is_current_shown
-    assert not screen.can_mark and not any(button.isEnabled() for button in screen.mark_buttons.values())
+    assert not screen.can_mark and not any(button.isEnabled() for button in list(screen.mark_buttons.values()) + [screen.type_button])
     screen.request_mark("type:1")
     folders = app.ctx.services.get("folders")
     assert all(photo.mark is None for photo in folders.photos(app.folder.id))

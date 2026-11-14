@@ -26,8 +26,8 @@ TEXT_PUBLISHED = "Правило опубликовано"
 TEXT_FAILED = "Не удалось записать правило: база недоступна, попробуйте ещё раз"
 TEXT_UPDATED = "Правило изменено"
 TEXT_LOCKED = "Правило старше {} дней: изменить нельзя, только в архив"
-TEXT_NO_DELETE = "Удалить правило может только разработчик; уберите его в архив"
-TEXT_NO_RESTORE = "Вернуть из архива может тот, кто убрал, или разработчик"
+TEXT_NO_DELETE = "Удалить правило может только администратор; уберите его в архив"
+TEXT_NO_RESTORE = "Вернуть из архива может тот, кто убрал, или администратор"
 TEXT_ACTION_FAILED = "Не удалось: база недоступна, попробуйте ещё раз"
 
 
@@ -85,7 +85,7 @@ class RulesFeature(Feature):
     def create_tab(self):
         self.screen = RulesScreen(self._root, self.ctx.services.get("parts").kinds,
                                   animations=bool(self.ctx.config.get("ui.animations", True)), edit_days=self._edit_days())
-        self.screen.set_access(self._user_id(), self.developer())
+        self.screen.set_access(self._user_id(), self.admin())
         self.screen.publish_requested.connect(self.publish)
         self.screen.archive_requested.connect(self.archive)
         self.screen.delete_requested.connect(self.delete)
@@ -165,7 +165,7 @@ class RulesFeature(Feature):
         if result is not None:
             self.rules, self.names, self.part = result
             if self.screen is not None:
-                self.screen.set_access(self._user_id(), self.developer())
+                self.screen.set_access(self._user_id(), self.admin())
                 self.screen.set_data(self.rules, self.names, self.part, self.colors)
             self.panel.show_rules(logic.for_part(self.rules, self.part) if self.part is not None else [], self.names)
             if self.ctx.shell is not None and hasattr(self.ctx.shell, "refresh_badges"):
@@ -216,19 +216,19 @@ class RulesFeature(Feature):
             self.screen.show_error(text)
 
     # --- архив, удаление, изменение (04.11.2026) -------------------------------------------
-    def developer(self):
-        """Вошёл разработчик (`roles.developers` в local.json): удаляет, возвращает из архива, правит без срока."""
-        return roles.is_developer(self.ctx.config, self.ctx.user)
+    def admin(self):
+        """Вошёл администратор (`roles.admins` в local.json): удаляет, возвращает из архива, правит без срока."""
+        return roles.is_admin(self.ctx.config, self.ctx.user)
 
     def _rule(self, rule_id):
         return next((item for item in self.rules if item.id == rule_id), None)
 
     def archive(self, rule_id, archived):
-        user_id, developer = self._user_id(), self.developer()
+        user_id, admin = self._user_id(), self.admin()
 
         def work():
             rule = self._rule(rule_id)
-            if not archived and rule is not None and not logic.can_restore(rule, user_id, developer):
+            if not archived and rule is not None and not logic.can_restore(rule, user_id, admin):
                 raise logic.RuleError(TEXT_NO_RESTORE)
             return self.repo.set_archived(rule_id, archived, user_id or None)
         self._spawn(self._action, rule_id, work, lambda _result: self.signals.archived.emit(rule_id, archived))
@@ -236,27 +236,27 @@ class RulesFeature(Feature):
     def _edit_days(self):
         return int(self.ctx.config.get("rules.edit_days", logic.EDIT_DAYS))
 
-    def _check_unlocked(self, rule_id, developer):
+    def _check_unlocked(self, rule_id, admin):
         """Сервис тоже проверяет срок: окно могло быть открыто с позавчера."""
         rule = self._rule(rule_id)
-        if rule is not None and not logic.can_edit(rule, developer, days=self._edit_days()):
+        if rule is not None and not logic.can_edit(rule, admin, days=self._edit_days()):
             raise logic.RuleError(TEXT_LOCKED.format(self._edit_days()))
 
     def delete(self, rule_id):
-        developer = self.developer()
+        admin = self.admin()
 
         def work():
-            if not logic.can_delete(developer):
+            if not logic.can_delete(admin):
                 raise logic.RuleError(TEXT_NO_DELETE)
             self.store.discard_rels(self.repo.delete(rule_id))  # файлы — после базы: правило уже не ссылается на них
         self._spawn(self._action, rule_id, work, lambda _result: self.signals.deleted.emit(rule_id))
 
     def update(self, rule_id, title, body, keep_rels, new_paths, part_name="", model=""):
         """part_name и model пустые — у старого правила область прежняя; вписаны — правило к этой детали."""
-        developer = self.developer()
+        admin = self.admin()
 
         def work():
-            self._check_unlocked(rule_id, developer)
+            self._check_unlocked(rule_id, admin)
             rule = self._rule(rule_id)
             full = bool((rule is not None and rule.part_name) or part_name.strip() or model.strip())
             draft = logic.checked(logic.Draft(logic.SCOPE_GENERAL, title, body, part_name=part_name, model=model,

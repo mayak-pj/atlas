@@ -13,11 +13,12 @@ from atlas.core.domain.photo_names import parse_photo_name
 from atlas.features.compare.angles import AnglesModel, notes as angle_notes, set_mark as angle_set_mark
 from atlas.features.compare.logic import (
     DEFAULT_HOTKEYS, DEFAULT_MARK_KEYS, MAX_WINDOWS, ROTATE_STEP, CompareModel, counts_text, default_sn, grid_cells, mark_label, mark_token,
-    strip_label,
+    strip_label, type_number,
     neighbor_indexes, position_text, reference_angles, toggle_mark,
 )
 from atlas.shared.widgets import FlowLayout
 from atlas.shared.widgets.icons import set_icon
+from atlas.shared.widgets.number_drum import NumberDrum
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
 from atlas.shared.viewer.photo_view import PhotoView
@@ -34,6 +35,12 @@ PANEL_BUTTONS = (
 )
 PANEL_ICONS = {"left": "panel-left", "top": "wrench", "bottom": "gallery-horizontal", "right": "panel-right"}
 MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен цвета при включении
+TEXT_ASSIGN_TYPE = "Присвоить ТИП"
+TEXT_TYPE = "ТИП"
+TEXT_CLEAR_TYPE = "Снять тип"
+TIP_ASSIGN_TYPE = ("Номер типа на барабане: колесо мыши или цифра, Enter — выбрать. "
+                   "Клавиша {} — открыть барабан; {} — сразу тип 1, 2, 3")
+MAX_TYPE = 99
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_STACK = "Друг под другом"
 TIP_STACK = "Окна друг под другом — для длинных плат. Границу между окнами можно тянуть мышью"
@@ -130,6 +137,7 @@ class CompareScreen(QWidget):
         mark_keys = hotkeys.get("marks") or DEFAULT_MARK_KEYS
         self._mark_keys = {mark: _key(text) for mark, text in mark_keys.items()}
         self._mark_by_key = {key: mark for mark, key in self._mark_keys.items() if key}
+        self._type_drum_key = _key(hotkeys.get("type_drum", DEFAULT_HOTKEYS["type_drum"]))
         self._index_by_id = {}
         self._panel_photo = None  # фото, для которого сейчас заполнена панель отметок
         self._strip_source = None  # что сейчас на ленте: folder, reference, angles
@@ -489,7 +497,20 @@ class CompareScreen(QWidget):
         self.marks_title.setProperty("role", "caption")
         row.addWidget(self.marks_title)
         self.mark_buttons = {}
+        # 14.11.2026 (просьба пользователя): одна кнопка «Присвоить ТИП» с барабаном вместо «Тип 1 / 2 / 3»;
+        # клавиши 1, 2, 3 по-прежнему ставят тип сразу
+        self.type_button = self._button(TEXT_ASSIGN_TYPE, self.open_type_drum, checkable=True)
+        type_keys = [QKeySequence(key).toString() for mark, key in self._mark_keys.items() if mark.startswith("type:") and key]
+        self.type_button.setToolTip(TIP_ASSIGN_TYPE.format(QKeySequence(self._type_drum_key).toString(),
+                                                           ", ".join(type_keys) or "—"))
+        row.addWidget(self.type_button)
+        self.type_drum = NumberDrum(TEXT_TYPE, 1, MAX_TYPE, TEXT_CLEAR_TYPE, self)
+        self.type_drum.chosen.connect(self.assign_type)
+        self.type_drum.cleared.connect(self.clear_type)
+        self._last_type = 1
         for mark, key in self._mark_keys.items():
+            if mark.startswith("type:"):
+                continue
             button = self._button(mark_label(mark), lambda _=False, m=mark: self.request_mark(m), checkable=True)
             button.setProperty("tone", mark_token(mark))
             if mark in MARK_ICONS:
@@ -1096,6 +1117,40 @@ class CompareScreen(QWidget):
                 self.mark_requested.emit(photo, new, None, None)  # SN остаётся у фото
         self._update_marks()
 
+    def open_type_drum(self):
+        """«Присвоить ТИП»: барабан над кнопкой, начиная с типа этого фото (или последнего выбранного)."""
+        photo = self._mark_photo()
+        if photo is None:
+            self._update_marks()
+            return
+        current = type_number(photo.mark)
+        anchor = self.type_button.mapToGlobal(QPoint(self.type_button.width() // 2, -4))
+        self.type_drum.open_at(anchor, current or self._last_type, can_clear=current is not None)
+        self._update_marks()  # кнопка не «залипает» нажатой от щелчка
+
+    def assign_type(self, number):
+        """Тип с барабана. Тот же, что уже стоит, — ничего не меняет (снять — «Снять тип»)."""
+        self._last_type = number
+        photo = self._mark_photo()
+        if photo is not None and photo.mark != "type:{}".format(number):
+            self.mark_requested.emit(photo, "type:{}".format(number), None, None)
+        self._update_marks()
+
+    def clear_type(self):
+        photo = self._mark_photo()
+        if photo is not None and type_number(photo.mark) is not None:
+            self.mark_requested.emit(photo, None, None, None)
+        self._update_marks()
+
+    def _mark_photo(self):
+        """Фото, которому сейчас можно поставить отметку, или None."""
+        return self.model.photos[self._marked_number()] if self.can_mark else None
+
+    @property
+    def shown_type(self):
+        """Номер типа фото на панели отметок или None."""
+        return type_number(self._panel_photo.mark) if self._panel_photo is not None else None
+
     def _on_defect_edited(self):
         photo = self._panel_photo
         if photo is None or photo.mark != "remark" or not self.can_mark:
@@ -1146,6 +1201,15 @@ class CompareScreen(QWidget):
         for mark, button in self.mark_buttons.items():
             button.setEnabled(enabled)
             button.setChecked(photo is not None and photo.mark == mark)
+        number = type_number(photo.mark) if photo is not None else None
+        self.type_button.setEnabled(enabled)
+        self.type_button.setChecked(number is not None)
+        self.type_button.setText(TEXT_TYPE + " {}".format(number) if number is not None else TEXT_ASSIGN_TYPE)
+        tone = mark_token(photo.mark) if number is not None else ""
+        if self.type_button.property("tone") != tone:
+            self.type_button.setProperty("tone", tone)
+            self.type_button.style().unpolish(self.type_button)
+            self.type_button.style().polish(self.type_button)
         is_remark = photo is not None and photo.mark == "remark" and not model.reference_active
         self.defect_box.setVisible(is_remark)
         self._sync_extra()
@@ -1355,6 +1419,9 @@ class CompareScreen(QWidget):
         elif key in self._rotate_keys:
             if not event.isAutoRepeat():  # удержание крутило бы фото и писало в базу без остановки
                 self.rotate(self._rotate_keys[key], whole_angle=bool(event.modifiers() & Qt.ShiftModifier))
+        elif key == self._type_drum_key:
+            if not event.isAutoRepeat():
+                self.open_type_drum()
         elif key in self._mark_by_key:
             if not event.isAutoRepeat():
                 self.request_mark(self._mark_by_key[key])

@@ -43,7 +43,7 @@
     "edit_days": 30
   },
   "roles": {
-    "developers": []
+    "admins": []
   },
   "comments": {
     "dir": "var/comments",

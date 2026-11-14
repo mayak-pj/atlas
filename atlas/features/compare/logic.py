@@ -17,7 +17,7 @@ MAX_CURRENTS = MAX_WINDOWS  # 1–4 — число окон текущей па�
 DEFAULT_MARK_KEYS = {"type:1": "1", "type:2": "2", "type:3": "3", "remark": "R"}
 DEFAULT_HOTKEYS = {
     "prev": "Left", "next": "Right", "flicker": "Space", "rotate_left": "PgUp", "rotate_right": "PgDown",
-    "toggle_ui": "H", "fullscreen": "F11",
+    "toggle_ui": "H", "fullscreen": "F11", "type_drum": "T",
     "marks": DEFAULT_MARK_KEYS,
 }
 ROTATE_STEP = 90
@@ -105,6 +105,13 @@ def turn_angle(photos, number, delta, pattern=None, sizes=None):
     return targets
 
 
+def type_number(mark):
+    """«type:12» → 12; не тип — None."""
+    if mark and mark.startswith("type:") and mark[5:].isdigit():
+        return int(mark[5:])
+    return None
+
+
 def strip_label(mark):
     """Надпись на миниатюре: «type:2» → «ТИП 2» (пользователь 14.11.2026: «Т2» непонятно); у замечания — точка."""
     if mark and mark.startswith("type:") and mark[5:].isdigit():
@@ -154,7 +161,10 @@ def mark_counts(photos):
 def counts_text(photos, mark_keys):
     """«Тип 1: 3 · Дефект: 1 · Без отметки: 12» — только то, что есть, плюс всегда «Без отметки»."""
     counts = mark_counts(photos)
-    parts = ["{}: {}".format(mark_label(mark), counts[mark]) for mark in mark_keys if counts.get(mark)]
+    # Все типы, что есть, по номеру — с барабана ставятся и те, у кого нет своей клавиши (14.11.2026)
+    types = sorted((mark for mark in counts if type_number(mark) is not None), key=type_number)
+    others = [mark for mark in mark_keys if type_number(mark) is None]
+    parts = ["{}: {}".format(mark_label(mark), counts[mark]) for mark in types + others if counts.get(mark)]
     parts.append("Без отметки: {}".format(counts[None]))
     return " · ".join(parts)
 

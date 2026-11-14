@@ -169,19 +169,19 @@ def locked(rule, today=None, days=EDIT_DAYS):
     return (today or datetime.now()) - created > timedelta(days=days)
 
 
-def can_edit(rule, developer=False, today=None, days=EDIT_DAYS):
-    """Изменить: любой в первые days суток, разработчик — всегда."""
-    return developer or not locked(rule, today, days)
+def can_edit(rule, admin=False, today=None, days=EDIT_DAYS):
+    """Изменить: любой в первые days суток, администратор — всегда."""
+    return admin or not locked(rule, today, days)
 
 
-def can_delete(developer=False):
-    """Удалить насовсем — только разработчик (14.11.2026); остальным — архив."""
-    return bool(developer)
+def can_delete(admin=False):
+    """Удалить насовсем — только администратор (14.11.2026); остальным — архив."""
+    return bool(admin)
 
 
-def can_restore(rule, user_id, developer=False):
-    """Вернуть из архива — тот, кто убрал, или разработчик. Кто убрал, не записано (старый архив) — разработчик."""
-    return developer or (rule.archived_by is not None and rule.archived_by == user_id)
+def can_restore(rule, user_id, admin=False):
+    """Вернуть из архива — тот, кто убрал, или администратор. Кто убрал, не записано (старый архив) — администратор."""
+    return admin or (rule.archived_by is not None and rule.archived_by == user_id)
 
 
 def _search_text(rule, author):

@@ -596,7 +596,7 @@ def test_mark_key_saves_and_updates_everything(app):
     screen = app.screen
     app.qtbot.waitUntil(lambda: screen.strip._items[1].mark_color is not None, timeout=5000)
     assert screen.strip._items[1].mark_color.name() == "#f2a93b" and screen.strip._items[1].mark_text == "ТИП 2"
-    assert screen.mark_buttons["type:2"].isChecked() and not screen.mark_buttons["type:1"].isChecked()
+    assert screen.shown_type == 2 and screen.shown_type != 1
     assert "Тип 2: 1" in screen.counts_label.text() and "Без отметки: 5" in screen.counts_label.text()
     assert _marked_events(app) == [{"photo_id": _db_photos(app)[1].id, "mark": "type:2", "sn": None}]
     assert _db_photos(app)[1].marked_at
@@ -606,7 +606,7 @@ def test_same_mark_again_removes_it(app):
     app.wait_open()
     app.press(Qt.Key_1)
     _wait_db(app, lambda photos: photos[0].mark == "type:1")
-    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:1"].isChecked(), timeout=5000)
+    app.qtbot.waitUntil(lambda: app.screen.shown_type == 1, timeout=5000)
     app.press(Qt.Key_1)
     _wait_db(app, lambda photos: photos[0].mark is None)
     app.qtbot.waitUntil(lambda: app.screen.strip._items[0].mark_color is None, timeout=5000)
@@ -683,7 +683,7 @@ def test_changing_mark_keeps_hand_typed_sn(named):
     _wait_db(named, lambda photos: photos[2].sn == "ZZ1")
     named.press(Qt.Key_2)
     _wait_db(named, lambda photos: photos[2].mark == "type:2")
-    named.qtbot.waitUntil(lambda: screen.mark_buttons["type:2"].isChecked(), timeout=5000)
+    named.qtbot.waitUntil(lambda: screen.shown_type == 2, timeout=5000)
     assert _db_photos(named)[2].sn == "ZZ1" and screen.model.photos[2].sn == "ZZ1"
 
 
@@ -722,9 +722,9 @@ def test_buttons_are_disabled_while_flickering(app):
     app.wait_open()
     app.with_reference()  # эталон теперь только заданный («Найти такую же деталь»)
     _space(app.screen, QTest.Press)
-    assert not any(button.isEnabled() for button in app.screen.mark_buttons.values())
+    assert not any(button.isEnabled() for button in list(app.screen.mark_buttons.values()) + [app.screen.type_button])
     _space(app.screen, QTest.Release)
-    app.qtbot.waitUntil(lambda: all(button.isEnabled() for button in app.screen.mark_buttons.values()), timeout=5000)
+    app.qtbot.waitUntil(lambda: all(button.isEnabled() for button in list(app.screen.mark_buttons.values()) + [app.screen.type_button]), timeout=5000)
 
 
 def test_failed_write_leaves_mark_unchanged_and_says_so(app, monkeypatch):
@@ -737,12 +737,12 @@ def test_failed_write_leaves_mark_unchanged_and_says_so(app, monkeypatch):
     monkeypatch.setattr(folders, "mark_photo", broken)
     app.press(Qt.Key_1)
     app.qtbot.waitUntil(lambda: bool(app.screen.marks_status.text()), timeout=5000)
-    assert not app.screen.mark_buttons["type:1"].isChecked()
+    assert app.screen.shown_type != 1
     assert app.screen.strip._items[0].mark_color is None
     assert _marked_events(app) == []
     monkeypatch.undo()
     app.press(Qt.Key_1)
-    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:1"].isChecked(), timeout=5000)
+    app.qtbot.waitUntil(lambda: app.screen.shown_type == 1, timeout=5000)
     assert app.screen.marks_status.text() == ""
 
 
@@ -752,7 +752,7 @@ def test_two_quick_marks_land_in_order(app):
     app.press(Qt.Key_2)
     app.press(Qt.Key_3)
     _wait_db(app, lambda photos: photos[0].mark == "type:3")
-    app.qtbot.waitUntil(lambda: app.screen.mark_buttons["type:3"].isChecked(), timeout=5000)
+    app.qtbot.waitUntil(lambda: app.screen.shown_type == 3, timeout=5000)
 
 
 def test_mark_applies_to_active_window_photo(app):
@@ -780,7 +780,7 @@ def test_mark_keys_come_from_hotkeys_file(tmp_path, qtbot):
     app = App(tmp_path, qtbot)
     try:
         assert app.screen.mark_buttons["remark"].toolTip().endswith("R")
-        assert set(app.screen.mark_buttons) == {"type:1", "type:2", "type:3", "remark"}
+        assert set(app.screen.mark_buttons) == {"remark"} and app.screen.type_button.text() == "Присвоить ТИП"
     finally:
         app.stop()
 
@@ -882,7 +882,7 @@ def test_windows_are_folder_photos_each_flips_alone_and_marks_its_photo(app):
     QTest.mouseClick(third, Qt.LeftButton)
     app.press(Qt.Key_Right)
     app.wait_shown()
-    screen.mark_buttons["type:2"].click()
+    screen.assign_type(2)
     app.qtbot.waitUntil(lambda: screen.model.photos[3].mark == "type:2", timeout=3000)
     assert screen.model.photos[2].mark is None  # окно 1 с тем же фото раньше не тронуто
 
@@ -955,3 +955,26 @@ def test_fullscreen_hides_panels_and_window_bars_and_esc_returns_them(app):
     assert not screen.fullscreen
     state = json.loads((app.ctx.paths.root / "var" / "ui_state.json").read_text(encoding="utf-8"))
     assert state["compare_panels"] == before  # выбор панелей не перезаписан
+
+
+def test_assign_type_button_opens_drum_and_sets_any_type(app):
+    """14.11.2026: одна кнопка «Присвоить ТИП» с барабаном; клавиши 1–3 ставят тип сразу, как раньше."""
+    app.wait_open()
+    app.wait_shown()
+    screen = app.screen
+    assert screen.type_button.text() == "Присвоить ТИП"
+    app.press(Qt.Key_T)
+    assert screen.type_drum.isVisible() and screen.type_drum.value == 1
+    QTest.keyClick(screen.type_drum, Qt.Key_5)
+    _wait_db(app, lambda photos: photos[0].mark == "type:5")
+    app.qtbot.waitUntil(lambda: screen.shown_type == 5, timeout=5000)
+    assert screen.type_button.text() == "ТИП 5" and screen.type_button.isChecked()
+    assert screen.strip._items[0].mark_text == "ТИП 5" and "Тип 5: 1" in screen.counts_label.text()
+    screen.type_button.click()
+    assert screen.type_drum.value == 5 and not screen.type_drum.clear_button.isHidden()
+    screen.type_drum.clear_button.click()
+    _wait_db(app, lambda photos: photos[0].mark is None)
+    app.qtbot.waitUntil(lambda: screen.shown_type is None, timeout=5000)
+    assert screen.type_button.text() == "Присвоить ТИП" and not screen.type_button.isChecked()
+    app.press(Qt.Key_2)  # клавиша — сразу
+    _wait_db(app, lambda photos: photos[0].mark == "type:2")

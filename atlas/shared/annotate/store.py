@@ -40,6 +40,14 @@ class AnnotationStore(QObject):
             del self._histories[next(iter(self._histories))]
         self.changed.emit(path)
 
+    def replace(self, path, old, new):
+        """Подменить фигуру на изменённую (подпись сдвинули). False — фигуры уже нет (например, отменили)."""
+        history = self._histories.get(str(path))
+        if history is None or not history.replace(old, new):
+            return False
+        self.changed.emit(str(path))
+        return True
+
     def undo(self, path):
         return self._step(path, "undo")
 

@@ -8,12 +8,13 @@ from __future__ import annotations
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 
 from atlas.shared.annotate import model
-from atlas.shared.annotate.paint import paint_shapes
+from atlas.shared.annotate.paint import label_path, paint_shapes
 
 TOOL_CROP = "crop"
 TOOL_ELLIPSE = "ellipse"
 TOOL_LABEL = "label"
 TOOLS = (TOOL_CROP, TOOL_ELLIPSE, TOOL_LABEL)
+LABEL_GRAB_PX = 4.0  # запас вокруг букв подписи, за который её можно ухватить
 MIN_DRAG = 0.01  # меньше этой доли фото по стороне — это клик, а не выделение
 
 
@@ -40,6 +41,7 @@ class AnnotationOverlay(QObject):
         self._tool = None
         self._views = []
         self._draft = None  # (окно, начало (x, y) в долях фото, текущая фигура)
+        self._moving = None  # (окно, исходная подпись, сдвиг точки захвата от угла подписи, подпись на новом месте)
         store.changed.connect(self._on_changed)
 
     @property
@@ -62,6 +64,7 @@ class AnnotationOverlay(QObject):
             return
         self._tool = tool
         self._draft = None
+        self._moving = None
         for view in self._views:
             view.refresh_cursor()
             view.update()
@@ -69,6 +72,8 @@ class AnnotationOverlay(QObject):
 
     # --- для PhotoView --------------------------------------------------------
     def cursor(self):
+        if self._moving is not None:
+            return Qt.ClosedHandCursor
         if self._tool == TOOL_LABEL:
             return Qt.IBeamCursor
         return Qt.CrossCursor if self._tool else None
@@ -77,6 +82,8 @@ class AnnotationOverlay(QObject):
         if view.path is None or not view.is_current_shown:
             return
         shapes = list(self._store.shapes(view.path))
+        if self._moving is not None and self._moving[0] is view:
+            shapes = [self._moving[3] if item is self._moving[1] else item for item in shapes]
         if self._draft is not None and self._draft[0] is view:
             shapes.append(self._draft[2])
         if shapes:
@@ -89,6 +96,10 @@ class AnnotationOverlay(QObject):
             return True  # фото ещё грузится: рисовать не на чем, но и сдвигать в этот момент незачем
         x, y = view.widget_to_photo(event.pos())
         if self._tool == TOOL_LABEL:
+            grabbed = self._label_at(view, event.pos())
+            if grabbed is not None:  # подпись уже стоит — тянем её; новая ставится только на пустом месте
+                self._moving = (view, grabbed, (x - grabbed.x, y - grabbed.y), grabbed)
+                return True
             self._place_label(view, x, y)
             return True
         if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
@@ -97,6 +108,13 @@ class AnnotationOverlay(QObject):
         return True
 
     def mouse_move(self, view, event):
+        if self._moving is not None and self._moving[0] is view:
+            _, label, grab, _ = self._moving
+            x, y = view.widget_to_photo(event.pos())
+            moved = model.Label(min(1.0, max(0.0, x - grab[0])), min(1.0, max(0.0, y - grab[1])), label.text)
+            self._moving = (view, label, grab, moved)
+            view.update()
+            return True
         if self._draft is None or self._draft[0] is not view:
             return False
         x, y = view.widget_to_photo(event.pos())
@@ -106,6 +124,13 @@ class AnnotationOverlay(QObject):
         return True
 
     def mouse_release(self, view, event):
+        if self._moving is not None and self._moving[0] is view and event.button() == Qt.LeftButton:
+            _, label, _, moved = self._moving
+            self._moving = None
+            view.update()
+            if moved != label:
+                self._store.replace(view.path, label, moved)
+            return True
         if self._draft is None or self._draft[0] is not view or event.button() != Qt.LeftButton:
             return False
         _, _, shape = self._draft
@@ -119,6 +144,16 @@ class AnnotationOverlay(QObject):
     def owns(self, event):
         """Событие мыши принадлежит рисованию: левая кнопка без Shift/Ctrl."""
         return event.button() == Qt.LeftButton and not event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)
+
+    def _label_at(self, view, pos):
+        """Верхняя (последняя поставленная) подпись фото под точкой окна или None."""
+        mapper = _Mapper(view)
+        for shape in reversed(self._store.shapes(view.path)):
+            if isinstance(shape, model.Label) and shape.text:
+                box = label_path(shape, mapper).boundingRect().adjusted(-LABEL_GRAB_PX, -LABEL_GRAB_PX, LABEL_GRAB_PX, LABEL_GRAB_PX)
+                if box.contains(pos):
+                    return shape
+        return None
 
     def _shape(self, x0, y0, x1, y1):
         cls = model.Crop if self._tool == TOOL_CROP else model.Ellipse

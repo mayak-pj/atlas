@@ -87,6 +87,15 @@ class History:
             shapes = tuple(item for item in shapes if not isinstance(item, Crop))
         self._push(shapes + (shape,))
 
+    def replace(self, old, new):
+        """Заменить фигуру (сдвинутая подпись): отмена вернёт прежнюю. False — такой фигуры уже нет."""
+        shapes = self.shapes
+        for index, item in enumerate(shapes):
+            if item is old:
+                self._push(shapes[:index] + (new,) + shapes[index + 1:])
+                return True
+        return False
+
     def clear(self):
         if self.shapes:
             self._push(())

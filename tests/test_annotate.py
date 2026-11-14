@@ -392,3 +392,36 @@ def test_works_without_compare(tmp_path, qtbot):
     tools.undo()
     registry.stop_all()
     assert ctx.services.get_optional("annotations") is None
+
+
+def test_label_can_be_dragged_and_undone(setup):
+    view, store, overlay, asked = setup
+    overlay.set_tool(TOOL_LABEL)
+    point = view.photo_to_widget(0.3, 0.4)
+    start = (int(point.x()), int(point.y()))
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(*start))
+    (placed,) = store.shapes("a")
+    grab = (start[0] + 8, start[1] + 8)  # внутри первых букв
+    drag(view, grab, (grab[0] + 120, grab[1] + 90))
+    (moved,) = store.shapes("a")  # новая подпись не поставлена, прежняя сдвинута
+    assert len(asked) == 1 and moved.text == "Скол"
+    assert moved.x > placed.x and moved.y > placed.y
+    assert store.undo("a") and store.shapes("a") == (placed,)
+
+
+def test_label_drag_keeps_it_inside_photo(setup):
+    view, store, overlay, asked = setup
+    overlay.set_tool(TOOL_LABEL)
+    point = view.photo_to_widget(0.3, 0.4)
+    start = (int(point.x()), int(point.y()))
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, QPoint(*start))
+    grab = (start[0] + 8, start[1] + 8)
+    drag(view, grab, (grab[0] - 5000, grab[1] - 5000))
+    (moved,) = store.shapes("a")
+    assert moved.x == 0.0 and moved.y == 0.0
+
+
+def test_history_replace_unknown_shape_is_ignored():
+    history = History()
+    history.add(Label(0.1, 0.1, "a"))
+    assert not history.replace(Label(0.1, 0.1, "a"), Label(0.2, 0.2, "a"))  # другой объект — не наша фигура

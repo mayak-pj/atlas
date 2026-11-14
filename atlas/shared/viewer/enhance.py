@@ -4,7 +4,7 @@
 (ESPCN, FSRCNN, EDSR) на размытых платах почти ничего не дали, а деконволюция Ричардсона–Люси «снимает» размытие
 и честно возвращает то, что было в кадре.
 
-Режимы (названия — по библиотекам, плюсы — уровень; «вес» — в `data/enhance_modes.json`):
+Режимы (названия — по библиотекам, значок — уровень; «вес» — в `data/enhance_modes.json`):
   light  — усиление границ на чистом Qt (high-pass + «жёсткий свет»), работает всегда;
   deblur — деконволюция по яркости, степень размытия оценивается по фото (нужны opencv и numpy);
   max    — подавление шума + более сильная деконволюция + местный контраст CLAHE.
@@ -34,9 +34,9 @@ _SHARP_RATIO = 0.27  # у резкого кадра около 0,22, у слег
 _ITERATIONS = {MODE_DEBLUR: 25, MODE_MAX: 40}
 
 _FALLBACK_MODES = (
-    {"id": MODE_LIGHT, "title": "+ Qt", "weight": "мгновенно"},
-    {"id": MODE_DEBLUR, "title": "++ OpenCV", "weight": "0,1–1 с"},
-    {"id": MODE_MAX, "title": "+++ OpenCV NLM", "weight": "1–6 с"},
+    {"id": MODE_LIGHT, "title": "Qt", "icon": "signal-low", "weight": "мгновенно"},
+    {"id": MODE_DEBLUR, "title": "OpenCV", "icon": "signal-medium", "weight": "0,1–1 с"},
+    {"id": MODE_MAX, "title": "OpenCV NLM", "icon": "signal-high", "weight": "1–6 с"},
 )
 
 

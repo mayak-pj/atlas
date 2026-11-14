@@ -1,5 +1,5 @@
 [
-  {"id": "light", "title": "+ Qt", "weight": "мгновенно"},
-  {"id": "deblur", "title": "++ OpenCV", "weight": "0,1–1 с"},
-  {"id": "max", "title": "+++ OpenCV NLM", "weight": "1–6 с"}
+  {"id": "light", "title": "Qt", "icon": "signal-low", "weight": "мгновенно"},
+  {"id": "deblur", "title": "OpenCV", "icon": "signal-medium", "weight": "0,1–1 с"},
+  {"id": "max", "title": "OpenCV NLM", "icon": "signal-high", "weight": "1–6 с"}
 ]

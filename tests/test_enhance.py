@@ -128,10 +128,10 @@ def test_compare_screen_has_quality_button(qtbot, qapp):
     qtbot.addWidget(screen)
     control = screen.enhance_control
     assert control.text() == "Качество" and control.active_mode() is None and control.mode == "deblur"
-    assert control.drum.labels == {1: "+ Qt", 2: "++ OpenCV", 3: "+++ OpenCV NLM"}
-    control.drum.chosen.emit(3)  # выбрали на барабане «Максимум»
+    assert [row.text() for row in control.drum.rows] == ["Qt", "OpenCV", "OpenCV NLM"]
+    control.drum.chosen.emit(2)  # выбрали в списке «OpenCV NLM»
     assert control.active_mode() == "max" and control.isChecked()
-    assert control.text() == "Качество: +++ OpenCV NLM"
+    assert control.text() == "Качество: OpenCV NLM"
     assert all(view.enhance_mode == "max" for view in screen.views)
     control.drum.cleared.emit()  # «Выключить»
     assert control.active_mode() is None and control.text() == "Качество"
@@ -147,18 +147,18 @@ def test_quality_button_keeps_state_when_clicked_and_offers_off(qtbot, qapp):
     qtbot.addWidget(screen)
     screen.show()
     control = screen.enhance_control
-    control.drum.chosen.emit(2)
+    control.drum.chosen.emit(1)
     assert control.active_mode() == "deblur"
     control.click()  # открывает барабан; кнопка остаётся включённой
     assert control.isChecked() and control.active_mode() == "deblur"
-    assert control.drum.isVisible() and not control.drum.clear_button.isHidden()
+    assert control.drum.isVisible() and not control.drum.off_row.isHidden()
     control.drum.hide()
     control.click()
     assert control.isChecked() and control.active_mode() == "deblur"
     control.drum.cleared.emit()
     assert not control.isChecked() and control.active_mode() is None
     control.click()  # выключено: барабан без «Выключить»
-    assert control.drum.clear_button.isHidden()
+    assert control.drum.off_row.isHidden()
     control.drum.hide()
 
 

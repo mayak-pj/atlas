@@ -8,8 +8,9 @@
   light  — усиление границ на чистом Qt (high-pass + «жёсткий свет»), работает всегда;
   deblur — деконволюция по яркости, степень размытия оценивается по фото (нужны opencv и numpy);
   max    — подавление шума + более сильная деконволюция + местный контраст CLAHE;
-  pro    — только Mac (презентация): плитки со своей оценкой размытия, деконволюция с регуляризацией по полной
-           вариации (меньше шума и «звона»), шумоподавление, контраст. На Windows в списке серый, включить нельзя.
+  pro    — только Mac (презентация): часть фото растягивается до размера на экране и там снимается размытие
+           (деконволюция с регуляризацией по полной вариации, плитки); мелкие элементы остаются чёткими при большом зуме.
+           На Windows в списке серый, включить нельзя.
 """
 from __future__ import annotations
 
@@ -35,8 +36,10 @@ _MIN_SIGMA, _MAX_SIGMA = 0.5, 3.5  # меньше — фото и так рез�
 _SIGMA_BY_RATIO = ((0.30, 0.5), (0.44, 1.0), (0.60, 1.5), (0.72, 2.0), (0.86, 3.0), (0.92, 4.0))
 _SHARP_RATIO = 0.27  # у резкого кадра около 0,22, у слегка смягчённого (общий вид, L1) 0,25–0,3
 _ITERATIONS = {MODE_DEBLUR: 25, MODE_MAX: 40, MODE_PRO: 40}
-_TILE, _TILE_OVERLAP = 224, 48  # «Pro»: размытие оценивается по плиткам, края плиток сшиваются плавно
-_PRO_PASSES = 1  # «Pro»: проходов оценки и снятия размытия на плитку; на втором проходе появлялись ореолы и искажения букв
+_TILE, _TILE_OVERLAP = 256, 56  # «Pro»: размытие оценивается по плиткам, края плиток сшиваются плавно
+_PRO_MAX_SIGMA = 10.0  # «Pro»: потолок размытия на сетке экрана; выше на настоящих фото появляются ложные «бусинки» на штрихах
+_PRO_MIN_ITERATIONS, _PRO_MAX_ITERATIONS = 30, 80
+_FLAT_RANGE = 0.02  # размах яркости плитки (0…1), меньше которого плитка считается ровной
 _TV_WEIGHT = 0.004  # «Pro»: сила регуляризации по полной вариации (меньше шума и «звона» у краёв)
 PLATFORMS = {MODE_PRO: ("darwin",)}  # режимы, которые считаются только на этих платформах (sys.platform); остальные — везде
 
@@ -97,6 +100,8 @@ def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE):
         return None
     if mode == MODE_LIGHT:
         return _light(image, source, width, height)
+    if mode == MODE_PRO:
+        return _pro(image, source, width, height)
     return _deblur(image, source, width, height, mode)
 
 
@@ -202,12 +207,17 @@ def richardson_lucy_tv(gray, sigma, iterations, weight=_TV_WEIGHT):
     return estimate
 
 
-def _pro_luma(luma):
-    """Яркость «Pro»: плитки со своей оценкой размытия (резкие места не трогаются), RL-TV, шумоподавление, контраст."""
+def _pro_luma(luma, sigma):
+    """Яркость «Pro» на той сетке, которая видна на экране: плитки, RL-TV, плавная сшивка; ровные плитки пропускаются.
+
+    sigma — размытие в пикселях этой сетки. Число шагов растёт с размытием (45…80): дальше на настоящих фото
+    появляются ложные «бусинки» на штрихах и двойные края, то есть дорисовка.
+    """
     height, width = luma.shape
     source = luma.astype(np.float32) / 255.0 + 1e-4
     total = np.zeros_like(source)
     weight_sum = np.zeros_like(source)
+    iterations = int(min(_PRO_MAX_ITERATIONS, _PRO_MIN_ITERATIONS + 6 * sigma))
     step = _TILE - _TILE_OVERLAP
     ramp = np.minimum(1.0, (np.arange(_TILE, dtype=np.float32) + 1) / _TILE_OVERLAP * 2)
     window = np.minimum(ramp, ramp[::-1])
@@ -217,18 +227,41 @@ def _pro_luma(luma):
             bottom, right = min(height, top + _TILE), min(width, left + _TILE)
             top0, left0 = max(0, bottom - _TILE), max(0, right - _TILE)  # плитка у края — прежнего размера
             tile = source[top0:bottom, left0:right]
-            done = tile
-            for _ in range(_PRO_PASSES):  # после прохода размытие оценивается заново: ещё мягко — ещё проход, резко — стоп
-                sigma = estimate_sigma(done * 255.0)
-                if sigma is None:
-                    break
-                done = richardson_lucy_tv(done, sigma, _ITERATIONS[MODE_PRO])
+            flat = float(tile.max() - tile.min()) < _FLAT_RANGE  # ровное поле: деконволюция добавила бы только шум
+            done = tile if flat else richardson_lucy_tv(tile, sigma, iterations)
             part = window[: tile.shape[0], : tile.shape[1]]
             total[top0:bottom, left0:right] += done * part
             weight_sum[top0:bottom, left0:right] += part
-    result = np.clip(total / np.maximum(weight_sum, 1e-6) * 255.0, 0, 255).astype(np.uint8)
-    result = cv2.fastNlMeansDenoising(result, None, 3, 5, 15)
-    return cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4, 4)).apply(result)
+    return np.clip(total / np.maximum(weight_sum, 1e-6) * 255.0, 0, 255).astype(np.uint8)
+
+
+def _pro(image, source, width, height):
+    """«Pro»: растянуть часть фото до размера на экране и снимать размытие уже там. Так мелкие элементы остаются чёткими
+    при большом зуме, а не растягиваются мягкими. Окно меньше фото — деконволюция в размере фото и уменьшение."""
+    rect = source.toAlignedRect().adjusted(-_PAD, -_PAD, _PAD, _PAD).intersected(image.rect())
+    if rect.isEmpty():
+        return None
+    ycc = cv2.cvtColor(_to_bgr(image.copy(rect)), cv2.COLOR_BGR2YCrCb)
+    sigma = estimate_sigma(ycc[:, :, 0].astype(np.float32))
+    scale_x, scale_y = width / source.width(), height / source.height()
+    magnify = min(scale_x, scale_y) >= 1.0
+    size = (max(1, round(rect.width() * scale_x)), max(1, round(rect.height() * scale_y)))
+    if magnify:
+        ycc = cv2.resize(ycc, size, interpolation=cv2.INTER_CUBIC)  # не Lanczos: у него свой «звон» на краях
+        if sigma is not None:
+            grid = min(scale_x, scale_y)  # размытие фото на сетке экрана плюс сглаживание самого растягивания
+            sigma = min(float((sigma ** 2 * grid ** 2 + (0.5 * grid) ** 2) ** 0.5), _PRO_MAX_SIGMA)
+    if sigma is not None:
+        ycc[:, :, 0] = _pro_luma(ycc[:, :, 0], sigma)
+    result = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
+    if not magnify:
+        result = cv2.resize(result, size, interpolation=cv2.INTER_AREA)
+    left = round((source.left() - rect.left()) * scale_x)
+    top = round((source.top() - rect.top()) * scale_y)
+    out = result[top:top + height, left:left + width]
+    if out.shape[0] != height or out.shape[1] != width:
+        out = cv2.resize(out, (width, height), interpolation=cv2.INTER_LINEAR)
+    return _to_qimage(np.ascontiguousarray(out))
 
 
 def _deblur(image, source, width, height, mode):
@@ -238,11 +271,7 @@ def _deblur(image, source, width, height, mode):
     bgr = _to_bgr(image.copy(rect))
     ycc = cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb)
     luma = ycc[:, :, 0]
-    if mode == MODE_PRO:
-        ycc[:, :, 0] = _pro_luma(luma)
-        sigma = None
-    else:
-        sigma = estimate_sigma(luma.astype(np.float32))
+    sigma = estimate_sigma(luma.astype(np.float32))
     if sigma is not None:
         if mode == MODE_MAX:
             luma = cv2.fastNlMeansDenoising(luma, None, 4, 5, 15)

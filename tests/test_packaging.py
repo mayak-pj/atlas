@@ -68,7 +68,8 @@ def test_assemble_places_settings_and_checks_next_to_exe(tmp_path):
     bat = (dist / "check_db.bat").read_bytes()
     assert b"\r\n" in bat and b"\n" not in bat.replace(b"\r\n", b"")
     assert "Папка" in bat.decode("cp866")
-    assert (dist / "WIN7_CHECK.txt").read_bytes().startswith(b"\xef\xbb\xbf")
+    for name in ("WIN7_CHECK.txt", "WIN_TEST_QUALITY.txt"):  # обе инструкции выезда — рядом с программой, в UTF-8 с BOM
+        assert (dist / name).read_bytes().startswith(b"\xef\xbb\xbf")
 
 
 # --- --selfcheck -----------------------------------------------------------------------

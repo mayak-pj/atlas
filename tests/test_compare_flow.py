@@ -293,11 +293,14 @@ def test_flicker_restores_own_place_without_sync(app):
     app.wait_shown()
     app.screen.sync_button.click()
     view = app.screen.views[1]
-    view.set_state(5.0, 0.3, 0.7)
+    # зум 8 и центр подальше от краёв: у края центр прижимается, и на низком окне (много строк кнопок) число уезжало
+    view.set_state(8.0, 0.4, 0.6)
+    placed = view.state()
+    assert placed == pytest.approx((8.0, 0.4, 0.6))
     _space(app.screen, QTest.Press)
     _space(app.screen, QTest.Release)
     app.wait_shown()
-    assert view.state() == pytest.approx((5.0, 0.3, 0.7))
+    assert view.state() == pytest.approx(placed)
 
 
 def test_flicker_restores_place_after_reference_of_other_shape(app, tmp_path):

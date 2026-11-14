@@ -477,15 +477,14 @@ def test_sync_off_aligns_reference_in_memory_then_they_turn_together(app, qtbot)
 
 def test_sync_off_keeps_other_window_place_and_group_state(app):
     screen = _found_reference(app)
-    screen.group.set_state(6.0, 0.3, 0.4)
+    screen.group.set_state(8.0, 0.4, 0.55)  # подальше от краёв: у края центр прижимается и зависит от высоты окна
     screen.sync_button.click()
     other = screen.views[0].state()
     group_state = screen.group.state
     app.press(Qt.Key_PageDown)
     assert screen.views[0].state() == other
     assert screen.group.state == group_state
-    # допуск по высоте: от высоты окна зависит, насколько центр прижат к краю фото (строка «Улучшить» её меняет)
-    assert screen.views[1].state() == pytest.approx((6.0, 0.6, 0.3), abs=0.01)
+    assert screen.views[1].state() == pytest.approx((8.0, 0.45, 0.4))  # поворот на 90°: (cx, cy) → (1 − cy, cx)
 
 
 def test_single_window_turns_with_reference_only_with_sync(app):

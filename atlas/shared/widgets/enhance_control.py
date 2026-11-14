@@ -10,6 +10,7 @@ from __future__ import annotations
 from PyQt5.QtCore import QPoint, Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
+from atlas.shared.viewer import enhance
 from atlas.shared.widgets.icons import set_icon
 
 TEXT_BUTTON = "Качество"
@@ -18,6 +19,7 @@ TIP_BUTTON = ("Мелкие детали и надписи чётче: фото 
               "Ничего не дорисовывается. Нажмите — выберите режим; включённый работает на любом масштабе")
 DEFAULT_ICON = "signal-medium"
 ROW_HEIGHT = 36
+LIST_WIDTH = 250  # чтобы «только Mac» у серой строки не наезжало на название
 ROW_FONT_PX = 14
 TIME_FONT_PX = 12
 
@@ -25,8 +27,9 @@ TIME_FONT_PX = 12
 class _Row(QPushButton):
     """Одна строка списка: значок и название слева, время справа."""
 
-    def __init__(self, title, icon_name, weight):
+    def __init__(self, title, icon_name, weight, available=True):
         super().__init__(title)
+        self.setEnabled(available)  # серая: на этой машине режим не включается
         self.setCheckable(True)
         self.setFocusPolicy(Qt.NoFocus)
         self.setMinimumHeight(ROW_HEIGHT)
@@ -51,13 +54,18 @@ class _ModeList(QFrame):
     def __init__(self, modes, parent):
         super().__init__(parent, Qt.Popup)
         self.setProperty("role", "panel")
+        self.setMinimumWidth(LIST_WIDTH)
         column = QVBoxLayout(self)
         column.setContentsMargins(6, 6, 6, 6)
         column.setSpacing(4)
         self.rows = []
+        self.available = []
         for number, mode in enumerate(modes):
-            row = _Row(mode["title"], mode.get("icon", DEFAULT_ICON), mode.get("weight", ""))
+            available = enhance.platform_ok(mode)
+            weight = mode.get("weight", "") if available else mode.get("unavailable", "недоступно")
+            row = _Row(mode["title"], mode.get("icon", DEFAULT_ICON), weight, available)
             row.clicked.connect(lambda _=False, n=number: self._pick(n))
+            self.available.append(available)
             column.addWidget(row)
             self.rows.append(row)
         self.off_row = QPushButton(TEXT_OFF)
@@ -81,6 +89,15 @@ class _ModeList(QFrame):
         self.show()
         self.setFocus()
 
+    def _step(self, delta):
+        """Соседняя доступная строка (серые пропускаются); некуда — остаёмся."""
+        number = self.current + delta
+        while 0 <= number < len(self.rows):
+            if self.available[number]:
+                return number
+            number += delta
+        return self.current
+
     def _mark(self):
         for n, row in enumerate(self.rows):
             row.setChecked(n == self.current)
@@ -96,13 +113,14 @@ class _ModeList(QFrame):
     def keyPressEvent(self, event):
         key = event.key()
         if key in (Qt.Key_Up, Qt.Key_Left):
-            self.current = max(0, self.current - 1)
+            self.current = self._step(-1)
             self._mark()
         elif key in (Qt.Key_Down, Qt.Key_Right):
-            self.current = min(len(self.rows) - 1, self.current + 1)
+            self.current = self._step(1)
             self._mark()
         elif key in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
-            self._pick(self.current)
+            if self.available[self.current]:
+                self._pick(self.current)
         elif key == Qt.Key_Escape:
             self.hide()
         else:
@@ -117,13 +135,15 @@ class EnhanceControl(QPushButton):
         self.setCheckable(True)
         self.setFocusPolicy(Qt.NoFocus)
         self.setToolTip(TIP_BUTTON)
+        modes = list(modes)
         self._ids = [mode["id"] for mode in modes]
         self._titles = {mode["id"]: mode["title"] for mode in modes}
         self._icons = {mode["id"]: mode.get("icon", DEFAULT_ICON) for mode in modes}
         self.drum = _ModeList(modes, self)  # имя прежнее: так его знают тесты и экран
         self.drum.chosen.connect(self._on_chosen)
         self.drum.cleared.connect(lambda: self.set_active(False, emit=True))
-        self._mode = default_mode if default_mode in self._ids else (self._ids[0] if self._ids else None)
+        usable = [mode["id"] for mode in modes if enhance.platform_ok(mode)]
+        self._mode = default_mode if default_mode in usable else (usable[0] if usable else None)
         self._on = False  # включено ли улучшение; не isChecked(): клик по кнопке переключает её сам, раньше нашего кода
         self.clicked.connect(lambda _=False: self.open_drum())
         self._refresh()

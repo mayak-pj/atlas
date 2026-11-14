@@ -1,6 +1,6 @@
 """Улучшение фото при приближении (шаг 12.5): резкость в рабочем потоке, файл и кэш не меняются."""
 import pytest
-from PyQt5.QtCore import QRectF
+from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QColor, QImage, QPainter
 
 from atlas.core.theme import apply_theme
@@ -84,7 +84,7 @@ def test_sharp_photo_is_left_alone(qapp):
 def test_modes_file_and_fallback(tmp_path):
     from pathlib import Path
     modes = enhance.load_modes(Path(__file__).resolve().parent.parent / "data" / "enhance_modes.json")
-    assert [m["id"] for m in modes] == ["light", "deblur", "max"] and all(m["weight"] for m in modes)
+    assert [m["id"] for m in modes] == ["light", "deblur", "max", "pro"] and all(m["weight"] for m in modes)
     assert enhance.load_modes(tmp_path / "нет.json") == enhance.load_modes(None)
     assert enhance.usable_mode("nonsense") is None
 
@@ -128,7 +128,7 @@ def test_compare_screen_has_quality_button(qtbot, qapp):
     qtbot.addWidget(screen)
     control = screen.enhance_control
     assert control.text() == "Качество" and control.active_mode() is None and control.mode == "deblur"
-    assert [row.text() for row in control.drum.rows] == ["Qt", "OpenCV", "OpenCV NLM"]
+    assert [row.text() for row in control.drum.rows][:3] == ["Qt", "OpenCV", "OpenCV NLM"]
     control.drum.chosen.emit(2)  # выбрали в списке «OpenCV NLM»
     assert control.active_mode() == "max" and control.isChecked()
     assert control.text() == "Качество: OpenCV NLM"
@@ -176,3 +176,39 @@ def test_big_window_is_enhanced_too(qtbot, qapp, monkeypatch):
     view.set_photo("a.jpg")
     qtbot.waitUntil(lambda: view._enh_image is not None, timeout=5000)
     assert view._enh_image.width() * view._enh_image.height() <= 60_000 * 1.01
+
+
+def test_pro_is_clean_and_sharper_than_plain(qapp):
+    cv2 = pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    sharp, soft = blurred_text()
+    rng = np.random.default_rng(1)
+    noisy = np.clip(soft.astype(np.float32) + rng.normal(0, 3, soft.shape), 0, 255).astype(np.uint8)
+    image = QImage(noisy.data, 300, 120, noisy.strides[0], QImage.Format_RGB888).rgbSwapped().copy()
+    out = enhance.enhanced_crop(image, QRectF(0, 0, 300, 120), 900, 360, "pro")
+    ptr = out.constBits()
+    ptr.setsize(out.byteCount())
+    got = np.frombuffer(ptr, np.uint8).reshape(360, out.bytesPerLine())[:, : 900 * 4].reshape(360, 900, 4)[:, :, :3]
+    gray = lambda a: cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    plain = cv2.resize(gray(noisy), (900, 360), interpolation=cv2.INTER_CUBIC)
+    assert enhance._edge_energy(gray(got)) > enhance._edge_energy(plain) * 1.5
+    assert gray(got)[250:350, 10:150].std() < plain[250:350, 10:150].std()  # шум на фоне не вырос, а упал
+
+
+def test_pro_is_mac_only(qtbot, qapp, monkeypatch):
+    modes = enhance.load_modes(None)
+    pro = [m for m in modes if m["id"] == "pro"][0]
+    monkeypatch.setattr(enhance.sys, "platform", "win32")
+    assert not enhance.platform_ok(pro) and enhance.platform_ok(modes[0])
+    assert enhance.usable_mode("pro") == "max"  # на Windows «Pro» подменяется «OpenCV NLM»
+    from atlas.shared.widgets.enhance_control import EnhanceControl
+    control = EnhanceControl(modes, "pro")
+    qtbot.addWidget(control)
+    assert not control.drum.rows[3].isEnabled() and control.drum.rows[2].isEnabled()
+    assert control.mode != "pro"  # серый режим по умолчанию не выбирается
+    control.drum.show()
+    qtbot.keyClick(control.drum, Qt.Key_Down)  # серую строку стрелки пропускают
+    assert control.drum.current != 3
+    monkeypatch.setattr(enhance.sys, "platform", "darwin")
+    assert enhance.platform_ok(pro) and enhance.usable_mode("pro") == "pro"
+    assert EnhanceControl(modes, "pro").drum.rows[3].isEnabled()

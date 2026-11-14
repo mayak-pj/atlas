@@ -22,6 +22,7 @@ from atlas.shared.widgets.name_tag import NameTag
 COVER_HEIGHT = 220
 DESTROY_MS = 650
 TEXT_NEW = "НОВОЕ"
+TEXT_NEW_ARCHIVED = "УШЛО В АРХИВ"
 TEXT_READ = "Прочитано"
 TEXT_ARCHIVED = "В архиве"
 TEXT_ARCHIVED_BY = "В архиве · {}"
@@ -155,6 +156,8 @@ class RuleTile(QFrame):
         head.setSpacing(6)
         if not rule.read and not rule.archived:
             head.addWidget(_pill(TEXT_NEW, "type2"))
+        if rule.archive_news:
+            head.addWidget(_pill(TEXT_NEW_ARCHIVED, "type2"))
         head.addWidget(_pill(logic.scope_text(rule), "muted" if rule.scope == logic.SCOPE_GENERAL else "ok"))
         head.addStretch(1)
         self.edit_button = _square("pencil", TIP_EDIT)
@@ -198,7 +201,7 @@ class RuleTile(QFrame):
         if rule.archived:
             who = ", ".join(part for part in (archiver, logic.short_date(rule.archived_at, today)) if part)
             foot.addWidget(_label(TEXT_ARCHIVED_BY.format(who) if who else TEXT_ARCHIVED, "caption", wrap=False))
-        elif not rule.read:
+        if rule.archive_news or (not rule.read and not rule.archived):
             read = QPushButton(TEXT_READ)
             read.setFocusPolicy(Qt.NoFocus)
             read.clicked.connect(lambda _=False: self.read_clicked.emit(rule.id))

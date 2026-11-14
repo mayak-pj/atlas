@@ -533,3 +533,19 @@ def test_photo_dialog_shows_all_photos_side_by_side_or_stacked_and_moves_them_to
     qtbot.addWidget(single)
     assert single.multi.isHidden() and all(button.isHidden() for button in single.arrange_buttons.values())
     PhotoDialog.arrange = None
+
+
+# --- ушло в архив, а человек уже читал (шаг 12.2) ------------------------------------------
+def test_archive_news_for_those_who_read_before(app):
+    part, folder = app.folder()
+    rule_id = app.rules.repo.add(logic.checked(logic.draft_for("general", None, "Общее", "")), app.ivanova.id)
+    app.rules.repo.mark_read([rule_id], app.petrov.id)
+    app.ctx.db.write(lambda conn: conn.execute("UPDATE rule_reads SET read_at = '2026-01-01 10:00:00'"))  # читал давно
+    app.rules.repo.set_archived(rule_id, True, app.ivanova.id)
+    since = "2000-01-01 00:00:00"
+    assert app.rules.repo.all(app.petrov.id, since)[0].archive_news is True
+    assert app.rules.repo.all(app.ivanova.id, since)[0].archive_news is False  # сама убрала
+    assert app.rules.repo.all(app.petrov.id, "2999-01-01 00:00:00")[0].archive_news is False
+    assert logic.has_news(app.rules.repo.all(app.petrov.id, since))
+    app.ctx.db.write(lambda conn: conn.execute("UPDATE rule_reads SET read_at = '2999-01-01 10:00:00'"))  # «Прочитано» позже архива
+    assert app.rules.repo.all(app.petrov.id, since)[0].archive_news is False

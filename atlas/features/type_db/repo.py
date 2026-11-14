@@ -44,6 +44,9 @@ class Repo:
                 (part_id, kind, type_no, description, article or None, photo_rel, crop_rel, source_photo,
                  source_sn or None, user_id, created_at or now_text()),
             )
+            if user_id is not None:  # свой тип автор уже видел
+                conn.execute("INSERT OR IGNORE INTO type_seen (type_id, user_id, seen_at) VALUES (?, ?, ?)",
+                             (cur.lastrowid, user_id, created_at or now_text()))
             return cur.lastrowid
 
         return self.db.write(work)
@@ -91,6 +94,7 @@ class Repo:
             if row is None:
                 return None
             conn.execute("DELETE FROM types WHERE id = ?", (type_id,))
+            conn.execute("DELETE FROM type_seen WHERE type_id = ?", (type_id,))
             return TypeRecord(*row)
 
         return self.db.write(work)
@@ -102,6 +106,32 @@ class Repo:
             return [TypeRecord(*row) for row in rows]
 
         return self.db.read(work)
+
+    def news_base(self):
+        """С какого времени что-то считается новым (применение миграции 003) или ""."""
+        return self.db.read(lambda conn: (conn.execute("SELECT MAX(at) FROM type_news_base").fetchone()[0] or ""))
+
+    def seen(self, user_id):
+        """{id записи: когда этот человек открывал карточку}."""
+        return self.db.read(lambda conn: {row[0]: row[1] for row in conn.execute(
+            "SELECT type_id, seen_at FROM type_seen WHERE user_id = ?", (user_id,))})
+
+    def mark_seen(self, type_ids, user_id):
+        """Человек открыл карточки: время обновляется, чтобы следующая архивация снова была «новой»."""
+        def work(conn):
+            now = now_text()
+            for type_id in type_ids:
+                conn.execute("INSERT INTO type_seen (type_id, user_id, seen_at) VALUES (?, ?, ?) "
+                             "ON CONFLICT (type_id, user_id) DO UPDATE SET seen_at = excluded.seen_at",
+                             (type_id, user_id, now))
+
+        self.db.write(work)
+
+    def mark_all_seen(self, user_id):
+        now = now_text()
+        self.db.write(lambda conn: conn.execute(
+            "INSERT INTO type_seen (type_id, user_id, seen_at) SELECT id, ?, ? FROM types WHERE true "
+            "ON CONFLICT (type_id, user_id) DO UPDATE SET seen_at = excluded.seen_at", (user_id, now)))
 
     def for_part(self, part_id, include_archived=False):
         def work(conn):

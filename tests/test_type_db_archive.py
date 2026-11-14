@@ -271,3 +271,38 @@ def test_archive_failure_is_shown_and_card_stays(app, monkeypatch):
     app.qtbot.waitUntil(lambda: "изменить архив" in app.window.statusBar().currentMessage(), timeout=5000)
     assert card.archive_button.isEnabled() and not screen._entry(target).archived and not screen._animating
     assert [r["archived_at"] for r in _rows(app)] == [None, None]
+
+
+# --- «новое» для каждого человека (шаг 12.2) ----------------------------------------------
+def test_news_new_archived_and_own(repo):
+    from atlas.features.type_db import logic
+    record = repo.get(repo.type_id)  # создал пользователь 1
+    since = "2026-01-01 00:00:00"
+    assert logic.news_of(record, None, 1, since) == ""  # свой тип новым не считается
+    assert logic.news_of(record, None, 2, since) == logic.NEWS_NEW
+    assert logic.news_of(record, None, 2, "2999-01-01 00:00:00") == ""  # старше окна
+    assert logic.news_of(record, record.created_at, 2, since) == ""  # открыл — видел
+    repo.set_archived(repo.type_id, True, user_id=3)
+    archived = repo.get(repo.type_id)
+    assert logic.news_of(archived, "2000-01-01 00:00:00", 2, since) == logic.NEWS_ARCHIVED
+    assert logic.news_of(archived, "2000-01-01 00:00:00", 3, since) == ""  # сам убрал
+    assert logic.news_of(archived, "2999-01-01 00:00:00", 2, since) == ""  # открыл уже после архива
+
+
+def test_mark_seen_is_per_user_and_refreshes_time(repo):
+    assert repo.seen(2) == {} and repo.seen(1) != {}  # у автора «видел» записано при добавлении
+    repo.mark_seen([repo.type_id], 2)
+    assert set(repo.seen(2)) == {repo.type_id} and repo.seen(5) == {}
+    repo.mark_all_seen(5)
+    assert set(repo.seen(5)) == {repo.type_id}
+    assert repo.news_base() != ""
+
+
+def test_screen_clears_news_on_select(screen, qtbot):
+    from dataclasses import replace
+    screen.set_entries([replace(entry(1), news="new"), entry(2)])
+    assert screen.seen_all_button.isVisibleTo(screen)
+    with qtbot.waitSignal(screen.seen_requested) as blocker:
+        screen.select(1)
+    assert blocker.args == [[1]] and screen.entry(1).news == ""
+    assert screen._cards[1].property("new") == "false"

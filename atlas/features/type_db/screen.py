@@ -42,6 +42,9 @@ TEXT_NOTHING = "Ничего не найдено"
 TEXT_PICK = "Выберите карточку слева"
 TEXT_NO_FILE = "Нет фото"
 TEXT_LOAD_FAILED = "Не удалось прочитать базу типов: показаны прежние данные"
+TEXT_NEW = "НОВОЕ"
+TEXT_NEW_ARCHIVED = "В АРХИВЕ"
+TEXT_SEEN_ALL = "Отметить всё просмотренным"
 TEXT_ARCHIVED = "В архиве"
 TEXT_ACTIVE = "Действует"
 TEXT_TO_ARCHIVE = "В архив"
@@ -183,6 +186,7 @@ class TypeCard(QFrame):
         self.setProperty("role", "type-card")
         self.setProperty("on", bool(selected))
         self.setProperty("archived", entry.archived)
+        self.setProperty("new", "true" if entry.news else "false")
         self.setCursor(Qt.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -202,6 +206,11 @@ class TypeCard(QFrame):
         self.name = QLabel(entry.part_name)
         self.name.setProperty("role", "folder-title")
         head.addWidget(self.name, 1)
+        if entry.news:
+            self.news = QLabel(TEXT_NEW if entry.news == logic.NEWS_NEW else TEXT_NEW_ARCHIVED)
+            self.news.setProperty("role", "pill")
+            self.news.setProperty("tone", "type2")
+            head.addWidget(self.news)
         self.pill = QLabel(entry.pill)
         self.pill.setProperty("role", "pill")
         self.pill.setProperty("tone", "muted" if entry.archived else entry.tone)
@@ -234,6 +243,14 @@ class TypeCard(QFrame):
         body.addWidget(self.archive_button)
         layout.addLayout(body)
         self.setToolTip("{} › {} › {}".format(entry.project, entry.device, entry.part_name))
+
+    def set_news_seen(self):
+        self.entry = replace(self.entry, news="")
+        self.setProperty("new", "false")
+        if getattr(self, "news", None) is not None:
+            self.news.hide()
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def set_selected(self, selected):
         self.setProperty("on", bool(selected))
@@ -418,6 +435,8 @@ class TypeDbScreen(QWidget):
     archive_toggled = pyqtSignal(int, bool)  # запись, True — в архив / False — вернуть: записать в базу
     delete_requested = pyqtSignal(int)  # крестик на карточке: спросить и удалить
     add_file_requested = pyqtSignal()  # «+ Добавить из файла…»
+    seen_requested = pyqtSignal(list)  # открыли карточки с подсветкой «новое»: записать, что человек их видел
+    seen_all_requested = pyqtSignal()
 
     def __init__(self, cache, root, kinds, animations=True, parent=None):
         super().__init__(parent)
@@ -454,6 +473,11 @@ class TypeDbScreen(QWidget):
         self.add_file_button.setFocusPolicy(Qt.NoFocus)
         self.add_file_button.clicked.connect(lambda _=False: self.add_file_requested.emit())
         search_row.addWidget(self.add_file_button)
+        self.seen_all_button = QPushButton(TEXT_SEEN_ALL)
+        self.seen_all_button.setFocusPolicy(Qt.NoFocus)
+        self.seen_all_button.clicked.connect(lambda _=False: self._on_seen_all())
+        self.seen_all_button.hide()
+        search_row.addWidget(self.seen_all_button)
 
         # Две базы внутри «БД»: по умолчанию «База типов». С запросом вкладки прячутся: ищется сразу в обеих
         self.tabs = QTabBar()
@@ -532,6 +556,7 @@ class TypeDbScreen(QWidget):
         self._entries = entries
         self._remarks = remarks
         self._loaded = True
+        self.seen_all_button.setVisible(any(entry.news for entry in entries if not logic.is_remark(entry)))
         self._drop_cards()  # записи могли измениться: карточки строим заново
         if self._selected is not None and self._entry(self._selected) is None:
             self._selected = None
@@ -628,8 +653,22 @@ class TypeDbScreen(QWidget):
         """Запись types по id или None."""
         return self._entry(entry_id)
 
+    def _on_seen_all(self):
+        self._entries = [replace(entry, news="") if not logic.is_remark(entry) else entry for entry in self._entries]
+        self.seen_all_button.hide()
+        self._drop_cards()
+        self._refilter()
+        self.seen_all_requested.emit()
+
     def select(self, entry_id):
         self._selected = entry_id if self._entry(entry_id) is not None else None
+        entry = self._entry(self._selected)
+        if entry is not None and entry.news:  # открыли карточку — человек её увидел
+            self._entries = [replace(item, news="") if item.id == entry_id else item for item in self._entries]
+            card = self._cards.get(entry_id)
+            if card is not None:
+                card.set_news_seen()
+            self.seen_requested.emit([entry_id])
         for card_id, card in self._cards.items():
             card.set_selected(card_id == self._selected)
         self._update_device_chip()

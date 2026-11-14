@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from atlas.core.domain.text import normalize_name, now_text
+from dataclasses import replace
+
+from atlas.features.rules import logic
 from atlas.features.rules.logic import Rule
 
 _COLUMNS = ("id, scope, kind, project_id, device_id, part_id, name_key, scope_label, title, body, author_id, created_at, "
@@ -32,15 +35,23 @@ class Repo:
 
         return self.db.write(work)
 
-    def all(self, user_id):
-        """Все правила, свежие первыми; read — прочитал ли их этот пользователь."""
+    def all(self, user_id, since=""):
+        """Все правила, свежие первыми; read — прочитал ли их этот пользователь, archive_news — ушло ли после этого
+        в архив (since — «ГГГГ-ММ-ДД ЧЧ:ММ:СС», старше не подсвечиваем)."""
         def work(conn):
-            reads = {row[0] for row in conn.execute("SELECT rule_id FROM rule_reads WHERE user_id = ?", (user_id,))}
+            reads = {row[0]: row[1] for row in conn.execute(
+                "SELECT rule_id, read_at FROM rule_reads WHERE user_id = ?", (user_id,))}
             photos = {}
             for rule_id, rel in conn.execute("SELECT rule_id, rel FROM rule_photos ORDER BY id"):
                 photos.setdefault(rule_id, []).append(rel)
             rows = conn.execute("SELECT {} FROM rules ORDER BY created_at DESC, id DESC".format(_COLUMNS)).fetchall()
-            return [Rule(*row, read=row[0] in reads, photos=tuple(photos.get(row[0], ()))) for row in rows]
+            result = []
+            for row in rows:
+                rule = Rule(*row, read=row[0] in reads, photos=tuple(photos.get(row[0], ())))
+                if logic.archive_news_of(rule, reads.get(row[0]), user_id, since):
+                    rule = replace(rule, archive_news=True)
+                result.append(rule)
+            return result
 
         return self.db.read(work)
 
@@ -104,12 +115,14 @@ class Repo:
         def work(conn):
             now = now_text()
             for rule_id in rule_ids:
-                conn.execute("INSERT OR IGNORE INTO rule_reads (rule_id, user_id, read_at) VALUES (?, ?, ?)",
+                conn.execute("INSERT INTO rule_reads (rule_id, user_id, read_at) VALUES (?, ?, ?) "
+                             "ON CONFLICT (rule_id, user_id) DO UPDATE SET read_at = excluded.read_at",
                              (rule_id, user_id, now))
 
         self.db.write(work)
 
     def mark_all_read(self, user_id):
         self.db.write(lambda conn: conn.execute(
-            "INSERT OR IGNORE INTO rule_reads (rule_id, user_id, read_at) SELECT id, ?, ? FROM rules",
+            "INSERT INTO rule_reads (rule_id, user_id, read_at) SELECT id, ?, ? FROM rules WHERE true "
+            "ON CONFLICT (rule_id, user_id) DO UPDATE SET read_at = excluded.read_at",
             (user_id, now_text())))

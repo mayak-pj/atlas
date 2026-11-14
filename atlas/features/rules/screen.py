@@ -772,7 +772,7 @@ class RulesScreen(QWidget):
             self.grid.addWidget(card, number // columns, number % columns, Qt.AlignTop)
         for column in range(max(columns, 1)):
             self.grid.setColumnStretch(column, 1)
-        self.read_all_button.setEnabled(logic.unread_count(self.rules) > 0)
+        self.read_all_button.setEnabled(logic.has_news(self.rules))
 
     @staticmethod
     def _columns_for(width):

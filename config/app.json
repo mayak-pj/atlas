@@ -42,6 +42,9 @@
     "refresh_s": 60,
     "edit_days": 30
   },
+  "news": {
+    "days": 30
+  },
   "roles": {
     "admins": []
   },

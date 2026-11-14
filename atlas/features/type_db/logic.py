@@ -126,6 +126,7 @@ class Entry:
     author: str
     created_at: str
     archived_at: Optional[str]
+    news: str = ""  # NEWS_NEW / NEWS_ARCHIVED — человек этого ещё не видел; пусто — видел
 
     @property
     def label(self):
@@ -153,13 +154,36 @@ class Entry:
         return ".".join(reversed(day)) if len(day) == 3 else str(self.created_at)
 
 
-def entry_of(record, part, author):
+def entry_of(record, part, author, news=""):
     """TypeRecord + Part ядра + имя автора → Entry."""
     return Entry(
         record.id, record.part_id, part.device_id, part.kind, part.project, part.device, part.name, record.kind,
         record.type_no, record.description, record.article or part.article or "", record.photo_rel, record.crop_rel,
-        author or "", record.created_at, record.archived_at,
+        author or "", record.created_at, record.archived_at, news,
     )
+
+
+NEWS_NEW = "new"
+NEWS_ARCHIVED = "archived"
+
+
+def news_of(record, seen_at, user_id, since):
+    """Что в записи для этого человека ещё не видно: NEWS_NEW, NEWS_ARCHIVED или "".
+
+    seen_at — когда он открывал карточку (None — не открывал); since — «ГГГГ-ММ-ДД ЧЧ:ММ:СС», старше не подсвечиваем
+    (новый человек не получает всю базу «новым»). Свои записи и свою архивацию новыми не считаем.
+    """
+    if record.created_by == user_id and user_id is not None:
+        return ""
+    if seen_at is None:
+        return NEWS_NEW if record.created_at >= since or (record.archived_at or "") >= since else ""
+    if record.archived_at and record.archived_by != user_id and record.archived_at > seen_at and record.archived_at >= since:
+        return NEWS_ARCHIVED
+    return ""
+
+
+def news_count(entries):
+    return sum(1 for entry in entries if entry.news and not is_remark(entry))
 
 
 def search_text(entry):

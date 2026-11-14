@@ -49,6 +49,7 @@ class Rule:
     model: Optional[str] = None
     read: bool = True
     photos: Tuple[str, ...] = field(default_factory=tuple)
+    archive_news: bool = False  # прочитал, а потом правило ушло в архив — человек этого ещё не видел (14.11.2026)
 
     @property
     def archived(self):
@@ -213,6 +214,17 @@ def filtered(rules, key):
 
 def unread_count(rules):
     return sum(1 for rule in rules if not rule.read and not rule.archived)
+
+
+def has_news(rules):
+    """Есть что отметить: непрочитанное или ушедшее в архив."""
+    return any((not rule.read and not rule.archived) or rule.archive_news for rule in rules)
+
+
+def archive_news_of(rule, read_at, user_id, since):
+    """Правило прочитано, а потом ушло в архив (не самим человеком и не раньше since) — это ему ещё не видно."""
+    return bool(read_at and rule.archived_at and rule.archived_by != user_id and rule.archived_at > read_at
+                and rule.archived_at >= since)
 
 
 def scope_text(rule):

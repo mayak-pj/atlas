@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import QPushButton
 
 from atlas.core import theme
+from atlas.core.domain.text import now_text
 from atlas.core.domain.photo_names import load_pattern, parse_photo_name
 from atlas.core.feature import Feature
 from atlas.features.type_db import logic, render
@@ -26,6 +28,7 @@ EVENT_TYPE_RESTORED = "type.restored"
 EVENT_TYPE_DELETED = "type.deleted"
 MESSAGE_MS = 15000
 STOP_WAIT_S = 5.0  # запись картинок на сетевой диск; дольше закрытие программы не держим
+DEFAULT_NEWS_DAYS = 30  # настройка news.days: старше — «новым» не подсвечивается
 DEFAULT_DIR = "var/type_db"  # TODO(OPEN_ITEMS №12): настоящая папка на сетевом диске
 TEXT_BUTTON = "+ В базу типов"
 TEXT_TIP = "Сохранить это фото с обводкой и подписями (и вырезку, если она выделена) в базу типов"
@@ -75,6 +78,7 @@ class TypeDbFeature(Feature):
 
     def on_start(self):
         self.busy = False
+        self._news = 0  # сколько типов человек ещё не видел (для счётчика на вкладке)
         self.screen = None
         self._stopped = False
         self._reader = None
@@ -124,8 +128,34 @@ class TypeDbFeature(Feature):
         self.screen.archive_toggled.connect(self._on_archive_toggled)
         self.screen.delete_requested.connect(self._on_delete_requested)
         self.screen.add_file_requested.connect(self.open_manual)
+        self.screen.seen_requested.connect(self._on_seen)
+        self.screen.seen_all_requested.connect(self._on_seen_all)
         self.refresh()
         return self.screen
+
+    def badge(self):
+        return self._news or None
+
+    def _refresh_badges(self):
+        if self.ctx.shell is not None and hasattr(self.ctx.shell, "refresh_badges"):
+            self.ctx.shell.refresh_badges()
+
+    def _on_seen(self, type_ids):
+        """Открыли карточки: запись в базу в фоне, подсветка снимается сразу."""
+        user_id = self._user_id()
+        if user_id is None:
+            return
+        self._news = max(0, self._news - len(type_ids))
+        self._refresh_badges()
+        self._run_quiet(self.repo.mark_seen, type_ids, user_id)
+
+    def _on_seen_all(self):
+        user_id = self._user_id()
+        if user_id is None:
+            return
+        self._news = 0
+        self._refresh_badges()
+        self._run_quiet(self.repo.mark_all_seen, user_id)
 
     def on_stop(self):
         self._stopped = True
@@ -303,12 +333,17 @@ class TypeDbFeature(Feature):
         names = {user.id: user.name for user, _ in services.get("users").all()}
         known = {}
         entries = []
+        user_id = self._user_id()
+        seen = self.repo.seen(user_id) if user_id is not None else None
+        since = max(now_text(datetime.now() - timedelta(days=int(self.ctx.config.get("news.days", DEFAULT_NEWS_DAYS)))),
+                    self.repo.news_base())
         for record in self.repo.all():
             if record.part_id not in known:
                 known[record.part_id] = parts.get(record.part_id)
             part = known[record.part_id]
             if part is not None:
-                entries.append(logic.entry_of(record, part, names.get(record.created_by)))
+                news = logic.news_of(record, seen.get(record.id), user_id, since) if seen is not None else ""
+                entries.append(logic.entry_of(record, part, names.get(record.created_by), news))
         return entries
 
     def _on_loaded(self, entries):
@@ -318,7 +353,9 @@ class TypeDbFeature(Feature):
         if entries is None:
             self.screen.show_failure()
         else:
+            self._news = logic.news_count(entries[0])
             self.screen.set_entries(*entries)
+        self._refresh_badges()
         if self._reload_again:
             self._reload_again = False
             self.refresh()
@@ -393,6 +430,19 @@ class TypeDbFeature(Feature):
     def _run(self, work, *args):
         self._threads = [thread for thread in self._threads if thread.is_alive()]
         thread = threading.Thread(target=self._guard, args=(work,) + args, daemon=True)
+        self._threads.append(thread)
+        thread.start()
+
+    def _run_quiet(self, work, *args):
+        """Запись «видел»: не вышло — не страшно, подсветка вернётся при следующем чтении."""
+        def guarded():
+            try:
+                work(*args)
+            except Exception as exc:
+                log.warning("Не удалось записать «видел»: %s", exc)
+
+        self._threads = [thread for thread in self._threads if thread.is_alive()]
+        thread = threading.Thread(target=guarded, daemon=True)
         self._threads.append(thread)
         thread.start()
 

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal
 
 from atlas.core import roles
+from atlas.core.domain.text import now_text
 from atlas.core.feature import Feature
 from atlas.features.rules import logic
 from atlas.features.rules.repo import Repo
@@ -114,10 +116,14 @@ class RulesFeature(Feature):
         part = self.ctx.services.get("parts").get(part_id)
         if part is None:
             return []
-        return logic.for_part(self.repo.all(self._user_id(user_id)), part)
+        return logic.for_part(self.repo.all(self._user_id(user_id), self._since()), part)
 
     def unread_count(self, user_id=None):
         return self.repo.unread_count(self._user_id(user_id))
+
+    def _since(self):
+        """Старше этого времени «ушло в архив» не подсвечивается (настройка news.days)."""
+        return now_text(datetime.now() - timedelta(days=int(self.ctx.config.get("news.days", 30))))
 
     def _user_id(self, user_id=None):
         if user_id is not None:
@@ -146,7 +152,7 @@ class RulesFeature(Feature):
 
     def _read(self, user_id, part_id):
         try:
-            rules = self.repo.all(user_id)
+            rules = self.repo.all(user_id, self._since())
             users = [user for user, _ in self.ctx.services.get("users").all()]
             names = {user.id: user.name for user in users}
             self.colors = {user.id: user.color for user in users}

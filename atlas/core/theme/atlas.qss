@@ -23,6 +23,7 @@ QFrame[role="folder"][on="true"] { border-color: $accent; background: $accent_so
 QFrame[role="folder"] QLabel { background: transparent; }
 QFrame[role="type-card"] { background: $panel; border: 1px solid $border; border-radius: ${radius_md}px; }
 QFrame[role="type-card"]:hover { border-color: $border_strong; }
+QFrame[role="type-card"][new="true"] { border-color: $type2; }
 QFrame[role="type-card"][on="true"] { border-color: $accent; }
 QFrame[role="type-card"][archived="true"] QLabel { color: $muted; }
 QFrame[role="type-card"] QLabel { background: transparent; }

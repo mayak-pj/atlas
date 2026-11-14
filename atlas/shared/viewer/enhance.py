@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover
     cv2 = np = None
 
 MIN_SCALE = 0.0  # улучшаем на любом масштабе: включённая кнопка «Качество» работает и при общем виде
-MAX_PIXELS = 4_000_000  # размер результата на экране; больше не делаем
+MAX_PIXELS = 4_000_000  # размер результата; окно больше — PhotoView просит меньше и растягивает на окно
 MODE_LIGHT, MODE_DEBLUR, MODE_MAX = "light", "deblur", "max"
 DEFAULT_MODE = MODE_DEBLUR
 _PAD = 16  # запас вокруг части фото: у деконволюции искажается край
@@ -77,7 +77,7 @@ def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE):
     """Часть фото `source` (QRectF в пикселях `image`), растянутая до width×height и улучшенная; None — не вышло."""
     width, height = int(width), int(height)
     mode = usable_mode(mode)
-    if mode is None or width < 1 or height < 1 or width * height > MAX_PIXELS:
+    if mode is None or width < 1 or height < 1 or width * height > MAX_PIXELS * 1.01:
         return None
     if mode == MODE_LIGHT:
         return _light(image, source, width, height)

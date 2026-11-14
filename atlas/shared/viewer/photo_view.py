@@ -215,6 +215,9 @@ class PhotoView(QWidget):
             visible.height() / target.height() * self._image.height(),
         )
         size = (max(1, round(visible.width() * ratio)), max(1, round(visible.height() * ratio)))
+        if size[0] * size[1] > enhance.MAX_PIXELS:  # большое окно (Retina, полный экран): считаем помельче, на экран растянется
+            shrink = (enhance.MAX_PIXELS / (size[0] * size[1])) ** 0.5
+            size = (max(1, int(size[0] * shrink)), max(1, int(size[1] * shrink)))
         key = (self._enhance_mode, self._image.cacheKey(), self._image_rotation, tuple(round(v, 2) for v in source.getRect()), size)
         return key, source, size
 

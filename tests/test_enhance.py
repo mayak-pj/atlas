@@ -160,3 +160,19 @@ def test_quality_button_keeps_state_when_clicked_and_offers_off(qtbot, qapp):
     control.click()  # выключено: барабан без «Выключить»
     assert control.drum.clear_button.isHidden()
     control.drum.hide()
+
+
+def test_big_window_is_enhanced_too(qtbot, qapp, monkeypatch):
+    """Окно больше MAX_PIXELS (Retina, полный экран) раньше молча оставалось без улучшения: теперь считается помельче."""
+    monkeypatch.setattr(enhance, "MAX_PIXELS", 60_000)
+    apply_theme(qapp)
+    cache = FakeCache()
+    view = PhotoView(cache, settle_ms=10)
+    view.resize(600, 500)  # видимая часть заметно больше лимита
+    qtbot.addWidget(view)
+    view.show()
+    view.set_enhance("light")
+    cache.memory[("a.jpg", L1)] = type("H", (), {"image": board(1000, 750), "level": L1})()
+    view.set_photo("a.jpg")
+    qtbot.waitUntil(lambda: view._enh_image is not None, timeout=5000)
+    assert view._enh_image.width() * view._enh_image.height() <= 60_000 * 1.01

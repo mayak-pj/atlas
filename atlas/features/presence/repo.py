@@ -1,6 +1,8 @@
 """Таблица presence."""
 from __future__ import annotations
 
+import sqlite3
+
 from atlas.core.domain.text import now_text
 from atlas.features.presence.logic import PresenceRow
 
@@ -10,7 +12,16 @@ class PresenceRepo:
         self.db = db
 
     def beat(self, user_id, folder_id):
-        """Сигнал «я здесь». Без UPSERT: версия SQLite на целевой машине не проверена."""
+        """Сигнал «я здесь». Папка могла исчезнуть из базы (удалили с другого ПК): тогда сигнал идёт без папки."""
+        try:
+            self._beat(user_id, folder_id)
+        except sqlite3.IntegrityError:
+            if folder_id is None:
+                raise
+            self._beat(user_id, None)
+
+    def _beat(self, user_id, folder_id):
+        # Без UPSERT: версия SQLite на целевой машине не проверена.
 
         def work(conn):
             now = now_text()

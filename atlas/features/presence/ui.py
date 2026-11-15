@@ -61,6 +61,7 @@ class PresenceFeature(Feature):
             bus.subscribe("user.logged_in", self._on_login),
             bus.subscribe("folder.opened", self._on_folder_opened),
             bus.subscribe("folder.done", self._on_folder_done),
+            bus.subscribe("folder.deleted", self._on_folder_done),  # папки больше нет: ссылаться на неё нельзя
         ]
         self.ctx.services.register("presence", self)
 

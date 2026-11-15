@@ -43,7 +43,7 @@ MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен 
 TEXT_ASSIGN_TYPE = "Присвоить ТИП"
 TEXT_TYPE = "ТИП"
 TEXT_CLEAR_TYPE = "Снять тип"
-TIP_ASSIGN_TYPE = ("Номер типа плиткой: щелчок, колесо мыши или цифра, Enter — выбрать. "
+TIP_ASSIGN_TYPE = ("Номер типа из списка: щелчок, колесо мыши или цифра, Enter — выбрать. "
                    "Клавиша {} — открыть выбор; {} — сразу тип 1, 2, 3")
 MAX_TYPE = 99
 TEXT_HIDE_UI = "Скрыть всё"
@@ -1293,7 +1293,7 @@ class CompareScreen(QWidget):
         self._update_marks()
 
     def open_type_drum(self):
-        """«Присвоить ТИП»: плитки с номерами над кнопкой, начиная с типа этого фото (или последнего выбранного)."""
+        """«Присвоить ТИП»: список номеров под кнопкой, начиная с типа этого фото (или последнего выбранного)."""
         photo = self._mark_photo()
         if photo is None:
             self._update_marks()

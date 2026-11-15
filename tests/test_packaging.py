@@ -68,8 +68,10 @@ def test_assemble_places_settings_and_checks_next_to_exe(tmp_path):
     bat = (dist / "check_db.bat").read_bytes()
     assert b"\r\n" in bat and b"\n" not in bat.replace(b"\r\n", b"")
     assert "Папка" in bat.decode("cp866")
-    for name in ("WIN7_CHECK.txt", "WIN_TEST_QUALITY.txt"):  # обе инструкции выезда — рядом с программой, в UTF-8 с BOM
-        assert (dist / name).read_bytes().startswith(b"\xef\xbb\xbf")
+    guide = (dist / "VYEZD.md").read_bytes()  # единственная инструкция выезда: UTF-8 с BOM и CRLF для Блокнота
+    assert guide.startswith(b"\xef\xbb\xbf") and b"\r\n" in guide and b"\n" not in guide.replace(b"\r\n", b"")
+    assert not (dist / "WIN7_CHECK.txt").exists() and not (dist / "WIN_TEST_QUALITY.txt").exists()
+    assert "VYEZD.md" in (dist / "vyezd.bat").read_bytes().decode("cp866")
 
 
 # --- --selfcheck -----------------------------------------------------------------------
@@ -110,6 +112,6 @@ def test_dbcheck_rejects_bad_seconds(tmp_path):
     assert _run("-m", "atlas", "--dbcheck", str(tmp_path), "--seconds", "x").returncode == 2
 
 
-@pytest.mark.parametrize("name", ["check_win7.bat", "check_db.bat", "check_view.bat"])
+@pytest.mark.parametrize("name", ["check_win7.bat", "check_db.bat", "check_view.bat", "vyezd.bat"])
 def test_bat_files_fit_cp866(name):
     (REPO / "packaging" / "bat" / name).read_text(encoding="utf-8").encode("cp866")

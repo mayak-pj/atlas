@@ -36,9 +36,9 @@ def assemble(dist, root=ROOT):
     vbs = (root / "packaging" / "install" / "create_shortcut.vbs").read_text(encoding="utf-8")
     (install / "create_shortcut.vbs").write_bytes(_to_notepad(vbs).encode("cp1251"))
     shutil.copy(str(root / "THIRD_PARTY_LICENSES.txt"), str(dist / "THIRD_PARTY_LICENSES.txt"))
-    for name in ("WIN7_CHECK", "WIN_TEST_QUALITY"):  # инструкции выезда лежат рядом с программой: на целевом ПК открыть в Блокноте
-        check = _to_notepad((root / "docs" / (name + ".md")).read_text(encoding="utf-8"))
-        (dist / (name + ".txt")).write_bytes(check.encode("utf-8-sig"))
+    # одна инструкция выезда: Блокнот требует CRLF; BOM — чтобы кириллица читалась как UTF-8; открывает её vyezd.bat
+    check = _to_notepad((root / "docs" / "VYEZD.md").read_text(encoding="utf-8"))
+    (dist / "VYEZD.md").write_bytes(check.encode("utf-8-sig"))
 
 
 if __name__ == "__main__":

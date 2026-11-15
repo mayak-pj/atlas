@@ -60,7 +60,7 @@ uv pip install -p .venv -r requirements-dev.txt
 
 Собирает GitHub Actions (`.github/workflows/build-windows.yml`) при push в `main` и вручную: тесты, PyInstaller, проверка импортов на Win7,
 `--selfcheck` из папки с кириллицей и по UNC, две `--dbcheck` на общей базе по SMB. Результат — артефакт `atlas-win7-x64.zip`,
-отчёты и снимки — `ci_reports`. На целевой машине проверять по `docs/WIN7_CHECK.md` (лежит и в zip).
+отчёты и снимки — `ci_reports`. На целевой машине проверять по `docs/VYEZD.md` (в zip — `VYEZD.md`, открывается через `vyezd.bat`). Старые `WIN7_CHECK.md` и `WIN_TEST_QUALITY.md` — справочные, в сборку не входят.
 
 Локально на Windows:
 

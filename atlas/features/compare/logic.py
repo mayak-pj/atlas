@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from atlas.core.domain.photo_names import parse_photo_name
+from atlas.shared.type_tones import type_tone
 
 log = logging.getLogger("atlas.compare")
 
@@ -126,7 +127,8 @@ def mark_token(mark):
     if mark == "type:1":
         return "ok"
     if mark.startswith("type:"):
-        return "type2" if mark == "type:2" else "type3"
+        number = type_number(mark)
+        return type_tone(number) if number else "type3"
     return {"defect": "defect", "remark": "remark"}.get(mark)
 
 

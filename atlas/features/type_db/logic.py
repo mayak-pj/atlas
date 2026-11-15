@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 from atlas.core.domain.text import normalize_name
+from atlas.shared.type_tones import type_tone
 
 KIND_TYPE = "type"
 KIND_DEFECT = "defect"
@@ -145,7 +146,7 @@ class Entry:
         """Цвет «таблетки» как в макете: тип 1 — зелёный, второй — янтарный, остальные — бирюзовый, дефект — красный."""
         if self.kind == KIND_DEFECT:
             return "defect"
-        return {1: "ok", 2: "type2"}.get(self.type_no, "type3")
+        return type_tone(self.type_no) if self.type_no else "type3"
 
     @property
     def date_text(self):

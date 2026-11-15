@@ -122,7 +122,9 @@ def test_mark_tokens():
     assert mark_token(None) is None
     assert mark_token("type:1") == "ok"
     assert mark_token("type:2") == "type2"
-    assert mark_token("type:3") == mark_token("type:7") == "type3"
+    assert mark_token("type:3") == "type3" and mark_token("type:4") == "type4" and mark_token("type:20") == "type20"
+    assert len({mark_token("type:{}".format(n)) for n in range(1, 21)}) == 20  # у каждого из 20 типов свой цвет
+    assert mark_token("type:21") == "type4" and mark_token("type:37") == "type20" and mark_token("type:38") == "type4"
     assert mark_token("defect") == "defect"
     assert mark_token("remark") == "remark"
     assert mark_token("странное") is None

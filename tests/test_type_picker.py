@@ -70,3 +70,22 @@ def test_clear_button_and_escape(qtbot):
     picker.open_at(QPoint(300, 300), 2, can_clear=True)
     picker.clear_button.click()
     assert cleared == [True] and not picker.isVisible()
+
+
+def test_twenty_types_have_own_colors_then_repeat():
+    from atlas.shared.type_tones import type_tone
+
+    tones = [type_tone(n) for n in range(1, 21)]
+    assert tones[:3] == ["ok", "type2", "type3"] and len(set(tones)) == 20
+    assert type_tone(21) == "type4" and type_tone(38) == "type4"
+
+
+def test_every_tone_has_colors_in_both_themes():
+    from atlas.core import theme
+    from atlas.shared.type_tones import type_tone
+
+    for name in ("tokens.json", "tokens_light.json"):
+        colors = theme.Theme.load(theme.tokens_file("dark" if name == "tokens.json" else "light")).colors
+        for number in range(1, 21):
+            tone = type_tone(number)
+            assert tone in colors and tone + "_soft" in colors

@@ -7,6 +7,7 @@ from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from atlas.core.feature import Feature
+from atlas.shared.type_tones import type_tone
 from atlas.features.findings import logic
 
 log = logging.getLogger("atlas.findings")
@@ -144,7 +145,7 @@ class FindingsPanel(QFrame):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        tone = "muted" if line.archived or line.type_no <= 1 else ("type2" if line.type_no == 2 else "type3")
+        tone = "muted" if line.archived or line.type_no <= 1 else type_tone(line.type_no)
         layout.addWidget(_pill("Тип {}".format(line.type_no), tone), 0, Qt.AlignTop)
         text = _label(line.text, "muted" if line.archived else None)
         layout.addWidget(text, 1)

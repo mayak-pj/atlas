@@ -47,6 +47,23 @@ QLabel[role="pill"] { border: 1px solid transparent; border-radius: 6px; padding
 QLabel[role="pill"][tone="ok"] { border: 1px solid transparent; border-radius: 6px; background: $ok_soft; color: $ok; }
 QLabel[role="pill"][tone="type2"] { border: 1px solid transparent; border-radius: 6px; background: $type2_soft; color: $type2; }
 QLabel[role="pill"][tone="type3"] { border: 1px solid transparent; border-radius: 6px; background: $type3_soft; color: $type3; }
+QLabel[role="pill"][tone="type4"] { border: 1px solid transparent; border-radius: 6px; background: $type4_soft; color: $type4; }
+QLabel[role="pill"][tone="type5"] { border: 1px solid transparent; border-radius: 6px; background: $type5_soft; color: $type5; }
+QLabel[role="pill"][tone="type6"] { border: 1px solid transparent; border-radius: 6px; background: $type6_soft; color: $type6; }
+QLabel[role="pill"][tone="type7"] { border: 1px solid transparent; border-radius: 6px; background: $type7_soft; color: $type7; }
+QLabel[role="pill"][tone="type8"] { border: 1px solid transparent; border-radius: 6px; background: $type8_soft; color: $type8; }
+QLabel[role="pill"][tone="type9"] { border: 1px solid transparent; border-radius: 6px; background: $type9_soft; color: $type9; }
+QLabel[role="pill"][tone="type10"] { border: 1px solid transparent; border-radius: 6px; background: $type10_soft; color: $type10; }
+QLabel[role="pill"][tone="type11"] { border: 1px solid transparent; border-radius: 6px; background: $type11_soft; color: $type11; }
+QLabel[role="pill"][tone="type12"] { border: 1px solid transparent; border-radius: 6px; background: $type12_soft; color: $type12; }
+QLabel[role="pill"][tone="type13"] { border: 1px solid transparent; border-radius: 6px; background: $type13_soft; color: $type13; }
+QLabel[role="pill"][tone="type14"] { border: 1px solid transparent; border-radius: 6px; background: $type14_soft; color: $type14; }
+QLabel[role="pill"][tone="type15"] { border: 1px solid transparent; border-radius: 6px; background: $type15_soft; color: $type15; }
+QLabel[role="pill"][tone="type16"] { border: 1px solid transparent; border-radius: 6px; background: $type16_soft; color: $type16; }
+QLabel[role="pill"][tone="type17"] { border: 1px solid transparent; border-radius: 6px; background: $type17_soft; color: $type17; }
+QLabel[role="pill"][tone="type18"] { border: 1px solid transparent; border-radius: 6px; background: $type18_soft; color: $type18; }
+QLabel[role="pill"][tone="type19"] { border: 1px solid transparent; border-radius: 6px; background: $type19_soft; color: $type19; }
+QLabel[role="pill"][tone="type20"] { border: 1px solid transparent; border-radius: 6px; background: $type20_soft; color: $type20; }
 QLabel[role="pill"][tone="defect"] { border: 1px solid transparent; border-radius: 6px; background: $defect_soft; color: $defect; }
 QLabel[role="pill"][tone="remark"] { border: 1px solid transparent; border-radius: 6px; background: $remark_soft; color: $remark; }
 QFrame[role="alert"] { background: $defect_soft; border: 1px solid $defect; border-radius: ${radius_md}px; }
@@ -79,6 +96,23 @@ QPushButton:disabled { color: $disabled; border-color: $border; }
 QPushButton[tone="ok"]:checked { background: $ok_soft; border-color: $ok; color: $ok; }
 QPushButton[tone="type2"]:checked { background: $type2_soft; border-color: $type2; color: $type2; }
 QPushButton[tone="type3"]:checked { background: $type3_soft; border-color: $type3; color: $type3; }
+QPushButton[tone="type4"]:checked { background: $type4_soft; border-color: $type4; color: $type4; }
+QPushButton[tone="type5"]:checked { background: $type5_soft; border-color: $type5; color: $type5; }
+QPushButton[tone="type6"]:checked { background: $type6_soft; border-color: $type6; color: $type6; }
+QPushButton[tone="type7"]:checked { background: $type7_soft; border-color: $type7; color: $type7; }
+QPushButton[tone="type8"]:checked { background: $type8_soft; border-color: $type8; color: $type8; }
+QPushButton[tone="type9"]:checked { background: $type9_soft; border-color: $type9; color: $type9; }
+QPushButton[tone="type10"]:checked { background: $type10_soft; border-color: $type10; color: $type10; }
+QPushButton[tone="type11"]:checked { background: $type11_soft; border-color: $type11; color: $type11; }
+QPushButton[tone="type12"]:checked { background: $type12_soft; border-color: $type12; color: $type12; }
+QPushButton[tone="type13"]:checked { background: $type13_soft; border-color: $type13; color: $type13; }
+QPushButton[tone="type14"]:checked { background: $type14_soft; border-color: $type14; color: $type14; }
+QPushButton[tone="type15"]:checked { background: $type15_soft; border-color: $type15; color: $type15; }
+QPushButton[tone="type16"]:checked { background: $type16_soft; border-color: $type16; color: $type16; }
+QPushButton[tone="type17"]:checked { background: $type17_soft; border-color: $type17; color: $type17; }
+QPushButton[tone="type18"]:checked { background: $type18_soft; border-color: $type18; color: $type18; }
+QPushButton[tone="type19"]:checked { background: $type19_soft; border-color: $type19; color: $type19; }
+QPushButton[tone="type20"]:checked { background: $type20_soft; border-color: $type20; color: $type20; }
 QPushButton[tone="defect"]:checked { background: $defect_soft; border-color: $defect; color: $defect; }
 QPushButton[tone="remark"]:checked { background: $remark_soft; border-color: $remark; color: $remark; }
 QPushButton[role="primary"] { background: $accent; color: $on_accent; border: none; font-weight: 700; font-size: ${font_lg}px;

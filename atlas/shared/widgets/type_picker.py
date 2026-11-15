@@ -1,7 +1,7 @@
 """Выбор номера типа (12.13): короткий список под кнопкой «Присвоить ТИП».
 
 Типов обычно 2–4, поэтому окошко маленькое: три строки с номерами сверху вниз, как список режимов «Качества».
-Текущий номер подсвечен цветом типа (как точка на миниатюре). Щелчок по строке — выбрать. Больше трёх типов
+Номера по центру, текущий подсвечен цветом типа (у типов 1–20 свои цвета, как точка на миниатюре). Щелчок по строке — выбрать. Больше трёх типов
 бывает редко: колесо мыши и стрелки сдвигают список (номера до 99), цифра сразу встаёт на номер и через миг
 выбирается (успели вторую — «12»). Enter или пробел — выбрать, Esc или щелчок мимо — закрыть.
 Что значит номер, окошко не знает: выбранное уходит сигналом.
@@ -11,17 +11,14 @@ from __future__ import annotations
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QFrame, QPushButton, QVBoxLayout
 
+from atlas.shared.type_tones import type_tone
+
 ROWS = 3
 ROW_HEIGHT = 34
 ROW_FONT_PX = 15
-LIST_WIDTH = 150
+LIST_WIDTH = 96  # узкое окошко: цифра по центру, влезает «Снять тип»
 TYPE_DELAY_MS = 650  # пауза после цифры: успеть набрать вторую
 WHEEL_STEP = 120
-
-
-def tone_of(number):
-    """Цвет строки, как у точки типа на миниатюре: 1 — зелёный, 2 — янтарный, дальше — бирюзовый."""
-    return "ok" if number == 1 else "type2" if number == 2 else "type3"
 
 
 class TypePicker(QFrame):
@@ -52,8 +49,7 @@ class TypePicker(QFrame):
             row.setCheckable(True)
             row.setFocusPolicy(Qt.NoFocus)
             row.setMinimumHeight(ROW_HEIGHT)
-            row.setStyleSheet("QPushButton {{ font-size: {}px; font-weight: 600; text-align: left; "
-                              "padding-left: 14px; }}".format(ROW_FONT_PX))
+            row.setStyleSheet("QPushButton {{ font-size: {}px; font-weight: 600; padding: 0; }}".format(ROW_FONT_PX))
             row.clicked.connect(lambda _=False, i=index: self._click(i))
             column.addWidget(row)
             self.tiles.append(row)
@@ -96,7 +92,7 @@ class TypePicker(QFrame):
             number = self._first + index
             row.setVisible(number <= self.maximum)
             row.setText(str(number))
-            tone = tone_of(number)
+            tone = type_tone(number)
             if row.property("tone") != tone:
                 row.setProperty("tone", tone)
             row.setChecked(number == self.value)

@@ -153,7 +153,8 @@ def test_migration_turns_defects_into_remarks_and_keeps_kind():
 def test_each_type_has_its_own_color_in_both_themes():
     for name in ("tokens.json", "tokens_light.json"):
         text = (Path("atlas/core/theme") / name).read_text(encoding="utf-8")
-        assert '"type3":' in text and '"type3_soft":' in text
+        for number in range(3, 21):
+            assert '"type{}":'.format(number) in text and '"type{}_soft":'.format(number) in text
     assert theme.current().color("type2") != theme.current().color("type3")
 
 

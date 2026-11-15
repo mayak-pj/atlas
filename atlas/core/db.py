@@ -168,6 +168,8 @@ class MigrationRunner:
         if not directory.is_dir():
             return files
         for path in sorted(directory.glob("*.sql")):
+            if path.name.startswith("."):  # «._001_init.sql» — двойник macOS, если папку распаковали на Mac
+                continue
             match = _MIGRATION_NAME.match(path.name)
             if not match:
                 raise MigrationError("Неверное имя миграции: {}/{}".format(owner, path.name))

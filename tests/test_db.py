@@ -132,6 +132,15 @@ def test_migrations_apply_in_numeric_order_once(db, tmp_path):
     assert runner.run("f", folder) == [11]
 
 
+def test_macos_service_files_next_to_migrations_are_skipped(db, tmp_path):
+    """Сборку распаковали на Mac: рядом с каждым файлом «._имя» (выезд 15.11.2026, «Неверное имя миграции»)."""
+    folder = tmp_path / "m"
+    _write(folder, "001_init.sql", "CREATE TABLE a (x);")
+    (folder / "._001_init.sql").write_bytes(b"\x00\x05\x16\x07 Mac OS X")
+    (folder / ".DS_Store").write_bytes(b"\x00")
+    assert MigrationRunner(db).run("core", folder) == [1]
+
+
 def test_failed_migration_is_atomic(db, tmp_path):
     folder = tmp_path / "m"
     _write(folder, "001_a.sql", "CREATE TABLE a (x);\nCREATE TABLE b (x);\nNOT SQL;")

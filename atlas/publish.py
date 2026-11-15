@@ -13,6 +13,7 @@ import logging
 import shutil
 from pathlib import Path
 
+from atlas.core.domain.folders import is_system_file
 from atlas.core.release import (
     EXE_NAME, RELEASE_DIR, current_version, parse_version, read_active_version, write_active_version,
 )
@@ -34,7 +35,7 @@ def _program_files(source):
     result = []
     for path in sorted(source.rglob("*")):
         rel = path.relative_to(source)
-        if path.is_file() and rel.parts[0] not in SKIP_TOP and rel != Path("config", "local.json"):
+        if path.is_file() and not is_system_file(rel.as_posix()) and rel.parts[0] not in SKIP_TOP and rel != Path("config", "local.json"):
             result.append(rel)
     return result
 
@@ -63,6 +64,8 @@ def _install_helpers(source, home):
     if not folder.is_dir():
         return
     for item in sorted(folder.iterdir()):
+        if is_system_file(item.name):
+            continue
         part = home / (item.name + ".part")
         shutil.copyfile(str(item), str(part))
         part.replace(home / item.name)

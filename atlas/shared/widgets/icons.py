@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from atlas.core.domain.folders import is_system_file
+
 ICON_DIR = Path(__file__).resolve().parent / "icons"
 DEFAULT_SIZE = 16
 SCALE = 2  # запас точек для экранов с масштабом
@@ -17,7 +19,7 @@ _cache = {}
 
 
 def names():
-    return sorted(path.stem for path in ICON_DIR.glob("*.svg"))
+    return sorted(path.stem for path in ICON_DIR.glob("*.svg") if not is_system_file(path.name))
 
 
 def svg_text(name, color):

@@ -129,6 +129,18 @@ def test_publish_copies_program_without_traces_of_runs(sites):
     assert not list(home.rglob("*.part"))
 
 
+def test_publish_skips_macos_service_files(sites):
+    """Сборку распаковали на Mac: «._имя» и «.DS_Store» в версию и в общую папку не идут."""
+    source, home = sites
+    for folder in (source, source / "_internal" / "Подпапка", source / "install"):
+        (folder / ".DS_Store").write_bytes(b"x")
+    (source / "._atlas.exe").write_bytes(b"x")
+    (source / "install" / "._Atlas.bat").write_bytes(b"x")
+    publish_module.publish(source, home, "1.2.3")
+    leftovers = [p.name for p in home.rglob("*") if p.name.startswith(".")]
+    assert leftovers == []
+
+
 def test_publish_does_not_touch_settings_and_data_of_install(sites):
     source, home = sites
     (home / "config").mkdir()

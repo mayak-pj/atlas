@@ -96,9 +96,9 @@ def clean_rel_path(rel_path):
 
 def is_system_file(rel_path):
     """Служебный файл, а не фото: «._имя.jpeg» — «двойник» macOS (AppleDouble, метаданные), который появляется рядом
-    с каждым файлом при копировании папки с Mac на сетевой или чужой диск; папка «__MACOSX» из архива."""
+    с каждым файлом при копировании папки с Mac на сетевой или чужой диск; папка «__MACOSX» из архива; «.DS_Store»."""
     parts = str(rel_path).replace("\\", "/").split("/")
-    return parts[-1].startswith("._") or "__MACOSX" in parts[:-1]
+    return parts[-1].startswith("._") or parts[-1] == ".DS_Store" or "__MACOSX" in parts[:-1]
 
 
 def valid_mark(mark):

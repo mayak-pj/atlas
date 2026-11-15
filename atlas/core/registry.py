@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from atlas.core.db import MigrationRunner
+from atlas.core.domain.folders import is_system_file
 
 log = logging.getLogger("atlas.registry")
 
@@ -154,7 +155,7 @@ class FeatureRegistry:
 
     def _migrate(self, spec):
         directory = Path(self._modules[spec.id].__file__).parent / "migrations"
-        if directory.is_dir() and any(directory.glob("*.sql")):
+        if directory.is_dir() and any(not is_system_file(p.name) for p in directory.glob("*.sql")):
             MigrationRunner(self.ctx.db).run(spec.id, directory)
 
     def _create(self, spec):

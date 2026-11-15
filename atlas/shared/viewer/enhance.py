@@ -39,6 +39,9 @@ _ITERATIONS = {MODE_DEBLUR: 25, MODE_MAX: 40, MODE_PRO: 40}
 _TILE, _TILE_OVERLAP = 256, 56  # «Pro»: размытие оценивается по плиткам, края плиток сшиваются плавно
 _PRO_MAX_SIGMA = 10.0  # «Pro»: потолок размытия на сетке экрана; выше на настоящих фото появляются ложные «бусинки» на штрихах
 _PRO_MIN_ITERATIONS, _PRO_MAX_ITERATIONS = 30, 80
+# «Pro» при приближении от стольких раз снимает и мягкость самого растягивания, даже если фото резкое (12.9):
+# иначе в одном окне фото «резкое» и не меняется, а в соседнем — меняется, и кажется, что «Качество» выключилось
+_PRO_UPSCALE_MIN_GRID = 2.0
 _FLAT_RANGE = 0.02  # размах яркости плитки (0…1), меньше которого плитка считается ровной
 _TV_WEIGHT = 0.004  # «Pro»: сила регуляризации по полной вариации (меньше шума и «звона» у краёв)
 
@@ -91,19 +94,22 @@ def _check(cancelled):
         raise Cancelled()
 
 
-def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE, cancelled=None):
+def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE, cancelled=None, info=None):
     """Часть фото `source` (QRectF в пикселях `image`), растянутая до width×height и улучшенная; None — не вышло.
 
     `cancelled()` проверяется между шагами снятия размытия (12.8): True — бросает `Cancelled`, фото уже сменилось.
+    `info` (dict) получает "sigma" — с каким размытием снималось; None — часть фото резкая, она только растянута (12.9).
     """
     width, height = int(width), int(height)
     mode = usable_mode(mode)
+    info = info if info is not None else {}
+    info["sigma"] = None
     if mode is None or width < 1 or height < 1 or width * height > MAX_PIXELS * 1.01:
         return None
     cancelled = cancelled or _never
     if mode == MODE_PRO:
-        return _pro(image, source, width, height, cancelled)
-    return _deblur(image, source, width, height, mode, cancelled)
+        return _pro(image, source, width, height, cancelled, info)
+    return _deblur(image, source, width, height, mode, cancelled, info)
 
 
 # --- «Снять размытие» и «Максимум»: opencv ---------------------------------------------------------------
@@ -209,7 +215,7 @@ def _pro_luma(luma, sigma, cancelled=_never):
     return np.clip(total / np.maximum(weight_sum, 1e-6) * 255.0, 0, 255).astype(np.uint8)
 
 
-def _pro(image, source, width, height, cancelled=_never):
+def _pro(image, source, width, height, cancelled=_never, info=None):
     """«Pro»: растянуть часть фото до размера на экране и снимать размытие уже там. Так мелкие элементы остаются чёткими
     при большом зуме, а не растягиваются мягкими. Окно меньше фото — деконволюция в размере фото и уменьшение."""
     rect = source.toAlignedRect().adjusted(-_PAD, -_PAD, _PAD, _PAD).intersected(image.rect())
@@ -222,9 +228,13 @@ def _pro(image, source, width, height, cancelled=_never):
     size = (max(1, round(rect.width() * scale_x)), max(1, round(rect.height() * scale_y)))
     if magnify:
         ycc = cv2.resize(ycc, size, interpolation=cv2.INTER_CUBIC)  # не Lanczos: у него свой «звон» на краях
-        if sigma is not None:
-            grid = min(scale_x, scale_y)  # размытие фото на сетке экрана плюс сглаживание самого растягивания
+        grid = min(scale_x, scale_y)
+        if sigma is not None:  # размытие фото на сетке экрана плюс сглаживание самого растягивания
             sigma = min(float((sigma ** 2 * grid ** 2 + (0.5 * grid) ** 2) ** 0.5), _PRO_MAX_SIGMA)
+        elif grid >= _PRO_UPSCALE_MIN_GRID:  # фото резкое, но растянутое мягкое: снимаем только это сглаживание
+            sigma = min(0.5 * grid, _PRO_MAX_SIGMA)
+    if info is not None:
+        info["sigma"] = sigma
     if sigma is not None:
         ycc[:, :, 0] = _pro_luma(ycc[:, :, 0], sigma, cancelled)
     result = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
@@ -238,7 +248,7 @@ def _pro(image, source, width, height, cancelled=_never):
     return _to_qimage(np.ascontiguousarray(out))
 
 
-def _deblur(image, source, width, height, mode, cancelled=_never):
+def _deblur(image, source, width, height, mode, cancelled=_never, info=None):
     rect = source.toAlignedRect().adjusted(-_PAD, -_PAD, _PAD, _PAD).intersected(image.rect())
     if rect.isEmpty():
         return None
@@ -246,6 +256,8 @@ def _deblur(image, source, width, height, mode, cancelled=_never):
     ycc = cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb)
     luma = ycc[:, :, 0]
     sigma = estimate_sigma(luma.astype(np.float32))
+    if info is not None:
+        info["sigma"] = sigma
     if sigma is not None:
         if mode == MODE_MAX:
             luma = cv2.fastNlMeansDenoising(luma, None, 4, 5, 15)

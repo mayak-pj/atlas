@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
@@ -32,6 +33,7 @@ CURTAIN_GRAB = 10  # px по обе стороны от границы «до/п
 CURTAIN_HANDLE = 30  # диаметр кружка-ручки
 TEXT_LOADING = "Загрузка…"
 TEXT_FAILED = "Не удалось открыть фото"
+TEXT_SHARP = "Качество: фото резкое, улучшать нечего"  # 12.9: иначе кажется, что в этом окне «Качество» выключилось
 
 
 def _improves(level, shown, wanted):
@@ -72,7 +74,7 @@ class PhotoView(QWidget):
     view_changed = pyqtSignal(float, float, float)  # зум, центр x, y — только от действий пользователя
     photo_shown = pyqtSignal(str)  # на экране появилась картинка именно этого фото
     photo_failed = pyqtSignal(str, str)  # путь, текст ошибки
-    _enhanced = pyqtSignal(object, QImage)  # ключ, готовая улучшенная часть; из рабочего потока
+    _enhanced = pyqtSignal(object, QImage, bool)  # ключ, готовая часть, изменилась ли она; из рабочего потока
 
     def __init__(self, cache, parent=None, settle_ms=SETTLE_MS, enhance_delay_ms=ENHANCE_DELAY_MS, enhance_worker=None):
         super().__init__(parent)
@@ -98,6 +100,7 @@ class PhotoView(QWidget):
         self._enhance_mode = None  # улучшение при приближении (12.5): None — выключено, иначе id режима из enhance
         self._enh_key = None  # для какой части и размера готова улучшенная копия
         self._enh_image = None
+        self._enh_changed = True  # False — часть фото резкая: копия только растянута, на вид как без «Качества» (12.9)
         self._enh_pending = None  # ключ, отданный общему потоку «Качества» (ждёт или считается)
         self._enh_planned = None  # ключ, который отдадим потоку, когда окно постоит ENHANCE_DELAY_MS
         self._enh_worker = enhance_worker or shared_worker()  # один поток на все окна (12.8)
@@ -121,6 +124,10 @@ class PhotoView(QWidget):
         layout = QHBoxLayout(self)
         layout.addWidget(self._message, 0, Qt.AlignCenter)
         self._caption = _Caption(self)
+        self._note = QLabel(TEXT_SHARP, self)  # «улучшать нечего» — в нижнем левом углу, мышь не ловит
+        self._note.setObjectName("PhotoViewNote")
+        self._note.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._note.hide()
         cache.ready.connect(self._on_ready)
         cache.failed.connect(self._on_failed)
         frame_ready = getattr(cache, "frame_ready", None)
@@ -207,10 +214,24 @@ class PhotoView(QWidget):
         """Улучшенная копия готова и сейчас может быть на экране."""
         return self._enhanced_ready()
 
+    @property
+    def enhance_unchanged(self):
+        """Копия готова, но часть фото резкая и не изменилась: в окне подпись «улучшать нечего»."""
+        return self._enhanced_ready() and not self._enh_changed
+
+    def _update_note(self):
+        show = self.enhance_unchanged and not self._show_original
+        if show:
+            self._note.adjustSize()
+            self._note.move(_CAPTION_MARGIN, max(0, self.height() - self._note.height() - _CAPTION_MARGIN))
+            self._note.raise_()
+        self._note.setVisible(show)
+
     def set_show_original(self, on):
         """«До»: пока true — исходное фото без улучшения (клавиша удерживается). Файл и расчёт не трогаются."""
         if bool(on) != self._show_original:
             self._show_original = bool(on)
+            self._update_note()
             self.update()
 
     def set_curtain(self, on):
@@ -315,27 +336,37 @@ class PhotoView(QWidget):
         self._enh_pending = key
         image, mode = self._image, self._enhance_mode
         signal = self._enhanced
+        name = os.path.basename(self._path or "")
+        info = {}
 
         def work(cancelled):
             started = time.monotonic()
             try:
-                result = enhance.enhanced_crop(image, source, size[0], size[1], mode, cancelled=cancelled)
+                result = enhance.enhanced_crop(image, source, size[0], size[1], mode, cancelled=cancelled, info=info)
             except enhance.Cancelled:
-                log.info("Качество: режим %s прерван через %.2f с — фото сменилось", mode, time.monotonic() - started)
+                log.info("Качество: режим %s, %s прерван через %.2f с — фото сменилось", mode, name, time.monotonic() - started)
                 raise
             except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка; причина — в лог
                 log.exception("Качество: режим %s не отработал", mode)
                 result = None
-            log.info("Качество: режим %s, часть фото %dx%d → экран %dx%d: %.2f с%s", mode, source.width(), source.height(),
-                     size[0], size[1], time.monotonic() - started, "" if result is not None else " (без улучшения)")
+            sigma = info.get("sigma")
+            if result is None:
+                outcome = " (без улучшения)"
+            elif sigma is None:
+                outcome = ", резкое — без изменений"
+            else:
+                outcome = ", размытие %.1f" % sigma
+            log.info("Качество: режим %s, %s, часть фото %dx%d → экран %dx%d: %.2f с%s", mode, name, source.width(),
+                     source.height(), size[0], size[1], time.monotonic() - started, outcome)
             return result
 
         def done(done_key, result):  # в рабочем потоке; сигнал доставит в GUI-поток
-            signal.emit(done_key, result if result is not None else QImage())
+            changed = result is None or info.get("sigma", 0.0) is not None
+            signal.emit(done_key, result if result is not None else QImage(), changed)
 
         self._enh_worker.submit(self, key, work, done)
 
-    def _on_enhanced(self, key, image):
+    def _on_enhanced(self, key, image, changed=True):
         if key == self._enh_pending:
             self._enh_pending = None
         job = self._enhance_job()
@@ -343,7 +374,8 @@ class PhotoView(QWidget):
             if job is not None and job[0] != key:
                 self._start_enhance()  # пока считалось, окно сдвинули: считаем для нового места
             return
-        self._enh_key, self._enh_image = key, image
+        self._enh_key, self._enh_image, self._enh_changed = key, image, bool(changed)
+        self._update_note()
         self.update()
 
     def set_overlay(self, overlay):
@@ -421,6 +453,7 @@ class PhotoView(QWidget):
         self._full_size = None
         self._wanted = L1
         self._show_message("")
+        self._update_note()
         # Чёткий уровень уже в памяти (его подготовили заранее) — показываем сразу, без размытого L1 на время SETTLE_MS
         hit = self._cache.peek(path, guess) if guess > L1 else None
         if hit is not None and hit.level >= guess:
@@ -443,6 +476,7 @@ class PhotoView(QWidget):
         self._settle.stop()
         self._cancel_enhance()
         self._show_message("")
+        self._update_note()
         self.update()
 
     def show_missing(self, text):
@@ -479,6 +513,7 @@ class PhotoView(QWidget):
             self.view_changed.emit(*self._state.state())
 
     def _after_view_change(self):
+        self._update_note()
         self.update()
         if self._path is not None:
             self._settle.start()
@@ -523,6 +558,7 @@ class PhotoView(QWidget):
             self._state.set_photo_size(*rotated_size(image.width(), image.height(), self._rotation))
         self._apply_frame()
         self._show_message("")
+        self._update_note()
         self.update()
         self._start_enhance()
         if first:

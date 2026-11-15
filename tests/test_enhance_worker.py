@@ -19,11 +19,12 @@ class SlowEnhance:
 
     def __init__(self, steps=10, step_s=0.01):
         self.steps, self.step_s = steps, step_s
+        self.sigma = 1.0  # что «нашлось» размытие; None — часть фото резкая, или функция от картинки
         self.lock = threading.Lock()
         self.running = self.max_running = 0
         self.started, self.cancelled, self.finished = [], [], []
 
-    def __call__(self, image, source, width, height, mode="deblur", cancelled=None):
+    def __call__(self, image, source, width, height, mode="deblur", cancelled=None, info=None):
         with self.lock:
             self.running += 1
             self.max_running = max(self.max_running, self.running)
@@ -35,6 +36,8 @@ class SlowEnhance:
                         self.cancelled.append(image.cacheKey())
                     raise Cancelled()
                 time.sleep(self.step_s)
+            if info is not None:
+                info["sigma"] = self.sigma(image) if callable(self.sigma) else self.sigma
             out = QImage(int(width), int(height), QImage.Format_RGB32)
             out.fill(QColor(200, 30, 30))
             with self.lock:

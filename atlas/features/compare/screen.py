@@ -21,7 +21,7 @@ from atlas.features.compare.logic import (
 from atlas.shared.widgets import FlowLayout
 from atlas.shared.widgets.enhance_control import EnhanceControl
 from atlas.shared.widgets.icons import set_icon
-from atlas.shared.widgets.number_drum import NumberDrum
+from atlas.shared.widgets.type_picker import TypePicker
 from atlas.shared.viewer import enhance
 from atlas.shared.viewer.filmstrip import FilmItem, Filmstrip
 from atlas.shared.viewer.levels import L1, NEIGHBOR
@@ -43,8 +43,8 @@ MARK_ICONS = {"remark": ("circle-alert", "remark")}  # значок, токен 
 TEXT_ASSIGN_TYPE = "Присвоить ТИП"
 TEXT_TYPE = "ТИП"
 TEXT_CLEAR_TYPE = "Снять тип"
-TIP_ASSIGN_TYPE = ("Номер типа на барабане: колесо мыши или цифра, Enter — выбрать. "
-                   "Клавиша {} — открыть барабан; {} — сразу тип 1, 2, 3")
+TIP_ASSIGN_TYPE = ("Номер типа плиткой: щелчок, колесо мыши или цифра, Enter — выбрать. "
+                   "Клавиша {} — открыть выбор; {} — сразу тип 1, 2, 3")
 MAX_TYPE = 99
 TEXT_HIDE_UI = "Скрыть всё"
 TEXT_STACK = "Друг под другом"
@@ -571,7 +571,7 @@ class CompareScreen(QWidget):
         self.type_button.setToolTip(TIP_ASSIGN_TYPE.format(QKeySequence(self._type_drum_key).toString(),
                                                            ", ".join(type_keys) or "—"))
         row.addWidget(self.type_button)
-        self.type_drum = NumberDrum(TEXT_TYPE, 1, MAX_TYPE, TEXT_CLEAR_TYPE, self)
+        self.type_drum = TypePicker(TEXT_TYPE, 1, MAX_TYPE, TEXT_CLEAR_TYPE, self)
         self.type_drum.chosen.connect(self.assign_type)
         self.type_drum.cleared.connect(self.clear_type)
         self._last_type = 1
@@ -1293,7 +1293,7 @@ class CompareScreen(QWidget):
         self._update_marks()
 
     def open_type_drum(self):
-        """«Присвоить ТИП»: барабан над кнопкой, начиная с типа этого фото (или последнего выбранного)."""
+        """«Присвоить ТИП»: плитки с номерами над кнопкой, начиная с типа этого фото (или последнего выбранного)."""
         photo = self._mark_photo()
         if photo is None:
             self._update_marks()
@@ -1304,7 +1304,7 @@ class CompareScreen(QWidget):
         self._update_marks()  # кнопка не «залипает» нажатой от щелчка
 
     def assign_type(self, number):
-        """Тип с барабана. Тот же, что уже стоит, — ничего не меняет (снять — «Снять тип»)."""
+        """Тип из выбора. Тот же, что уже стоит, — ничего не меняет (снять — «Снять тип»)."""
         self._last_type = number
         photo = self._mark_photo()
         if photo is not None and photo.mark != "type:{}".format(number):

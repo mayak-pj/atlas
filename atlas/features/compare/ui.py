@@ -6,6 +6,7 @@ import queue
 import threading
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
@@ -33,6 +34,8 @@ TEXT_NOT_FOUND = "Такой же детали нет в других прове
 TEXT_NOT_FOUND_NEIGHBORS = "Такой же детали нет ни в этом проекте, ни в соседних проектах"
 TEXT_FIND_FAILED = "Не удалось найти такую же деталь"
 TEXT_DISK_FOUND = "В Atlas такой детали нет — взята папка рядом на диске: {}"
+TEXT_CHANGE_PICK = "Папка с фото эталона"
+TEXT_CHANGE_NOTHING = "В выбранной папке нет фото"
 TEXT_DISK_NOTE = "папка рядом на диске, не в Atlas: {}"
 TEXT_MARK_FAILED = "Отметка не сохранена: база недоступна, попробуйте ещё раз"
 TEXT_ROTATION_FAILED = "Поворот не сохранён: при следующем открытии фото будет как раньше"
@@ -52,7 +55,7 @@ class _Signals(QObject):
 
 class FindResult:
     """Чужая папка для эталона. source: own — тот же проект, neighbor — соседний проект, given — задана вызывающим,
-    disk — не в Atlas, а рядом на диске (folder — путь, part — None)."""
+    disk — не в Atlas, а рядом на диске (folder — путь, part — None); chosen — папку выбрал человек («Сменить эталон»)."""
 
     def __init__(self, source, folder, part, photos):
         self.source = source
@@ -108,6 +111,7 @@ class CompareFeature(Feature):
         self.screen.mark_requested.connect(self._on_mark_requested)
         self.screen.rotation_changed.connect(self._on_rotation_changed)
         self.screen.find_requested.connect(self.find_same_part)
+        self.screen.change_reference_requested.connect(self.change_reference)
         self.screen.kinds_edit_requested.connect(self._edit_kinds)
         if self.ctx.services.get_optional("defect_kinds") is not None:
             self.screen.set_kinds_editable(True)
@@ -202,6 +206,30 @@ class CompareFeature(Feature):
     def set_reference_folder(self, folder_id):
         """Показать в окне эталона фото этой папки (первое; дальше листаются). Чтение базы — в фоне; из GUI-потока."""
         self._find(lambda: self._given(folder_id))
+
+    def choose_directory(self, start):
+        """Системное окно выбора папки; в тестах подменяется."""
+        from PyQt5.QtWidgets import QFileDialog
+
+        return QFileDialog.getExistingDirectory(self.screen, TEXT_CHANGE_PICK, start)
+
+    def change_reference(self):
+        """«Сменить эталон»: человек выбирает другую папку с фото; она открывается эталоном (только показ, в Atlas не добавляется)."""
+        if self.screen is None:
+            return
+        start = str(Path(self.folder.path).parent) if self.folder is not None else ""
+        chosen = self.choose_directory(start)
+        if not chosen:
+            return
+        self.screen.change_reference_button.setEnabled(False)
+        self._find(lambda: self._from_disk(Path(chosen)))
+
+    def _from_disk(self, path):
+        """Не в GUI-потоке: фото выбранной папки на диске."""
+        from atlas.shared.fs.photos import photo_paths
+
+        photos = [logic.PhotoItem(None, str(path / rel)) for rel in photo_paths(path)]
+        return FindResult("chosen", path, None, photos)
 
     def find_same_part(self):
         """«Найти такую же деталь»: последняя проверка в своём проекте, иначе в соседних; открывается эталоном."""
@@ -327,6 +355,7 @@ class CompareFeature(Feature):
         if request != self._find_request or self.screen is None:
             return
         self.screen.find_button.setEnabled(self.folder is not None)
+        self.screen.change_reference_button.setEnabled(True)
         shell = self.ctx.shell
         if result is None:
             if shell is not None:
@@ -334,7 +363,10 @@ class CompareFeature(Feature):
             return
         if not result.photos:
             if shell is not None:
-                shell.show_message(TEXT_NOT_FOUND, SHELL_MESSAGE_MS)
+                shell.show_message(TEXT_CHANGE_NOTHING if result.source == "chosen" else TEXT_NOT_FOUND, SHELL_MESSAGE_MS)
+            return
+        if result.source == "chosen":
+            self.screen.set_reference_folder(result.photos, TEXT_DISK_NOTE.format(result.folder.name), False)
             return
         if result.source == "disk":
             note = TEXT_DISK_NOTE.format(result.folder.name)
@@ -357,6 +389,7 @@ class CompareFeature(Feature):
         if request != self._find_request or self.screen is None:
             return
         self.screen.find_button.setEnabled(self.folder is not None)
+        self.screen.change_reference_button.setEnabled(True)
         if self.ctx.shell is not None:
             self.ctx.shell.show_message(TEXT_FIND_FAILED, SHELL_MESSAGE_MS)
 

@@ -71,6 +71,8 @@ TAG_ANGLE = "РАКУРС {}"
 TEXT_NO_ANGLE = "Нет ракурса {}"
 TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
 TEXT_CLEAR_REFERENCE = "Убрать эталон"
+TEXT_CHANGE_REFERENCE = "Сменить эталон"
+TIP_CHANGE_REFERENCE = "Открыть эталоном другую папку с фото: сравнить с другой деталью"
 TEXT_ALIGN = "Выровнять"
 TIP_ALIGN = ("Плата на одном месте и в одном масштабе у всех фото: окно само находит её на тёмном фоне.\n"
              "Файл не меняется. Плата не нашлась — фото показывается целиком")
@@ -141,6 +143,7 @@ class UpwardComboBox(QComboBox):
 class CompareScreen(QWidget):
     photo_changed = pyqtSignal(object, int)  # PhotoItem, индекс в папке: пользователь перелистал активное окно
     mark_requested = pyqtSignal(object, object, object, object)  # PhotoItem, отметка или None, SN (None — не менять), вид
+    change_reference_requested = pyqtSignal()  # кнопка «Сменить эталон»
     find_requested = pyqtSignal()  # кнопка «Найти такую же деталь»
     kinds_edit_requested = pyqtSignal()  # кнопка правки списка видов замечаний
     panels_changed = pyqtSignal(object)  # {панель: видна}: пользователь спрятал или показал панель
@@ -404,6 +407,7 @@ class CompareScreen(QWidget):
         self._angle_toggle_buttons = {}
         self.angle_toggles.hide()
         row.addWidget(self.angle_toggles)
+        self._single_before_reference = False
         self._compare_only = []  # в «Ракурсах» этого нет: окон столько, сколько ракурсов, эталона нет
         for count in range(1, MAX_WINDOWS + 1):
             # Цифры, а не «1 фото»: с панелью папок ряд иначе не помещается в окно шириной 1024
@@ -496,6 +500,10 @@ class CompareScreen(QWidget):
         self._angle_row.setSpacing(6)
         row.addLayout(self._angle_row)
         row.addStretch(1)
+        self.change_reference_button = self._button(TEXT_CHANGE_REFERENCE, self.change_reference_requested.emit)
+        set_icon(self.change_reference_button, "folder-open", "text")
+        self.change_reference_button.setToolTip(TIP_CHANGE_REFERENCE)
+        row.addWidget(self.change_reference_button)
         self.clear_reference_button = self._button(TEXT_CLEAR_REFERENCE, self.clear_reference)
         set_icon(self.clear_reference_button, "x", "text")
         self.clear_reference_button.setToolTip(TIP_CLEAR_REFERENCE)
@@ -685,6 +693,7 @@ class CompareScreen(QWidget):
         self.set_angles_mode(False)
         self._end_flicker()
         if self.model.count == 1:
+            self._single_before_reference = True  # «Убрать эталон» вернёт одно окно
             self.set_layout(2)
         self.model.set_reference_folder(photos)
         self._strip_source = None
@@ -699,6 +708,9 @@ class CompareScreen(QWidget):
             return
         self._end_flicker()
         self.model.set_reference(None)
+        if self._single_before_reference and self.model.count == 2:
+            self.set_layout(1)  # окон было одно, второе появилось ради эталона
+        self._single_before_reference = False
         self._strip_source = None  # лента снова показывает эту папку
         self.marks_status.setText("")
         self._sync_extra()

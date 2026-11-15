@@ -407,3 +407,46 @@ def test_reference_bar_with_clear_button_is_shown_in_single_window_too(app):
     assert not app.screen.reference_bar.isHidden()
     app.screen.clear_reference_button.click()
     assert app.screen.model.reference is None
+
+
+def test_clear_reference_returns_single_window(app):
+    """15.11.2026: окно было одно — эталон его удвоил; «Убрать эталон» возвращает одно окно, не «2»."""
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    app.screen.set_layout(1)
+    _find(app)
+    assert app.screen.model.count == 2
+    app.screen.clear_reference_button.click()
+    assert app.screen.model.count == 1 and app.screen.model.reference is None
+    assert app.screen._layout_buttons[1].isChecked()
+
+
+def test_clear_reference_keeps_two_windows_if_there_were_two(app):
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    app.screen.set_layout(2)
+    _find(app)
+    app.screen.clear_reference_button.click()
+    assert app.screen.model.count == 2
+
+
+def test_change_reference_opens_chosen_folder(app, monkeypatch):
+    nearby = app.path.parent / "{} - Эталон".format(PART)
+    _photos(nearby, 1, names=["э1.jpg"])
+    other = app.path.parent / "Другая папка"
+    _photos(other, 2, names=["н1.jpg", "н2.jpg"])
+    feature = app.ctx.services.get("compare")
+    app.screen.set_layout(2)
+    _find(app)
+    monkeypatch.setattr(feature, "choose_directory", lambda start: str(other))
+    app.screen.change_reference_button.click()
+    app.qtbot.waitUntil(lambda: app.screen.change_reference_button.isEnabled(), timeout=5000)
+    app.qtbot.waitUntil(lambda: [p.name for p in app.screen.model.ref_photos] == ["н1.jpg", "н2.jpg"], timeout=5000)
+    assert app.screen.model.reference_window
+
+
+def test_change_reference_cancelled_does_nothing(app, monkeypatch):
+    feature = app.ctx.services.get("compare")
+    monkeypatch.setattr(feature, "choose_directory", lambda start: "")
+    app.screen.change_reference_button.click()
+    assert not app.screen.model.has_reference_folder

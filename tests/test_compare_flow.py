@@ -238,19 +238,19 @@ def test_flicker_shows_reference_on_same_place_until_release(app):
     app.press(Qt.Key_Right)
     app.wait_shown()
     view = app.screen.active_view()
-    app.screen.group.set_state(8.0, 0.4, 0.4)
+    app.screen.group.set_state(8.0, 0.5, 0.5)
     _space(app.screen, QTest.Press)
     assert app.screen.flickering
     assert app.active_name() == "фото 001.jpg"
     app.wait_shown()
-    assert view.state() == pytest.approx((8.0, 0.4, 0.4))
+    assert view.state() == pytest.approx((8.0, 0.5, 0.5))
     app.press(Qt.Key_Right)  # листать во время «мигалки» нельзя: непонятно, что на экране
     assert app.screen.model.index(0) == 1
     _space(app.screen, QTest.Release)
     assert not app.screen.flickering
     assert app.active_name() == "фото 002.jpg"
     app.wait_shown()
-    assert view.state() == pytest.approx((8.0, 0.4, 0.4))
+    assert view.state() == pytest.approx((8.0, 0.5, 0.5))
     assert len([item for item in app.events if item[0] == "photo.changed"]) == 1
 
 
@@ -981,3 +981,30 @@ def test_assign_type_button_opens_drum_and_sets_any_type(app):
     assert screen.type_button.text() == "Присвоить ТИП" and not screen.type_button.isChecked()
     app.press(Qt.Key_2)  # клавиша — сразу
     _wait_db(app, lambda photos: photos[0].mark == "type:2")
+
+
+def test_caption_has_only_position_and_name_is_on_top(app):
+    """12.12: над фото «N / всего» без слова «ЛИСТАНИЕ» и имени файла; имя — в строке вверху, его можно скопировать."""
+    app.wait_open()
+    app.press(Qt.Key_Right)
+    app.wait_shown()
+    caption = app.screen.active_view()._caption
+    assert caption._tag.text() == "2 / 6"
+    assert caption._text.isHidden()
+    assert "ЛИСТАНИЕ" not in caption._tag.text()
+    assert app.screen.photo_name_edit.text() == "фото 002.jpg"
+    assert app.screen.photo_name_edit.isReadOnly()
+    app.screen.copy_photo_name()
+    assert QApplication.clipboard().text() == "фото 002.jpg"
+    app.press(Qt.Key_Right)
+    app.wait_shown()
+    assert app.screen.photo_name_edit.text() == "фото 003.jpg"
+
+
+def test_name_on_top_follows_active_window_in_two_windows(app):
+    app.wait_open()
+    app.screen.set_layout(2)
+    app.wait_shown()
+    for view in app.screen.group.views[:2]:
+        assert view._caption._text.isHidden()
+    assert app.screen.photo_name_edit.text() == app.active_name()

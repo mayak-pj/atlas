@@ -59,8 +59,6 @@ STRIP_SETTLE_MS = 150  # миниатюры — после остановки: �
 TEXT_NO_FOLDER = "Папка не открыта"
 TEXT_NO_PHOTOS = "В папке нет фото"
 TAG_REFERENCE = "ЭТАЛОН"
-TAG_SINGLE = "ЛИСТАНИЕ"
-TAG_CURRENT = "НОВОЕ"
 TEXT_KIND_NONE = "Вид не выбран"
 TEXT_SIZES_PENDING = "Читаю размеры фото: поворот применится сам"
 SN_WIDTH = 120
@@ -73,6 +71,9 @@ TEXT_NO_CURRENT_ANGLE = "В текущей папке нет ракурса {}"
 TEXT_CLEAR_REFERENCE = "Убрать эталон"
 TEXT_CHANGE_REFERENCE = "Сменить эталон"
 TIP_CHANGE_REFERENCE = "Открыть эталоном другую папку с фото: сравнить с другой деталью"
+TEXT_NO_PHOTO_NAME = "Имя снимка"
+TEXT_COPY_NAME = "Копировать"
+TIP_COPY_NAME = "Скопировать имя файла текущего снимка"
 TEXT_ALIGN = "Выровнять"
 TIP_ALIGN = ("Плата на одном месте и в одном масштабе у всех фото: окно само находит её на тёмном фоне.\n"
              "Файл не меняется. Плата не нашлась — фото показывается целиком")
@@ -388,6 +389,18 @@ class CompareScreen(QWidget):
         rows = QVBoxLayout(bar)
         rows.setContentsMargins(8, 8, 8, 8)
         rows.setSpacing(6)
+        name_row = QHBoxLayout()  # 12.12: имя текущего снимка, его можно выделить и скопировать
+        name_row.setSpacing(6)
+        rows.addLayout(name_row)
+        self.photo_name_edit = QLineEdit()
+        self.photo_name_edit.setReadOnly(True)
+        self.photo_name_edit.setPlaceholderText(TEXT_NO_PHOTO_NAME)
+        name_row.addWidget(self.photo_name_edit, 1)
+        self.copy_name_button = self._button(TEXT_COPY_NAME, self.copy_photo_name)
+        set_icon(self.copy_name_button, "copy", "text")
+        self.copy_name_button.setToolTip(TIP_COPY_NAME)
+        self.copy_name_button.setEnabled(False)
+        name_row.addWidget(self.copy_name_button)
         row = QHBoxLayout()  # первый ряд — как смотреть, второй — действия: вместе в окно шириной 1024 они не помещаются
         row.setSpacing(6)
         rows.addLayout(row)
@@ -627,6 +640,19 @@ class CompareScreen(QWidget):
         set_icon(button, "chevron-right" if step > 0 else "chevron-left", "text", size=14)
         button.setToolTip(tip)
         return button
+
+    def copy_photo_name(self):
+        """Имя файла текущего снимка — в буфер обмена."""
+        name = self.photo_name_edit.text()
+        if name:
+            QApplication.clipboard().setText(name)
+
+    def _show_photo_name(self, photo):
+        name = photo.name if photo is not None else ""
+        self.photo_name_edit.setText(name)
+        self.photo_name_edit.setCursorPosition(0)
+        self.photo_name_edit.setToolTip(name)
+        self.copy_name_button.setEnabled(bool(name))
 
     def _button(self, text, action, checkable=False):
         button = QPushButton(text)
@@ -1166,9 +1192,8 @@ class CompareScreen(QWidget):
         window = self._window_of(view)
         photo = self.model.current(window)
         self.group.show_photo(view, photo.path, photo.rotation)
-        tag = TAG_SINGLE if self.model.count == 1 else TAG_CURRENT
         position = position_text(self.model.index(window), len(self.model.photos))
-        view.set_caption(tag, "{}  {}".format(position, photo.name))
+        view.set_caption(position)  # 12.12: имени файла в окне нет, оно вверху (photo_name_edit)
         self._after_show()
 
     def _show_angles(self):
@@ -1193,8 +1218,8 @@ class CompareScreen(QWidget):
     def _reference_text(self, photo):
         model = self.model
         if not model.has_reference_folder:
-            return photo.name
-        return "{}  {}".format(position_text(model.ref_index, len(model.ref_photos)), photo.name)
+            return ""
+        return position_text(model.ref_index, len(model.ref_photos))  # имя — в строке вверху (12.12)
 
     def _mark_active(self):
         for view in self.views:
@@ -1336,9 +1361,11 @@ class CompareScreen(QWidget):
         model = self.model
         if not model.photos:
             self._panel_photo = None
+            self._show_photo_name(None)
             return
         number = self._marked_number()
         photo = model.photos[number] if number is not None else None
+        self._show_photo_name(model.reference if model.reference_active else photo)
         same = photo is not None and self._panel_photo is not None and self._panel_photo.id == photo.id
         self._panel_photo = photo
         enabled = self.can_mark

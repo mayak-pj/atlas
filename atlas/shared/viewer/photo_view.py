@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
 
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
@@ -15,6 +14,7 @@ from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QStyle, QStyleOption, Q
 
 from atlas.core import theme
 from atlas.shared.viewer import enhance
+from atlas.shared.viewer.enhance_worker import shared_worker
 from atlas.shared.viewer.levels import CURRENT, L0, L1, L3, level_divisor, level_for_scale
 from atlas.shared.viewer.object_frame import padded_frame, rotated_frame
 from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_size
@@ -22,6 +22,7 @@ from atlas.shared.viewer.view_state import ViewState, rotated_center, rotated_si
 log = logging.getLogger("atlas.viewer.enhance")
 
 SETTLE_MS = 150  # после остановки листания или зума — чёткий уровень (цель: не позже 300 мс)
+ENHANCE_DELAY_MS = 300  # «Качество» начинает считать, когда листание или зум стоят столько (12.8)
 WHEEL_STEP = 1.2  # за один щелчок колеса, как в макете
 _WHEEL_NOTCH = 120.0
 _INNER_RADIUS = 7  # скругление QWidget#PhotoView минус рамка
@@ -73,7 +74,7 @@ class PhotoView(QWidget):
     photo_failed = pyqtSignal(str, str)  # путь, текст ошибки
     _enhanced = pyqtSignal(object, QImage)  # ключ, готовая улучшенная часть; из рабочего потока
 
-    def __init__(self, cache, parent=None, settle_ms=SETTLE_MS):
+    def __init__(self, cache, parent=None, settle_ms=SETTLE_MS, enhance_delay_ms=ENHANCE_DELAY_MS, enhance_worker=None):
         super().__init__(parent)
         self.setObjectName("PhotoView")
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -97,7 +98,13 @@ class PhotoView(QWidget):
         self._enhance_mode = None  # улучшение при приближении (12.5): None — выключено, иначе id режима из enhance
         self._enh_key = None  # для какой части и размера готова улучшенная копия
         self._enh_image = None
-        self._enh_pending = None  # ключ, который сейчас считается в рабочем потоке
+        self._enh_pending = None  # ключ, отданный общему потоку «Качества» (ждёт или считается)
+        self._enh_planned = None  # ключ, который отдадим потоку, когда окно постоит ENHANCE_DELAY_MS
+        self._enh_worker = enhance_worker or shared_worker()  # один поток на все окна (12.8)
+        self._enh_timer = QTimer(self)
+        self._enh_timer.setSingleShot(True)
+        self._enh_timer.setInterval(enhance_delay_ms)
+        self._enh_timer.timeout.connect(self._submit_enhance)
         self._show_original = False  # «до»: пока держат клавишу, показываем фото без улучшения
         self._curtain = False  # «до/после»: слева исходное, справа улучшенное, границу можно тянуть
         self._curtain_pos = 0.5  # где граница, доля ширины окна
@@ -188,7 +195,7 @@ class PhotoView(QWidget):
         """Улучшение мелких деталей при приближении: None — выключено, иначе режим ("deblur", "max", "pro"). Файл не меняется."""
         self._enhance_mode = enhance.usable_mode(mode) if mode else None
         self._enh_key = self._enh_image = None
-        self._enh_pending = None
+        self._cancel_enhance()
         self._after_view_change()
 
     @property
@@ -269,29 +276,64 @@ class PhotoView(QWidget):
         key = (self._enhance_mode, self._image.cacheKey(), self._image_rotation, tuple(round(v, 2) for v in source.getRect()), size)
         return key, source, size
 
+    def _cancel_enhance(self):
+        """Расчёт «Качества» для этого окна больше не нужен: ждущий забыть, идущий прервать."""
+        self._enh_timer.stop()
+        self._enh_planned = None
+        if self._enh_pending is not None:
+            self._enh_pending = None
+            self._enh_worker.cancel(self)
+
     def _start_enhance(self):
+        """Окно показало новое место: посчитать «Качество», когда оно постоит ENHANCE_DELAY_MS (не на каждом кадре листания)."""
         job = self._enhance_job()
         if job is None:
             self._enh_key = self._enh_image = None
+            self._cancel_enhance()
+            return
+        key = job[0]
+        if key == self._enh_key:
+            self._cancel_enhance()  # на экране уже то, что нужно
+            return
+        if key == self._enh_pending:
+            return
+        if self._enh_pending is not None:
+            self._enh_pending = None
+            self._enh_worker.cancel(self)  # фото или место сменилось: прежний расчёт не нужен, прерываем сразу
+        if key != self._enh_planned or not self._enh_timer.isActive():
+            self._enh_planned = key
+            self._enh_timer.start()
+
+    def _submit_enhance(self):
+        self._enh_planned = None
+        job = self._enhance_job()
+        if job is None:
             return
         key, source, size = job
         if key == self._enh_key or key == self._enh_pending:
             return
         self._enh_pending = key
         image, mode = self._image, self._enhance_mode
+        signal = self._enhanced
 
-        def work():
+        def work(cancelled):
             started = time.monotonic()
             try:
-                result = enhance.enhanced_crop(image, source, size[0], size[1], mode)
+                result = enhance.enhanced_crop(image, source, size[0], size[1], mode, cancelled=cancelled)
+            except enhance.Cancelled:
+                log.info("Качество: режим %s прерван через %.2f с — фото сменилось", mode, time.monotonic() - started)
+                raise
             except Exception:  # улучшение — только украшение: не вышло, остаётся обычная картинка; причина — в лог
                 log.exception("Качество: режим %s не отработал", mode)
                 result = None
             log.info("Качество: режим %s, часть фото %dx%d → экран %dx%d: %.2f с%s", mode, source.width(), source.height(),
                      size[0], size[1], time.monotonic() - started, "" if result is not None else " (без улучшения)")
-            self._enhanced.emit(key, result if result is not None else QImage())
+            return result
 
-        threading.Thread(target=work, name="enhance", daemon=True).start()
+        def done(done_key, result):  # в рабочем потоке; сигнал доставит в GUI-поток
+            signal.emit(done_key, result if result is not None else QImage())
+
+        self._enh_worker.submit(self, key, work, done)
 
     def _on_enhanced(self, key, image):
         if key == self._enh_pending:
@@ -372,6 +414,7 @@ class PhotoView(QWidget):
                 self._apply_rotation(rotation)
             return
         guess = self._needed_level()  # размеры фото в папке одинаковы: уровень нужен тот же, что у прежнего
+        self._cancel_enhance()  # «Качество» прежнего фото уже не нужно: прерываем, а не досчитываем (12.8)
         self._path = path
         self._rotation = rotation
         self._failed = False
@@ -398,6 +441,7 @@ class PhotoView(QWidget):
         self._full_size = None
         self._failed = False
         self._settle.stop()
+        self._cancel_enhance()
         self._show_message("")
         self.update()
 

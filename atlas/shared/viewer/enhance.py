@@ -17,6 +17,8 @@ import json
 
 from PyQt5.QtGui import QImage
 
+from atlas.shared.viewer.enhance_worker import Cancelled
+
 try:  # opencv и numpy на целевой машине есть, но программа без них тоже запускается: режимы «Качества» серые
     import cv2
     import numpy as np
@@ -80,15 +82,28 @@ def wants_enhance(scale, mode):
     return mode is not None and scale >= MIN_SCALE
 
 
-def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE):
-    """Часть фото `source` (QRectF в пикселях `image`), растянутая до width×height и улучшенная; None — не вышло."""
+def _never():
+    return False
+
+
+def _check(cancelled):
+    if cancelled():
+        raise Cancelled()
+
+
+def enhanced_crop(image, source, width, height, mode=DEFAULT_MODE, cancelled=None):
+    """Часть фото `source` (QRectF в пикселях `image`), растянутая до width×height и улучшенная; None — не вышло.
+
+    `cancelled()` проверяется между шагами снятия размытия (12.8): True — бросает `Cancelled`, фото уже сменилось.
+    """
     width, height = int(width), int(height)
     mode = usable_mode(mode)
     if mode is None or width < 1 or height < 1 or width * height > MAX_PIXELS * 1.01:
         return None
+    cancelled = cancelled or _never
     if mode == MODE_PRO:
-        return _pro(image, source, width, height)
-    return _deblur(image, source, width, height, mode)
+        return _pro(image, source, width, height, cancelled)
+    return _deblur(image, source, width, height, mode, cancelled)
 
 
 # --- «Снять размытие» и «Максимум»: opencv ---------------------------------------------------------------
@@ -136,17 +151,18 @@ def estimate_sigma(gray):
     return None if sigma < _MIN_SIGMA else min(sigma, _MAX_SIGMA)
 
 
-def richardson_lucy(gray, sigma, iterations):
+def richardson_lucy(gray, sigma, iterations, cancelled=_never):
     """Деконволюция гауссовым ядром; gray — float32 0…1."""
     size = int(sigma * 6) | 1
     estimate = gray.copy()
     for _ in range(iterations):
+        _check(cancelled)
         blurred = cv2.GaussianBlur(estimate, (size, size), sigma)
         estimate *= cv2.GaussianBlur(gray / np.maximum(blurred, 1e-4), (size, size), sigma)
     return estimate
 
 
-def richardson_lucy_tv(gray, sigma, iterations, weight=_TV_WEIGHT):
+def richardson_lucy_tv(gray, sigma, iterations, weight=_TV_WEIGHT, cancelled=_never):
     """Деконволюция Ричардсона–Люси с регуляризацией по полной вариации: границы остаются резкими, шум и «звон» не растут.
 
     gray — float32 0…1. Ничего не дорисовывает: усиливается только то, что размыто в самом кадре.
@@ -154,6 +170,7 @@ def richardson_lucy_tv(gray, sigma, iterations, weight=_TV_WEIGHT):
     size = int(sigma * 6) | 1
     estimate = gray.copy()
     for _ in range(iterations):
+        _check(cancelled)
         blurred = cv2.GaussianBlur(estimate, (size, size), sigma)
         correction = cv2.GaussianBlur(gray / np.maximum(blurred, 1e-4), (size, size), sigma)
         grad_y, grad_x = np.gradient(estimate)
@@ -164,7 +181,7 @@ def richardson_lucy_tv(gray, sigma, iterations, weight=_TV_WEIGHT):
     return estimate
 
 
-def _pro_luma(luma, sigma):
+def _pro_luma(luma, sigma, cancelled=_never):
     """Яркость «Pro» на той сетке, которая видна на экране: плитки, RL-TV, плавная сшивка; ровные плитки пропускаются.
 
     sigma — размытие в пикселях этой сетки. Число шагов растёт с размытием (45…80): дальше на настоящих фото
@@ -185,14 +202,14 @@ def _pro_luma(luma, sigma):
             top0, left0 = max(0, bottom - _TILE), max(0, right - _TILE)  # плитка у края — прежнего размера
             tile = source[top0:bottom, left0:right]
             flat = float(tile.max() - tile.min()) < _FLAT_RANGE  # ровное поле: деконволюция добавила бы только шум
-            done = tile if flat else richardson_lucy_tv(tile, sigma, iterations)
+            done = tile if flat else richardson_lucy_tv(tile, sigma, iterations, cancelled=cancelled)
             part = window[: tile.shape[0], : tile.shape[1]]
             total[top0:bottom, left0:right] += done * part
             weight_sum[top0:bottom, left0:right] += part
     return np.clip(total / np.maximum(weight_sum, 1e-6) * 255.0, 0, 255).astype(np.uint8)
 
 
-def _pro(image, source, width, height):
+def _pro(image, source, width, height, cancelled=_never):
     """«Pro»: растянуть часть фото до размера на экране и снимать размытие уже там. Так мелкие элементы остаются чёткими
     при большом зуме, а не растягиваются мягкими. Окно меньше фото — деконволюция в размере фото и уменьшение."""
     rect = source.toAlignedRect().adjusted(-_PAD, -_PAD, _PAD, _PAD).intersected(image.rect())
@@ -209,7 +226,7 @@ def _pro(image, source, width, height):
             grid = min(scale_x, scale_y)  # размытие фото на сетке экрана плюс сглаживание самого растягивания
             sigma = min(float((sigma ** 2 * grid ** 2 + (0.5 * grid) ** 2) ** 0.5), _PRO_MAX_SIGMA)
     if sigma is not None:
-        ycc[:, :, 0] = _pro_luma(ycc[:, :, 0], sigma)
+        ycc[:, :, 0] = _pro_luma(ycc[:, :, 0], sigma, cancelled)
     result = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
     if not magnify:
         result = cv2.resize(result, size, interpolation=cv2.INTER_AREA)
@@ -221,7 +238,7 @@ def _pro(image, source, width, height):
     return _to_qimage(np.ascontiguousarray(out))
 
 
-def _deblur(image, source, width, height, mode):
+def _deblur(image, source, width, height, mode, cancelled=_never):
     rect = source.toAlignedRect().adjusted(-_PAD, -_PAD, _PAD, _PAD).intersected(image.rect())
     if rect.isEmpty():
         return None
@@ -232,7 +249,7 @@ def _deblur(image, source, width, height, mode):
     if sigma is not None:
         if mode == MODE_MAX:
             luma = cv2.fastNlMeansDenoising(luma, None, 4, 5, 15)
-        done = richardson_lucy(luma.astype(np.float32) / 255.0 + 1e-4, sigma, _ITERATIONS[mode])
+        done = richardson_lucy(luma.astype(np.float32) / 255.0 + 1e-4, sigma, _ITERATIONS[mode], cancelled)
         luma = np.clip(done * 255.0, 0, 255).astype(np.uint8)
         if mode == MODE_MAX:
             luma = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4, 4)).apply(luma)

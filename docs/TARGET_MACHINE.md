@@ -34,6 +34,7 @@
 | Сборка | **PyInstaller 6.22.3, onedir, без UPX, `console=False`** | `curator` | CI: `windows-2022` + GitHub Actions. VC++ runtime ставить не нужно. UCRT из сборки **исключён** |
 | Сборка (другой вариант) | Embeddable Python 3.8.10 + колёса `cp38 win_amd64` | `digger`, `matcher`, `cvision` | Тоже работает; можно собрать и на Mac (`matcher`) |
 | SQLite | 3.35.5 (stdlib Python 3.8.10) | `matcher` | Проверен только на **локальном** диске, см. ниже |
+| Чтение текста (12.6a) | `rapidocr-onnxruntime` 1.3.24, `onnxruntime` 1.11.1 (1.12+ на Win7 не работает), `pyclipper`, `shapely`, `PyYAML`, `six`, `flatbuffers`, `protobuf`, `Pillow` 10.4.0, DLL Visual C++ `msvc-runtime` 14.29.30133 | `digger`, `matcher` (Win7: 120 фото, 10.10.2026) | **В Atlas не проверено**: `selfcheck` на целевой машине (строки «PP-OCR в сборке», «чтение текста»). Ставить `pip install --no-deps -r requirements-ocr.txt` |
 | Прочие библиотеки | numpy 1.24.4, Pillow 10.4.0, opencv-headless 4.5.5.64 / contrib 4.10.0.84, onnxruntime 1.11.1 (1.12+ не работает на Win7) | `digger`, `matcher` | Atlas пока нужен только Pillow (если нужен) |
 | Разработка на Mac | `uv venv --python 3.8`, `pytest` 8.3.5, `pytest-qt` 4.4.0, `vermin`, `QT_QPA_PLATFORM=offscreen` | `digger`, `curator` | Готовый рецепт для шага 0.2 |
 

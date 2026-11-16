@@ -1,6 +1,7 @@
 """Экран сравнения. Окна постоянные: views[0] — эталон (если он есть), текущие — views[1], views[2]…; раскладка только показывает нужные."""
 from __future__ import annotations
 
+import logging
 import time
 
 from PyQt5.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
@@ -50,6 +51,8 @@ TEXT_HIDE_UI = "Скрыть всё"
 TEXT_STACK = "Друг под другом"
 TIP_STACK = "Окна друг под другом — для длинных плат. Границу между окнами можно тянуть мышью"
 SPLIT_HANDLE = 10
+log = logging.getLogger("atlas.compare")
+
 TEXT_FULLSCREEN = "Во весь экран"
 TIP_FULLSCREEN = "Только фото на весь экран; выход — Esc или F11"
 TEXT_SHOW_UI = "Показать всё"
@@ -382,6 +385,10 @@ class CompareScreen(QWidget):
         self.visibility_bar.setVisible(not on)
         self.setFocus()
         self.fullscreen_changed.emit(on)
+        # замечание 16.11 («во весь экран выключается Качество»): на выезде по строке видно, что стало с режимом и окнами
+        log.info("Во весь экран: %s; «Качество»: кнопка %s, окна %s", "вход" if on else "выход",
+                 self.enhance_control.active_mode(),
+                 [(v.width(), v.height(), v.enhance_mode, v.enhanced_shown) for v in self._visible_views()])
 
     def _build_toolbar(self):
         bar = QFrame()

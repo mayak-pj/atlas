@@ -114,3 +114,25 @@ def test_reference_from_other_folder_keeps_quality_in_both_windows_after_adjusti
         assert Path(current.path).name == "фото 002.jpg"
     finally:
         app.stop()
+
+
+def test_quality_survives_fullscreen_and_back(tmp_path, qtbot):
+    """Замечание 16.11: «Во весь экран» выключает «Качество». Кнопка, режим и улучшение остаются на входе и на выходе."""
+    pytest.importorskip("cv2")
+    app = App(tmp_path, qtbot, size=(3000, 2000))
+    app.window.resize(1000, 700)
+    try:
+        app.wait_open()
+        screen = app.screen
+        app.wait_shown()
+        screen.enhance_control.set_mode("pro")
+        screen.enhance_control.set_active(True, emit=True)
+        qtbot.waitUntil(lambda: all(view.enhanced_shown for view in screen._visible_views()), timeout=3000)
+        for step in ("вход", "выход"):
+            screen.set_fullscreen(step == "вход")
+            app.window.resize(1920, 1080) if step == "вход" else app.window.resize(1000, 700)
+            assert screen.enhance_control.active_mode() == "pro", "кнопка выключилась на «{}»".format(step)
+            assert all(view.enhance_mode == "pro" for view in screen.views), "режим сброшен на «{}»".format(step)
+            qtbot.waitUntil(lambda: all(view.enhanced_shown for view in screen._visible_views()), timeout=3000)
+    finally:
+        app.stop()

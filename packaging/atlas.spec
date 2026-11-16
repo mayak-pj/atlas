@@ -9,13 +9,17 @@ import sys
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 sys.path.insert(0, SPECPATH)
 from bundle_contents import data_files, hidden_modules  # noqa: E402
+from PyInstaller.utils.hooks import collect_data_files  # noqa: E402
+
+# Чтение текста (12.6a): модели .onnx и config.yaml лежат в пакете как данные, код его не видит
+OCR_DATAS = collect_data_files("rapidocr_onnxruntime")
 
 a = Analysis(
     [os.path.join(ROOT, "atlas", "__main__.py")],
     pathex=[ROOT],
-    datas=data_files(ROOT),
-    hiddenimports=hidden_modules(ROOT) + ["PyQt5.QtSvg"],
-    excludes=["tkinter", "PIL", "pytest", "cv2.gapi", "matplotlib", "scipy"],
+    datas=data_files(ROOT) + OCR_DATAS,
+    hiddenimports=hidden_modules(ROOT) + ["PyQt5.QtSvg", "rapidocr_onnxruntime", "onnxruntime", "pyclipper", "shapely", "yaml", "six"],
+    excludes=["tkinter", "pytest", "cv2.gapi", "matplotlib", "scipy"],
     noarchive=False,
 )
 

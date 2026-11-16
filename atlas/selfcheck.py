@@ -233,6 +233,7 @@ def _walk(check, paths, work):
     _check_formats(check)
     _check_icons(check)
     _check_quality(check)
+    _check_ocr(check)
     _check_image_levels(app, check, work)
 
     ctx = build_core(_make_work_root(paths, work))
@@ -291,6 +292,35 @@ def _check_quality(check):
         ok = result is not None and (result.width(), result.height()) == (1600, 1200)
         check.result("«Качество»: режим {} (800×600 → 1600×1200)".format(mode), ok,
                      "{:.2f} с; OpenCV {}, NumPy {}".format(time.monotonic() - started, cv2.getVersionString(), np.__version__))
+
+
+def _check_ocr(check):
+    """Чтение текста (12.6a): PP-OCR загружается и читает нарисованную надпись. Время загрузки и чтения — для оценки целевой машины."""
+    import time
+
+    from atlas.shared import ocr
+
+    check.result("PP-OCR в сборке (rapidocr и onnxruntime)", ocr.engine_available())
+    if not ocr.engine_available():
+        return
+    import cv2
+    import numpy as np
+
+    word = "SN74HC595"
+    frame = np.full((800, 1200, 3), (40, 70, 40), np.uint8)
+    cv2.putText(frame, word, (300, 400), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (230, 230, 230), 4, cv2.LINE_AA)
+    for number in range(2):  # первый проход грузит модели, второй — чистое чтение
+        started = time.monotonic()
+        try:
+            lines = ocr.read_text(frame, rotations=(0, 90))
+        except ocr.OcrUnavailable as exc:
+            check.result("чтение текста", False, str(exc))
+            return
+        seconds = time.monotonic() - started
+        read = " ".join(line.text for line in lines)
+        ok = word in read.replace(" ", "")
+        check.result("чтение текста, {} (1200×800, повороты 0° и 90°)".format("загрузка и чтение" if number == 0 else "чтение"), ok,
+                     "{:.2f} с; прочитано «{}»".format(seconds, read))
 
 
 def run(out, paths=None):

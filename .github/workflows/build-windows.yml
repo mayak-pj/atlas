@@ -25,6 +25,10 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      # чтение текста (12.6a): отдельно и с --no-deps, иначе rapidocr затянет свой opencv-python поверх opencv-python-headless
+      - name: Install OCR packages
+        run: python -m pip install --no-deps -r requirements-ocr.txt
+
       # Номер сборки растёт сам: у каждой версии в release своя папка, вручную версию менять не нужно
       - name: Set version
         run: python scripts/set_version.py 0.10.${{ github.run_number }}
